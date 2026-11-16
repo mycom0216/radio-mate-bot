@@ -12,6 +12,13 @@ test('batch lottery consumes all held tickets atomically and replay never adds E
 test('large lottery yields before committing and refuses to spend a changed balance',async()=>{
   const f=setup(LOTTERY_CHUNK+1);const pending=f.engine.handleAsync('a',f.event);f.store.transaction('a',r=>r.users.u.tickets++);const out=await pending;assert.match(out.text,/수량이 변경/);const u=f.store.load('a').users.u;assert.equal(u.tickets,LOTTERY_CHUNK+2);assert.equal(u.exp,0);f.store.db.close();
 });
+
+test('ticket reset cancels an in-flight automatic draw without awarding EXP',async()=>{
+  const f=setup(LOTTERY_CHUNK+1),pending=f.engine.handleAsync('a',{...f.event,isDj:true});
+  f.engine.handle('a',{id:'reset',message:'!복권 초기화 @u',isDj:true,user:{id:'dj',nickname:'DJ'}});
+  const result=await pending;assert.match(result.text,/복권이 부족/);
+  const user=f.store.load('a').users.u;assert.equal(user.tickets,0);assert.equal(user.exp,0);f.store.db.close();
+});
 test('large lottery commits all tickets and one summary after yielding',async()=>{
   const f=setup(LOTTERY_CHUNK+1);const out=await f.engine.handleAsync('a',f.event);assert.match(out.text,/10,001장 사용/);const u=f.store.load('a').users.u;assert.equal(u.tickets,0);assert.equal(u.exp,300*(LOTTERY_CHUNK+1));assert.equal(f.store.logs('a').filter(l=>l.type==='lottery').length,1);f.store.db.close();
 });

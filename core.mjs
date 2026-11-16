@@ -158,6 +158,16 @@ export class Engine {
     const bits=text.slice(1).trim().split(/\s+/),cmd=bits.shift()||'',arg=bits.join(' ');
     const dj=e.isDj===true;
     const answer=t=>{r.lastResponse=now;return {text:t};};
+    const ticketReset=cmd==='복권초기화'||cmd==='복권'&&bits[0]==='초기화';
+    if(ticketReset){
+      if(!dj)fail('복권 초기화는 DJ 전용 명령어입니다.');
+      const targets=cmd==='복권초기화'?bits:bits.slice(1);
+      if(targets.length!==1)fail('사용법: !복권 초기화 @고유ID 또는 !복권초기화 @고유ID');
+      const uid=this.target(r,targets[0]),user=r.users[uid],previous=user.tickets;
+      user.tickets=0;
+      this.store.log(r.id,uid,'ticket-reset',{previous,balance:0,actor:e.user.id},now);
+      return answer(`${user.name}님 복권 초기화 · ${n(previous)}장 → 0장 (EXP·PT 유지)`);
+    }
     if(dj){
       if(cmd==='조용'){if(!['on','off'].includes(arg))fail('사용법: !조용 on/off');s.quiet=arg==='on';r.settingsRevision=(r.settingsRevision||0)+1;return answer(`조용 모드 ${arg.toUpperCase()}`);}
       if(cmd==='복권지급'){

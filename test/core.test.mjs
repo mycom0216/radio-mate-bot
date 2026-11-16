@@ -43,6 +43,25 @@ test('DJ ticket command accepts signed integers, zero and the default quantity',
   f.store.db.close();
 });
 
+test('DJ ticket reset supports both spellings, logs previous balance and never replays over a new grant',()=>{
+  const f=setup();f.say('!내정보 생성');f.mutate((r,u)=>{u.tickets=500000000650000;u.exp=750;u.pt=120;});
+  assert.match(f.say('!복권 초기화 @u1',{dj:true,event:'reset-once'}).text,/500,000,000,650,000장 → 0장/);
+  assert.equal(f.user().tickets,0);assert.equal(f.user().exp,750);assert.equal(f.user().pt,120);
+  const log=f.store.logs('a').find(l=>l.type==='ticket-reset');assert.equal(log.data.previous,500000000650000);assert.equal(log.data.balance,0);
+  f.say('!복권지급 @u1 5',{dj:true});assert.equal(f.say('!복권 초기화 @u1',{dj:true,event:'reset-once'}).duplicate,true);assert.equal(f.user().tickets,5);
+  assert.match(f.say('!복권초기화 @u1',{dj:true}).text,/5장 → 0장/);assert.match(f.say('!복권초기화 @u1',{dj:true}).text,/0장 → 0장/);
+  f.store.db.close();
+});
+
+test('ticket reset requires DJ and exactly one existing target and stays within its room',()=>{
+  const f=setup();f.say('!내정보 생성');f.say('!내정보 생성',{room:'b'});
+  f.say('!복권지급 @u1 8',{dj:true});f.say('!복권지급 @u1 9',{dj:true,room:'b'});
+  for(const command of ['!복권 초기화 @u1','!복권초기화 @u1'])assert.match(f.say(command).text,/DJ 전용/);
+  for(const command of ['!복권 초기화','!복권초기화','!복권초기화 @u1 @u2'])assert.match(f.say(command,{dj:true}).text,/사용법/);
+  f.say('!복권초기화 @missing',{dj:true});assert.equal(f.user().tickets,8);
+  f.say('!복권초기화 @u1',{dj:true});assert.equal(f.store.load('b').users.u1.tickets,9);f.store.db.close();
+});
+
 test('ticket recovery rejects overdrafts, fractions, unsafe integers and non-DJs; replay never recovers twice',()=>{
   const f=setup();f.say('!내정보 생성');f.say('!복권지급 @u1 4',{dj:true});
   assert.match(f.say('!복권지급 @u1 -5',{dj:true}).text,/보유 복권/);
