@@ -1,6 +1,9 @@
 # Spoon Studio — 스푼 방송 봇
 
+<img width="999" height="884" alt="image" src="https://github.com/user-attachments/assets/016893fd-c9c0-4bb9-8cfb-cecc7c018438" />
+
 PC·모바일 반응형 관리 화면, SQLite 기반 방송별 데이터 저장, 스푼 공식 OAuth/SSE 연결을 갖춘 첫 구현입니다. **실제 스푼 계정·방송 연동 및 클라우드 배포는 아직 검증하지 않았습니다.**
+
 
 ## 이 PC에서 실행
 
@@ -15,6 +18,8 @@ Node.js 24 이상이 필요합니다. 외부 npm 패키지는 사용하지 않�
 다른 기기의 실제 접속에는 공용 HTTPS 서버가 필요합니다. 로컬 테스트 로그인은 이 PC에서만 가능합니다. 프로그램을 종료하면 로컬 봇도 중지됩니다.
 
 ## 관리 화면 사용
+
+<img width="1265" height="1471" alt="image" src="https://github.com/user-attachments/assets/d07fb9cf-9cd1-4afd-ac11-1ffa8155dff2" />
 
 밝은 파스텔 스튜디오 테마(연보라·민트·살구색), 작은 라디오 캐릭터, SVG 메뉴 아이콘, 스티커 느낌의 요약 카드, 아바타 말풍선 채팅과 반응형 메뉴를 제공합니다.
 
