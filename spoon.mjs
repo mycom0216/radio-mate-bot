@@ -1,3 +1,4 @@
+import {autoChatCandidate} from './extras.mjs';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 const BASE='https://kr-openapi.spooncast.net';
 export function seal(data,key){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',Buffer.from(key,'hex'),iv);const encrypted=Buffer.concat([c.update(JSON.stringify(data),'utf8'),c.final()]);return Buffer.concat([iv,c.getAuthTag(),encrypted]).toString('base64');}
@@ -20,14 +21,14 @@ export class Spoon {
   }
   async connect(code){const token=await this.tokenRequest({grant_type:'authorization_code',code,redirect_uri:`${this.env.PUBLIC_URL}/oauth/callback`});const res=await fetch(`${BASE}/v1/me`,{headers:{Authorization:`Bearer ${token.access_token}`},signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('DJ 정보를 확인할 수 없습니다. me.read 권한을 확인하세요.');const {userId}=await res.json();if(!userId)throw Error('DJ ID가 없습니다.');this.store.create(userId,`DJ ${userId.slice(0,6)}`);this.stop(userId);this.saveToken(userId,token);this.start(userId);return userId;}
   async send(room,message){
-    if(!message)return;
-    const now=Date.now(),r=this.store.load(room);if(!r?.live)return;
-    if(now-(this.sendTimes.get(room)||0)<r.settings.responseGap*1000){this.store.log(room,'system','chat-suppressed',{reason:'response-gap'});return;}
+    if(!message)return false;
+    const now=Date.now(),r=this.store.load(room);if(!r?.live)return false;
+    if(now-(this.sendTimes.get(room)||0)<r.settings.responseGap*1000){this.store.log(room,'system','chat-suppressed',{reason:'response-gap'});return false;}
     this.sendTimes.set(room,now);
     // A single concise message; never flood a room to paginate a long result.
     const clipped=message.length>200?message.slice(0,196)+'…':message;
     const res=await fetch(`${BASE}/v1/live/chat`,{method:'POST',headers:{Authorization:`Bearer ${await this.access(room)}`,'Content-Type':'application/json'},body:JSON.stringify({message:clipped}),signal:AbortSignal.timeout(10000)});
-    if(!res.ok)this.store.log(room,'system','chat-send-failed',{status:res.status});
+    if(!res.ok)this.store.log(room,'system','chat-send-failed',{status:res.status});return res.ok;
   }
   stop(room){this.running.get(room)?.abort();this.running.delete(room);this.setLive(room,false);this.status.set(room,'연결 중지');}
   start(room){if(this.running.has(room)||!this.configured())return;const controller=new AbortController();this.running.set(room,controller);void this.loop(room,controller).catch(()=>{});}
@@ -46,16 +47,19 @@ export class Spoon {
             if(signal.aborted)return;
             if(f.event==='end'){
               if(f.data.reason==='DUPLICATE_CONNECTION'){this.status.set(room,'다른 서버가 연결됨 — 재연결 중지');return;}
-              if(f.data.reason==='LIVE_ENDED')for(const k of this.greeted)if(k.startsWith(room+':'))this.greeted.delete(k);
+              if(f.data.reason==='LIVE_ENDED'){for(const k of this.greeted)if(k.startsWith(room+':'))this.greeted.delete(k);this.store.transaction(room,r=>r.introDueAt=null);}
               break;
             }
             if(f.event==='chat'){
               const {data}=f;const cfg=this.store.load(room).settings;
               const banned=cfg.bannedWords.some(w=>String(data.message).includes(w));
               if(banned)this.store.log(room,data.user.id,'banned-word',{message:data.message});
-              if(!banned){const out=this.engine.handle(room,{...data,id:f.id||`${data.sentTime}:${data.user.id}:${data.message}`});if(out.text)await this.send(room,out.text);}
+              if(!banned){const out=await this.engine.handleAsync(room,{...data,id:f.id||`${data.sentTime}:${data.user.id}:${data.message}`});if(out.text)await this.send(room,out.text);}
             }else if(f.event==='presence'){
               const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome)await this.send(room,s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));}
+            }else if(f.event==='like'){
+              const out=this.engine.likeGreeting(room,{...f.data,id:f.id||`${f.data.time}:${f.data.user.id}`},{commit:false});
+              if(out.text&&await this.send(room,out.text))this.engine.recordLike(room,out.receipt);
             }else if(f.event==='donation'){
               const s=this.store.load(room).settings;if(s.donation)await this.send(room,s.donation.replaceAll('{name}',f.data.user.nickname||'청취자').replaceAll('{amount}',String(f.data.amount)));
             }
@@ -66,20 +70,23 @@ export class Spoon {
       await new Promise(resolve=>{const timer=setTimeout(done,backoff);function done(){clearTimeout(timer);signal.removeEventListener('abort',done);resolve();}signal.addEventListener('abort',done,{once:true});});backoff=Math.min(60000,backoff*1.5);
     }}finally{if(this.running.get(room)===controller){this.setLive(room,false);this.running.delete(room);}}
   }
-  setLive(room,live){this.store.transaction(room,r=>{r.live=live;});}
+  setLive(room,live){this.store.transaction(room,r=>{r.live=live;if(live&&!r.introDueAt)r.introDueAt=Date.now()+600000;});}
   async tick(){
-    for(const id of this.store.ids()){
-      let notice=null;
+    if(this.ticking)return;this.ticking=true;
+    try{for(const id of this.store.ids()){
+      let notice=null,isIntro=false,autoChat=null;
       this.store.transaction(id,r=>{
         this.engine.reset(r);
         if(!r.live||r.settings.quiet||Date.now()-r.lastResponse<r.settings.responseGap*1000)return;
+        if(r.settings.introEnabled){if(!r.introDueAt)r.introDueAt=Date.now()+600000;if(Date.now()>=r.introDueAt){notice=r.settings.introText;isIntro=true;return;}}
+        autoChat=autoChatCandidate(r,Date.now(),(min,max)=>this.engine.int(min,max));if(autoChat){notice=autoChat.text;return;}
         for(const a of r.settings.announcements){
           const key=`${id}:${a.id}`,last=this.timers.get(key);
           if(last===undefined){this.timers.set(key,Date.now());continue;}
           if(a.enabled&&Date.now()-last>=a.minutes*60000){notice=a.text;this.timers.set(key,Date.now());r.lastResponse=Date.now();break;}
         }
       });
-      if(notice)await this.send(id,notice);
-    }
+      if(notice){const sent=await this.send(id,notice);if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
+    }}finally{this.ticking=false;}
   }
 }

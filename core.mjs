@@ -1,3 +1,7 @@
+import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
+import {playQuiz} from './quiz.mjs';
+import {extraDefaults,normalizeExtras,validateExtras,keywordReply,playMiniGame} from './extras.mjs';
+import {parseSongRequest,songVideoId,groupKeeps} from './public/song-utils.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomInt, randomUUID } from 'node:crypto';
 
@@ -11,7 +15,12 @@ export const ITEMS = [
 ];
 export function defaults() {
   return {
+    ...extraDefaults(),
     cooldown:20, responseGap:3, quiet:false, fishing:false, odd:false,
+    roulette:false, rouletteRewards:[{id:'miss',name:'꽝',weight:1,miss:true}],
+    spoonNotice:'/스푼 <<<< 스푼 할인 충전 안내를 확인해 보세요! 할인 적용 여부와 최종 결제 금액은 충전 화면에서 확인해 주세요.',
+    introEnabled:true,introText:'🤖 Spoon Studio는 신청곡·출석·게임·킵 관리를 돕는 방송 도우미입니다. 명령어는 !도움말로 확인하세요.',
+    likeGreetingEnabled:true,likeGreeting:'{name}님, 좋아요 감사합니다 ♥',
     attendance:true, requests:true, duplicateSongs:false, requestMax:10,
     expPerCast:60, miss:0, payout:'random', goldenPolicy:'pending',
     betMin:100, betMax:50000, levelStep:10000,
@@ -25,7 +34,7 @@ export function defaults() {
     ].map(([name,rarity,weight,minSize,maxSize],i)=>({id:`fish-${i}`,name,rarity,weight,minSize,maxSize,minPt:ranges[rarity][0],maxPt:ranges[rarity][1],golden:name==='황금주사위'})),
     items:structuredClone(ITEMS),
     announcements:[{id:'heart',enabled:false,minutes:10,text:'하트를 눌러주세요 ♥'}],
-    pending:['기본 물고기·확률은 예시값','물고기 PT 무작위 지급은 임시값','황금주사위 한도 정책 미정: 보상 보류','복권 1장·독립 추첨은 임시값','베팅 100~50,000 PT·레벨당 10,000 EXP는 임시값','룰렛 추첨 규칙 미정: 킵 수동 관리만 제공'],
+    pending:['기본 물고기·확률은 예시값','물고기 PT 무작위 지급은 임시값','황금주사위 한도 정책 미정: 보상 보류','복권 1장·독립 추첨은 임시값','베팅 100~50,000 PT·레벨당 10,000 EXP는 임시값'],
   };
 }
 export function dates(ms=Date.now()) {
@@ -33,6 +42,14 @@ export function dates(ms=Date.now()) {
   return {day,month:day.slice(0,7)};
 }
 export function validateSettings(s) {
+  validateExtras(s);
+  s.spoonNotice??=defaults().spoonNotice;if(typeof s.spoonNotice!=='string'||!s.spoonNotice.trim()||s.spoonNotice.length>200)throw Error('스푼 충전 안내는 1~200자로 입력하세요.');
+  s.introEnabled??=true;s.introText??=defaults().introText;if(typeof s.introEnabled!=='boolean'||typeof s.introText!=='string'||!s.introText.trim()||s.introText.length>200)throw Error('프로그램 소개 문구는 1~200자로 입력하세요.');
+  s.roulette??=false;s.rouletteRewards??=defaults().rouletteRewards;s.likeGreetingEnabled??=true;s.likeGreeting??=defaults().likeGreeting;
+  if(typeof s.roulette!=='boolean'||typeof s.likeGreetingEnabled!=='boolean'||typeof s.likeGreeting!=='string'||!s.likeGreeting.trim()||s.likeGreeting.length>200)throw Error('룰렛·좋아요 인사 설정을 확인하세요.');
+  if(!Array.isArray(s.rouletteRewards)||!s.rouletteRewards.length||s.rouletteRewards.length>30)throw Error('룰렛 항목은 1~30개로 설정하세요.');
+  const rewardIds=new Set();for(const item of s.rouletteRewards){if(typeof item.id!=='string'||!item.id||rewardIds.has(item.id)||typeof item.name!=='string'||!item.name.trim()||item.name.length>100||!Number.isSafeInteger(item.weight)||item.weight<1||item.weight>100000||typeof item.miss!=='boolean')throw Error('룰렛 보상 이름·가중치·꽝 여부를 확인하세요.');rewardIds.add(item.id);}
+  if(s.roulette&&!s.rouletteRewards.some(i=>!i.miss))throw Error('룰렛을 켜려면 당첨 보상을 하나 이상 등록하세요.');
   const integer=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
   for (const [k,min,max] of [['cooldown',1,3600],['responseGap',1,120],['requestMax',1,100],['expPerCast',60,60],['betMin',1,500000],['betMax',1,500000],['levelStep',1,100000000]])
     if(!integer(s[k],min,max)) throw Error(`${k}: ${min}~${max} 사이 정수가 필요합니다.`);
@@ -80,16 +97,16 @@ export class Store {
       CREATE TABLE IF NOT EXISTS backups(id TEXT PRIMARY KEY,room TEXT,time INTEGER,data TEXT);`);
   }
   ids(){return this.db.prepare('SELECT id FROM rooms').all().map(r=>r.id);}
-  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);return row?JSON.parse(row.data):null;}
+  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;return room;}
   create(id,name) {
-    if(!this.load(id))this.save({id,name,settings:defaults(),month:dates().month,users:{},songs:[],current:null,lastRequester:null,streak:0,lastResponse:0,live:false,noticeTimes:{},achievers:[],special:[]});
+    if(!this.load(id))this.save({id,name,settings:defaults(),month:dates().month,users:{},songs:[],current:null,previous:null,lastRequester:null,streak:0,lastResponse:0,live:false,noticeTimes:{},achievers:[],special:[]});
     return this.load(id);
   }
   save(room){this.db.prepare('INSERT INTO rooms VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(room.id,JSON.stringify(room));}
   log(room,user,type,data,now=Date.now()){this.db.prepare('INSERT INTO audit(room,time,user,type,data) VALUES(?,?,?,?,?)').run(room,now,user,type,JSON.stringify(data));}
   transaction(id,fn){this.db.exec('BEGIN IMMEDIATE');try{const room=this.load(id);if(!room)throw Error('방송을 찾을 수 없습니다.');const result=fn(room);this.save(room);this.db.exec('COMMIT');return result;}catch(e){this.db.exec('ROLLBACK');throw e;}}
   backup(id){const r=this.load(id);if(!r)throw Error('방송이 없습니다.');const key=randomUUID();this.db.prepare('INSERT INTO backups VALUES(?,?,?,?)').run(key,id,Date.now(),JSON.stringify(r.settings));return key;}
-  logs(id){return this.db.prepare('SELECT * FROM audit WHERE room=? ORDER BY seq DESC LIMIT 200').all().map(r=>({...r,data:JSON.parse(r.data)}));}
+  logs(id){return this.db.prepare('SELECT * FROM audit WHERE room=? ORDER BY seq DESC LIMIT 200').all(id).map(r=>({...r,data:JSON.parse(r.data)}));}
 }
 export class Engine {
   constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1)}={}){this.store=store;this.now=now;this.int=int;}
@@ -112,70 +129,120 @@ export class Engine {
     this.store.log(r.id,u.id,'pt-reward',{source,requested:amount,paid:allowed},this.now());return allowed;
   }
   weighted(list){const total=list.reduce((s,f)=>s+f.weight,0);let pick=this.int(0,999999)/1000000*total;for(const f of list){pick-=f.weight;if(pick<0)return f;}return list.at(-1);}
-  handle(roomId,event){
+  async handleAsync(roomId,event){
+    const r=this.store.load(roomId),user=r?.users[event.user?.id],now=this.now();
+    const automatic=/^!\s*복권\s+자동\s*$/.test(String(event.message||'').trim());
+    if(automatic&&user?.tickets>LOTTERY_CHUNK&&user.month===dates(now).month&&(event.isDj||now-r.lastResponse>=r.settings.responseGap*1000&&now-user.lastCommand>=r.settings.cooldown*1000)){
+      if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
+      const count=user.tickets;if(!Number.isSafeInteger(count)||count<1)return this.handle(roomId,event);
+      const counts=await lotterySummaryAsync(count,(min,max)=>this.int(min,max));
+      return this.handle(roomId,event,{count,counts});
+    }
+    return this.handle(roomId,event);
+  }
+  handle(roomId,event,preparedLottery=null){
     const now=this.now();
     return this.store.transaction(roomId,r=>{
       this.reset(r);
       if(!event.id||typeof event.id!=='string')throw Error('이벤트 ID가 필요합니다.');
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
       let result;
-      try{result=this.command(r,event,now);}catch(e){if(!(e instanceof RuleError))throw e;result={text:e.message};}
+      try{result=this.command(r,event,now,preparedLottery);}catch(e){if(!(e instanceof RuleError))throw e;result={text:e.message};}
       this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(result));
       return result;
     });
   }
-  command(r,e,now){
+  command(r,e,now,preparedLottery=null){
     const s=r.settings,text=String(e.message??'').trim();
-    if(!text.startsWith('!'))return {text:null};
+    if(!text.startsWith('!')){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     const bits=text.slice(1).trim().split(/\s+/),cmd=bits.shift()||'',arg=bits.join(' ');
     const dj=e.isDj===true;
     const answer=t=>{r.lastResponse=now;return {text:t};};
     if(dj){
-      if(cmd==='조용'){if(!['on','off'].includes(arg))fail('사용법: !조용 on/off');s.quiet=arg==='on';return answer(`조용 모드 ${arg.toUpperCase()}`);}
-      if(['게임','낚시','홀짝'].includes(cmd)&&['on','off'].includes(arg)){if(cmd==='게임'||cmd==='낚시')s.fishing=arg==='on';if(cmd==='게임'||cmd==='홀짝')s.odd=arg==='on';return answer(`${cmd} ${arg.toUpperCase()}`);}
-      if(cmd==='게임'&&arg==='상태')return answer(`낚시 ${s.fishing?'ON':'OFF'} / 홀짝 ${s.odd?'ON':'OFF'} / 조용 모드 ${s.quiet?'ON':'OFF'}`);
+      if(cmd==='조용'){if(!['on','off'].includes(arg))fail('사용법: !조용 on/off');s.quiet=arg==='on';r.settingsRevision=(r.settingsRevision||0)+1;return answer(`조용 모드 ${arg.toUpperCase()}`);}
       if(cmd==='복권지급'){
-        const [target,countText='1']=bits,count=positive(countText,1000);const uid=this.target(r,target);
-        r.users[uid].tickets+=count;this.store.log(r.id,uid,'ticket-grant',{count,actor:e.user.id},now);return answer(`${r.users[uid].name}님 복권 ${count}장 지급`);
+        if(bits.length<1||bits.length>2)fail('사용법: !복권지급 @고유ID 수량 (수량 생략 시 1장)');
+        const [target,countText='1']=bits;
+        if(!/^[+-]?\d+$/.test(countText))fail('복권 수량은 정수로 입력해주세요.');
+        const count=Number(countText);if(!Number.isSafeInteger(count))fail('복권 수량이 정확히 처리 가능한 정수 범위를 초과합니다.');
+        const uid=this.target(r,target),user=r.users[uid],next=user.tickets+count;
+        if(next<0)fail(`보유 복권 ${n(user.tickets)}장보다 많이 회수할 수 없습니다.`);
+        if(!Number.isSafeInteger(next))fail('복권 보유량이 처리 가능한 범위를 초과합니다.');
+        user.tickets=next;this.store.log(r.id,uid,'ticket-grant',{count,actor:e.user.id,balance:next},now);
+        return answer(count===0?`${user.name}님 복권 수량 변경 없음 · 보유 ${n(next)}장`:`${user.name}님 복권 ${n(Math.abs(count))}장 ${count<0?'회수':'지급'} · 보유 ${n(next)}장`);
       }
     }
-    if(['조용','복권지급'].includes(cmd)||(['게임','낚시','홀짝'].includes(cmd)&&['on','off','상태'].includes(arg)))fail('DJ 전용 명령어입니다.');
-    if(cmd==='주사위')return {text:null};
-    if(s.quiet&&['낚시','홀','짝','홀짝'].includes(cmd))return {text:null};
-    if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null};
-    if(!dj&&now-r.lastResponse<s.responseGap*1000)return {text:null};
-    const known=['내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','랭크','신청곡','신청곡목록','현재곡','다음곡','도감','아이템','가방','버프','킵','도움말','공지','낚시정보'];
-    if(!known.includes(cmd))return {text:null};
+    if(['조용','복권지급'].includes(cmd))fail('DJ 전용 명령어입니다.');
+
+    const gameToggle=['게임','낚시','홀짝'].includes(cmd)&&['on','off'].includes(arg),gameStatus=cmd==='게임'&&arg==='상태';
+    if(gameToggle&&arg==='off'&&!dj)fail('게임을 끄는 OFF 명령은 DJ 전용입니다.');
+    if(gameToggle||gameStatus){
+      if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
+      const actor=r.users[e.user.id];
+      const wait=Math.max(0,r.lastResponse+s.responseGap*1000-now,actor?actor.lastCommand+s.cooldown*1000-now:0);
+      if(!dj&&wait>0)return {text:null,suppressed:'cooldown',retryAfterMs:wait};
+      if(actor){actor.name=e.user.nickname||actor.name;actor.lastCommand=now;}
+      if(gameStatus)return answer(`낚시 ${s.fishing?'ON':'OFF'} / 홀짝 ${s.odd?'ON':'OFF'} / 가위바위보 ${s.rps?'ON':'OFF'} / 주사위 ${s.dice?'ON':'OFF'} / 숫자맞히기 ${s.numberGuess?'ON':'OFF'} / 퀴즈 ${s.quiz?'ON':'OFF'} / 조용 모드 ${s.quiet?'ON':'OFF'}`);
+      if(cmd==='게임'||cmd==='낚시')s.fishing=arg==='on';if(cmd==='게임'||cmd==='홀짝')s.odd=arg==='on';
+      if(cmd==='게임')for(const key of ['rps','dice','numberGuess','quiz'])s[key]=arg==='on'&&(key!=='quiz'||s.quizQuestions.length>0);
+      r.settingsRevision=(r.settingsRevision||0)+1;
+      this.store.log(r.id,e.user.id,'game-control',{command:cmd,enabled:arg==='on'},now);
+      return answer(`${cmd} ${arg.toUpperCase()}${cmd==='게임'&&arg==='on'&&!s.quiz?' · 퀴즈는 문제를 등록한 후 켜 주세요.':''}${s.quiet?' · 조용 모드 중에는 게임 응답이 중지됩니다.':''}`);
+    }
+
+    if(s.quiet&&['낚시','홀','짝','홀짝','복권','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답'].includes(cmd))return {text:null,suppressed:'quiet'};
+    if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
+    if(!dj&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
+    const known=['내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','랭크','신청곡','신청곡목록','현재곡','다음곡','이전곡','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+    if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
-    if(u&&!dj&&now-u.lastCommand<s.cooldown*1000)return {text:null};
+    if(u&&!dj&&now-u.lastCommand<s.cooldown*1000)return {text:null,suppressed:'cooldown',retryAfterMs:Math.max(u.lastCommand+s.cooldown*1000-now,r.lastResponse+s.responseGap*1000-now)};
     if(cmd==='내정보'&&arg==='생성'){
       if(dj)fail('청취자용 프로필입니다.');
       if(!u){u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);}
       u.lastCommand=now;return answer(`${u.name}님 프로필이 준비되었습니다. !출석으로 복권을 받으세요.`);
     }
     if(u){u.name=e.user.nickname||u.name;u.lastCommand=now;}
-    if(cmd==='도움말')return answer(`!내정보 생성 · !출석 · !복권 1 2 3 · !랭킹 · !신청곡 가수 - 제목 · !다음곡 · !아이템 상점 · !가방 · !버프 · !도감 · !킵${s.fishing?' · !낚시':''}${s.odd?' · !홀 금액 / !짝 금액':''}`);
+    if(cmd==='도움말')return answer(`시작 !내정보 생성 · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
+    if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`DJ에게 음성 보내기: ${r.voiceInboxUrl} (스푼 앱이 아닌 별도 접수함)`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
+    if(cmd==='스푼')return answer(s.spoonNotice);
     if(cmd==='공지')return answer(s.notice);
     if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');
     if(['랭킹','랭킹조회'].includes(cmd))return answer(Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).slice(0,8).map((v,i)=>`${i+1}. ${v.name} ${n(v.exp)} EXP`).join('\n')||'등록된 청취자가 없습니다.');
+    if(cmd==='이전곡')return answer(r.previous?`이전곡: ${r.previous.title}`:'이전에 재생한 곡이 없습니다.');
     if(cmd==='현재곡')return answer(r.current?`현재곡: ${r.current.title}`:'현재곡이 없습니다.');
     if(cmd==='다음곡')return answer(r.songs[0]?`다음곡: ${r.songs[0].title}`:'다음 신청곡이 없습니다.');
     if(cmd==='신청곡목록')return answer(r.songs.slice(0,8).map((v,i)=>`${i+1}. ${v.title} (${v.name})`).join('\n')||'대기 중인 신청곡이 없습니다.');
     if(cmd==='아이템'&&arg==='상점')return answer(s.items.filter(i=>i.enabled).map(i=>`${i.id}: ${i.name} ${n(i.price)} PT / 20분${i.stock===0?' (품절)':''}`).join('\n'));
     if(!u)fail('먼저 !내정보 생성 을 입력해주세요.');
+    const quiz=playQuiz(this,r,u,cmd,arg,now,fail);if(quiz!==null)return answer(quiz);
+    const mini=playMiniGame(this,r,u,cmd,arg,now,fail);if(mini!==null)return answer(mini);
     const active=id=>(u.buffs[id]||0)>now;
-    if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${u.tickets}장`);
+    if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
     if(cmd==='출석'){
       if(!s.attendance)fail('출석 기능이 꺼져 있습니다.');if(u.attendance===dates(now).day)fail('오늘은 이미 출석했습니다.');
       u.attendance=dates(now).day;u.tickets++;this.store.log(r.id,u.id,'attendance',{tickets:1},now);return answer(`${u.name}님 출석! 복권 1장 지급`);
     }
     if(cmd==='복권'){
-      if(bits.length!==3||bits.some(x=>!/^\d$/.test(x)||x==='0')||new Set(bits).size!==3)fail('1~9 중 중복 없이 숫자 3개를 입력해주세요. 예: !복권 3 6 9');
+      const auto=bits.length===1&&bits[0]==='자동';
+      if(!auto&&(bits.length!==3||bits.some(x=>!/^\d$/.test(x)||x==='0')||new Set(bits).size!==3))fail('사용법: !복권 자동 또는 !복권 3 6 9 (1~9 중 중복 없는 숫자 3개)');
       if(u.tickets<1)fail('복권이 부족합니다.');
-      const pool=[1,2,3,4,5,6,7,8,9],draw=[];for(let i=0;i<3;i++)draw.push(pool.splice(this.int(0,pool.length-1),1)[0]);
-      const matches=bits.filter(x=>draw.includes(Number(x))).length,exp=[0,50,150,300][matches];u.tickets--;u.exp+=exp;
-      this.store.log(r.id,u.id,'lottery',{draw,input:bits,matches,exp},now);return answer(`당첨 숫자 ${draw.join(' ')} · ${matches}개 일치! +${exp} EXP`);
+      if(auto&&u.tickets>1){
+        const used=u.tickets;if(!Number.isSafeInteger(used))fail('복권 보유 수량을 확인해주세요.');
+        if(preparedLottery&&preparedLottery.count!==used)fail('추첨 준비 중 복권 수량이 변경되었습니다. 수량은 차감하지 않았으니 다시 입력해주세요.');
+        if(used>LOTTERY_CHUNK&&!preparedLottery)fail('대량 복권은 비동기 처리로 실행해주세요.');
+        const counts=preparedLottery?.counts||lotterySummary(used,(min,max)=>this.int(min,max)),exp=lotteryExp(counts);
+        if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
+        u.tickets=0;u.exp+=exp;this.store.log(r.id,u.id,'lottery',{auto:true,used,counts,exp,remaining:0},now);
+        return answer(`자동 복권 ${n(used)}장 사용 · 3개 일치 ${n(counts[3])}회 / 2개 ${n(counts[2])}회 / 1개 ${n(counts[1])}회 / 꽝 ${n(counts[0])}회 · +${n(exp)} EXP · 남은 복권 0장`);
+      }
+      if(auto&&preparedLottery&&preparedLottery.count!==u.tickets)fail('추첨 준비 중 복권 수량이 변경되었습니다. 다시 입력해주세요.');
+      const pick=()=>{const pool=[1,2,3,4,5,6,7,8,9],numbers=[];for(let i=0;i<3;i++)numbers.push(pool.splice(this.int(0,pool.length-1),1)[0]);return numbers;};
+      const selected=auto?pick():bits.map(Number),draw=pick();
+      const matches=selected.filter(x=>draw.includes(x)).length,exp=[0,50,150,300][matches];u.tickets--;u.exp+=exp;
+      this.store.log(r.id,u.id,'lottery',{draw,input:selected.map(String),auto,matches,exp,used:1,remaining:u.tickets},now);
+      return answer(`${auto?`자동 선택 ${selected.join(' ')} · `:''}당첨 숫자 ${draw.join(' ')} · ${matches}개 일치! +${exp} EXP${auto?` · 1장 사용 · 남은 복권 ${n(u.tickets)}장`:''}`);
     }
     if(cmd==='낚시'){
       if(arg)fail('사용법: !낚시');
@@ -205,7 +272,16 @@ export class Engine {
     }
     if(cmd==='낚시정보')return answer(`오늘 낚시 ${n(u.daily.fishExp)}/200,000 EXP · ${n(u.daily.fishPt)}/200,000 PT\n전체 획득 ${n(u.daily.totalPt)}/1,000,000 PT`);
     if(cmd==='도감')return answer(Object.values(u.book).map(b=>`${b.name} ×${b.count}`).join('\n')||'아직 잡은 물고기가 없습니다.');
-    if(cmd==='킵')return answer(u.keeps.map((k,i)=>`${i+1}. ${k}`).join('\n')||'보관 중인 킵이 없습니다.');
+    if(cmd==='룰렛'){
+      if(arg)fail('사용법: !룰렛');
+      if(!s.roulette)fail('룰렛이 꺼져 있습니다. DJ가 보상과 확률을 설정한 뒤 켜 주세요.');
+      const reward=this.weighted(s.rouletteRewards);const name=reward.name.trim().normalize('NFC');
+      if(reward.miss){u.keepHistory??=[];u.keepHistory.push({id:randomUUID(),text:name,kind:'miss',time:now,actor:u.id});}
+      else u.keeps.push(name);
+      this.store.log(r.id,u.id,'roulette',{name,miss:reward.miss},now);
+      return answer(reward.miss?`${u.name}님 룰렛 결과: ${name} · 보유 킵에는 추가되지 않으며 사용내역에 기록했습니다.`:`${u.name}님 룰렛 당첨: ${name} · 킵에 자동 등록했습니다.`);
+    }
+    if(cmd==='킵')return answer(groupKeeps(u.keeps).map((k,i)=>`${i+1}. ${k.name} ×${k.count}`).join('\n')||'보관 중인 킵이 없습니다.');
     if(cmd==='가방')return answer(s.items.map(i=>`${i.id}: ${i.name} ×${u.bag[i.id]||0}`).join('\n'));
     if(cmd==='버프')return answer(s.items.filter(i=>active(i.id)).map(i=>`${i.name}: ${Math.ceil((u.buffs[i.id]-now)/60000)}분 남음`).join('\n')||'적용 중인 효과가 없습니다.');
     if(cmd==='아이템'){
@@ -222,13 +298,32 @@ export class Engine {
     }
     if(cmd==='신청곡'){
       if(!s.requests)fail('신청곡 접수가 닫혀 있습니다.');
-      if(!arg||arg.length>150)fail('사용법: !신청곡 가수 - 제목 (150자 이내)');
+      if(!arg||arg.length>500)fail('사용법: !신청곡 YouTube링크 [곡 제목] 또는 가수 - 제목');
+      let song;try{song=parseSongRequest(arg);}catch(e){fail(e.message);}
+      if(song.title.length>150)fail('곡 제목은 150자 이내로 입력하세요.');
       if(r.lastRequester===u.id&&r.streak>=2)fail('연속 신청은 최대 2곡입니다. 다른 분의 신청 후 다시 신청해주세요.');
       if(r.songs.filter(x=>x.user===u.id).length>=s.requestMax)fail('1인당 대기열 한도에 도달했습니다.');
-      if(!s.duplicateSongs&&[r.current,...r.songs].some(x=>x&&x.title.toLowerCase()===arg.toLowerCase()))fail('이미 등록된 곡입니다.');
-      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;r.songs.push({id:randomUUID(),user:u.id,name:u.name,title:arg});return answer(`신청 완료: ${arg}`);
+      if(!s.duplicateSongs&&[r.current,...r.songs].some(x=>x&&(x.title.toLowerCase()===song.title.toLowerCase()||song.videoId&&songVideoId(x)===song.videoId)))fail('이미 등록된 곡입니다.');
+      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title}`);
     }
     return {text:null};
+  }
+  likeGreeting(roomId,event,{commit=true}={}){
+    const now=this.now(),r=this.store.load(roomId),s=r?.settings,user=event.user;
+    if(!r||!s.likeGreetingEnabled||s.quiet||!event.id||!user?.id||event.type!=='FREE'||event.combo!==null||!Number.isFinite(event.totalAmount)||event.totalAmount<=0)return {text:null};
+    const eventId=`like:${event.id}`;
+    if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,eventId))return {text:null};
+    const last=r.likeGreetings&&Object.hasOwn(r.likeGreetings,user.id)?r.likeGreetings[user.id]:undefined;if(last!==undefined&&now-last<600000)return {text:null};
+    if(now-r.lastResponse<s.responseGap*1000)return {text:null};
+    const result={text:s.likeGreeting.replaceAll('{name}',user.nickname||'청취자').replaceAll('{amount}',String(event.totalAmount)),receipt:{id:eventId,user:user.id,time:now}};
+    if(commit)this.recordLike(roomId,result.receipt);return result;
+  }
+  recordLike(roomId,receipt){
+    this.store.transaction(roomId,r=>{if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,receipt.id))return;
+      r.likeGreetings??={};Object.defineProperty(r.likeGreetings,receipt.user,{value:receipt.time,enumerable:true,writable:true,configurable:true});r.lastResponse=receipt.time;
+      this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,receipt.id,JSON.stringify({greeted:true}));
+      this.store.log(roomId,receipt.user,'like-greeting',{},receipt.time);
+    });
   }
   target(r,target){
     const value=String(target||'').replace(/^@/,'');if(r.users[value])return value;

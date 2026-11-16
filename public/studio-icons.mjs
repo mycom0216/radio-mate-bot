@@ -1,0 +1,63 @@
+const paths={
+ dashboard:'<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>',
+ games:'<path d="M7 8h10c3 0 5 8 3 10-1 1-3-1-5-3H9c-2 2-4 4-5 3C2 16 4 8 7 8Z"/><path d="M7 10v4m-2-2h4m6-1h.01m3 2h.01"/>',
+ shop:'<path d="M4 8h16l-1 13H5L4 8Z"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/>',
+ songs:'<path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="3"/><ellipse cx="17" cy="16" rx="3" ry="3"/>',
+ fans:'<circle cx="9" cy="8" r="4"/><path d="M2 21v-2a7 7 0 0 1 14 0v2m1-17a4 4 0 0 1 0 8m2 3a7 7 0 0 1 3 6"/>',
+ notices:'<path d="m3 10 17-6v16L3 14v-4Z"/><path d="M8 16v4a1 1 0 0 1-2 0v-5m14-8 2-1m-2 11 2 1"/>',
+ autoChat:'<path d="M21 11a8 8 0 0 1-8 8H7l-4 3v-7a8 8 0 0 1 8-12h2a8 8 0 0 1 8 8Z"/><path d="M7 9h10m-10 4h6"/>',
+ voice:'<rect x="8" y="2" width="8" height="13" rx="4"/><path d="M5 10v2a7 7 0 0 0 14 0v-2m-7 9v3m-4 0h8"/>',
+ records:'<rect x="4" y="3" width="16" height="19" rx="3"/><path d="M8 8h8m-8 5h8m-8 5h5"/>',
+ settings:'<path d="m10 2-.6 3-2 .9-2.6-1.6L2 9l2.4 1.5v3L2 15l2.8 4.7 2.6-1.6 2 .9.6 3h4l.6-3 2-.9 2.6 1.6L22 15l-2.4-1.5v-3L22 9l-2.8-4.7-2.6 1.6-2-.9L14 2Z"/><circle cx="12" cy="12" r="3"/>',
+ test:'<path d="m8 4 12 8-12 8V4Z"/>',
+ help:'<circle cx="12" cy="12" r="9"/><path d="M9 8a3 3 0 1 1 4 3c-1 .5-1 1-1 2m0 3h.01"/>',
+ exp:'<path d="m12 3 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6Z"/>',
+ wave:'<path d="M3 10v4m4-8v12m5-15v18m5-15v12m4-8v4"/>'
+};
+export const studioIcon=name=>`<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${paths[name]||paths.dashboard}</svg>`;
+export function decorateStudio(){
+  document.querySelectorAll('nav button[data-page]').forEach(button=>{const label=button.querySelector('span');if(label){const icon=document.createElement('span');icon.innerHTML=studioIcon(button.dataset.page);button.replaceChildren(icon.firstChild,label);}});
+  document.querySelectorAll('.brand-icon').forEach(icon=>icon.innerHTML=studioIcon('wave'));
+  const headerLabel=document.querySelector('header .eyebrow');if(headerLabel)headerLabel.textContent='MY RADIO STUDIO';
+  const navLabel=document.querySelector('.nav-label');if(navLabel)navLabel.textContent='MY LITTLE STUDIO';
+}
+function radioBuddy(){return `<div class="radio-buddy" aria-hidden="true"><div class="buddy-caption">오늘도 좋은 방송 ♡</div><svg viewBox="0 0 190 170" focusable="false">
+  <ellipse cx="97" cy="155" rx="54" ry="6" fill="#ddd1ec" opacity=".55"/>
+  <path d="m40 22 3 8 8 3-8 3-3 8-3-8-8-3 8-3Z" fill="#e9c6ad"/><path d="m157 40 2 6 6 2-6 2-2 6-2-6-6-2 6-2Z" fill="#d0bcdf"/>
+  <path d="M153 14c-8-9-18 2 0 13 18-11 8-22 0-13Z" fill="#e8b9ca"/>
+  <path d="M68 48 56 27" stroke="#ac95c4" stroke-width="5" stroke-linecap="round"/><circle cx="54" cy="24" r="5" fill="#e6c6d8" stroke="#c6aedb" stroke-width="2"/>
+  <path d="M41 91c-16-4-22 10-11 14m118-10c15-4 19 8 12 12" fill="none" stroke="#c9b1df" stroke-width="8" stroke-linecap="round"/>
+  <path d="M66 139v10m58-10v10" stroke="#b9a0ce" stroke-width="9" stroke-linecap="round"/>
+  <rect x="40" y="49" width="111" height="95" rx="29" fill="#cbb5e5" stroke="#b29acb" stroke-width="2.5"/>
+  <path d="M49 76c0-13 10-20 23-20h44" fill="none" stroke="#eadff6" stroke-width="4" stroke-linecap="round"/>
+  <rect x="52" y="65" width="88" height="55" rx="18" fill="#faf6ff" stroke="#bda6d5" stroke-width="2"/>
+  <ellipse cx="71" cy="99" rx="8" ry="4" fill="#f1cbd8"/><ellipse cx="121" cy="99" rx="8" ry="4" fill="#f1cbd8"/>
+  <path d="M78 88v5m35-5v5" stroke="#8f76a7" stroke-width="4" stroke-linecap="round"/>
+  <path d="M89 98c4 6 10 6 14 0" fill="none" stroke="#a58bb9" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M69 132h39" stroke="#ac93c4" stroke-width="3" stroke-linecap="round" stroke-dasharray="1 5"/><circle cx="128" cy="131" r="5" fill="#f9e8d9" stroke="#b69ace" stroke-width="2"/>
+  <path d="M41 78v-9c0-34 28-46 55-46s57 12 57 46v9" fill="none" stroke="#a78cc1" stroke-width="8" stroke-linecap="round"/>
+  <path d="M47 65v20m100-20v20" stroke="#e2d5f1" stroke-width="11" stroke-linecap="round"/>
+  <path d="m19 62 2 5 5 2-5 2-2 5-2-5-5-2 5-2Zm151 59 2 5 5 2-5 2-2 5-2-5-5-2 5-2Z" fill="#c5dfd2"/>
+  </svg></div>`;}
+function pocketNote(icon){return `<svg viewBox="0 0 100 78" aria-hidden="true" focusable="false"><ellipse cx="50" cy="70" rx="29" ry="4" fill="#e9dff0"/><path d="m12 20 2 5 5 2-5 2-2 5-2-5-5-2 5-2Zm73-9 2 4 4 2-4 2-2 4-2-4-4-2 4-2Z" fill="#e4c29e"/><rect x="24" y="11" width="53" height="49" rx="11" fill="#fcf8ff" stroke="#c9b0df" stroke-width="2" transform="rotate(7 50 35)"/><g transform="translate(40 18) scale(.85)" stroke="#ae8cc5" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round">${paths[icon]||paths.wave}</g><path d="M18 33h64v25a9 9 0 0 1-9 9H27a9 9 0 0 1-9-9Z" fill="#efe3f7" stroke="#c8aeda" stroke-width="2"/><path d="m19 35 25 17a11 11 0 0 0 12 0l25-17" fill="#f6eefa" stroke="#c8aeda" stroke-width="2"/><path d="M40 57v2m20-2v2m-13 1q3 4 6 0" stroke="#9e7db2" stroke-width="2.5" fill="none" stroke-linecap="round"/><ellipse cx="32" cy="59" rx="4" ry="2" fill="#ecc4d3"/><ellipse cx="68" cy="59" rx="4" ry="2" fill="#ecc4d3"/></svg>`;}
+export function decorateStats(page='dashboard'){
+  document.querySelector('#shell').dataset.page=page;
+  const heading=document.querySelector('#page-title');
+  if(heading)heading.insertAdjacentHTML('afterbegin',`<span class="page-sticker" aria-hidden="true">${studioIcon(page)}</span>`);
+  document.querySelectorAll('.stat-card>.small').forEach((label,i)=>{label.insertAdjacentHTML('afterbegin',`<span class="stat-icon">${studioIcon(['fans','exp','songs','records'][i])}</span>`);});
+  const hero=document.querySelector('.dashboard-intro');if(hero){
+    hero.classList.add('cute-hero');hero.querySelector('.eyebrow').textContent='우리의 작은 방송 공간';
+    hero.insertAdjacentHTML('beforeend',radioBuddy()+`<div class="studio-shortcuts" aria-label="자주 쓰는 메뉴"><button data-page="songs">${studioIcon('songs')}신청곡 모아보기<span aria-hidden="true">↗</span></button><button data-page="games">${studioIcon('games')}함께 놀기 설정<span aria-hidden="true">↗</span></button><button data-page="voice">${studioIcon('voice')}음성 편지함<span aria-hidden="true">↗</span></button></div>`);
+  }
+  document.querySelectorAll('#content .section-head>h2').forEach(heading=>{
+    const text=heading.textContent;
+    const icon=/신청|재생|곡/.test(text)?'songs':/보상|기록|달성|킵/.test(text)?'records':/낚시|홀짝|룰렛|게임|도감/.test(text)?'games':/안내|인사|공지/.test(text)?'notices':/음성/.test(text)?'voice':/랭킹|청취자/.test(text)?'fans':/백업|운영|설정/.test(text)?'settings':/처음|명령어/.test(text)?'help':page;
+    heading.insertAdjacentHTML('afterbegin',`<span class="section-sticker sticker-${icon}" aria-hidden="true">${studioIcon(icon)}</span>`);
+  });
+  document.querySelectorAll('#content .empty').forEach(el=>{
+    if(el.querySelector('.empty-art'))return;
+    el.classList.add('pocket-empty');
+    const art=document.createElement('span');art.className='empty-art';art.setAttribute('aria-hidden','true');art.innerHTML=pocketNote(page==='dashboard'?'songs':page);
+    el.prepend(art);
+  });
+}

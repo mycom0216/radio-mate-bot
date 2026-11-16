@@ -1,0 +1,59 @@
+import {defaultQuizQuestions} from './quiz.mjs';
+export function extraDefaults(){return {rps:false,dice:false,numberGuess:false,quiz:false,quizExp:50,quizMinutes:5,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.']};}
+export function normalizeExtras(settings){const d=extraDefaults();for(const [key,value]of Object.entries(d))if(settings[key]===undefined)settings[key]=value;return settings;}
+export function validateExtras(s){
+  normalizeExtras(s);
+  for(const key of ['rps','dice','numberGuess','quiz','autoChatEnabled'])if(typeof s[key]!=='boolean')throw Error('미니게임·자동채팅 ON/OFF 값을 확인하세요.');
+  if(!Number.isSafeInteger(s.quizExp)||s.quizExp<1||s.quizExp>1000000)throw Error('퀴즈 정답 경험치는 1~1,000,000 EXP 정수로 입력하세요.');
+  if(!Number.isSafeInteger(s.quizMinutes)||s.quizMinutes<1||s.quizMinutes>60)throw Error('퀴즈 제한시간은 1~60분으로 입력하세요.');
+  if(!Array.isArray(s.quizQuestions)||s.quizQuestions.length>100||s.quiz&&!s.quizQuestions.length)throw Error('퀴즈는 최대 100문제이며 사용하려면 한 문제 이상 등록하세요.');
+  const questionIds=new Set();for(const q of s.quizQuestions){
+    if(!q||typeof q.id!=='string'||!/^[\w-]{1,64}$/.test(q.id)||questionIds.has(q.id)||typeof q.question!=='string'||!q.question.trim()||q.question.length>200||!Array.isArray(q.answers)||!q.answers.length||q.answers.length>10||q.answers.some(a=>typeof a!=='string'||!a.trim()||a.length>80))throw Error('퀴즈 문제는 1~200자, 정답은 각 1~80자·최대 10개로 입력하세요.');
+    questionIds.add(q.id);
+  }
+  if(!['sequential','random'].includes(s.autoChatMode)||!Number.isInteger(s.autoChatMinutes)||s.autoChatMinutes<1||s.autoChatMinutes>1440)throw Error('자동채팅 방식·간격(1~1440분)을 확인하세요.');
+  if(!Array.isArray(s.autoChatMessages)||s.autoChatMessages.length>30||s.autoChatMessages.some(t=>typeof t!=='string'||!t.trim()||t.length>200)||s.autoChatEnabled&&!s.autoChatMessages.length)throw Error('자동채팅 문구는 각 1~200자, 최대 30개로 등록하세요.');
+  if(!Array.isArray(s.autoReplies)||s.autoReplies.length>30)throw Error('키워드 응답은 최대 30개입니다.');
+  const ids=new Set();for(const rule of s.autoReplies){if(typeof rule.id!=='string'||!/^[\w-]{1,64}$/.test(rule.id)||ids.has(rule.id)||typeof rule.keyword!=='string'||!rule.keyword.trim()||rule.keyword.length>50||typeof rule.text!=='string'||!rule.text.trim()||rule.text.length>200||!['exact','contains'].includes(rule.match)||typeof rule.enabled!=='boolean'||!Number.isInteger(rule.cooldown)||rule.cooldown<1||rule.cooldown>3600)throw Error('키워드·응답 문구·대기시간(1~3600초)을 확인하세요.');ids.add(rule.id);}
+}
+const normal=value=>String(value).normalize('NFKC').trim().toLocaleLowerCase('ko-KR');
+export function keywordReply(r,event,now){
+  const s=r.settings;if(s.quiet||!event.user?.id||now-r.lastResponse<s.responseGap*1000)return {text:null};
+  const message=normal(event.message);
+  for(const rule of s.autoReplies){
+    if(!rule.enabled)continue;const key=normal(rule.keyword);if(!(rule.match==='exact'?message===key:message.includes(key)))continue;
+    const last=r.autoReplyTimes&&Object.hasOwn(r.autoReplyTimes,rule.id)?r.autoReplyTimes[rule.id]:undefined;
+    if(last!==undefined&&now-last<rule.cooldown*1000)continue;
+    r.autoReplyTimes??={};Object.defineProperty(r.autoReplyTimes,rule.id,{value:now,enumerable:true,writable:true,configurable:true});r.lastResponse=now;
+    return {text:rule.text.replaceAll('{name}',event.user.nickname||'청취자'),ruleId:rule.id};
+  }return {text:null};
+}
+export function autoChatCandidate(r,now,int){
+  const s=r.settings;if(!s.autoChatEnabled||!s.autoChatMessages.length)return null;
+  const signature=JSON.stringify([s.autoChatMinutes,s.autoChatMode,s.autoChatMessages]);
+  if(r.autoChat?.signature!==signature)r.autoChat={signature,dueAt:now+s.autoChatMinutes*60000,index:0};
+  if(now<r.autoChat.dueAt)return null;
+  const index=s.autoChatMode==='random'?int(0,s.autoChatMessages.length-1):r.autoChat.index%s.autoChatMessages.length;
+  return {text:s.autoChatMessages[index],index,signature};
+}
+export function playMiniGame(engine,r,u,cmd,arg,now,fail){
+  const key=({'가위바위보':'rps','주사위':'dice','숫자맞히기':'numberGuess'})[cmd];if(!key)return null;
+  if(!r.settings[key])fail(`${cmd} 게임이 꺼져 있습니다. !게임 on으로 켜거나 게임 설정에서 활성화하세요.`);
+  let text,result;
+  if(key==='rps'){
+    const choices=['가위','바위','보'];if(!choices.includes(arg))fail('사용법: !가위바위보 가위/바위/보');
+    const bot=choices[engine.int(0,2)],outcome=arg===bot?'무승부':({'가위':'보','바위':'가위','보':'바위'})[arg]===bot?'승리':'패배';
+    text=`${u.name}: ${arg} / 봇: ${bot} → ${outcome}`;result={choice:arg,bot,outcome};
+  }else if(key==='dice'){
+    if(arg&&!/^[1-6]$/.test(arg))fail('사용법: !주사위 또는 !주사위 1~6');const rolled=engine.int(1,6);
+    text=`${u.name}님의 주사위: ${rolled}${arg?Number(arg)===rolled?' · 맞혔습니다!':' · 아쉽게 빗나갔어요.':''}`;result={rolled,guess:arg?Number(arg):null};
+  }else{
+    if(arg==='초기화'){delete u.numberGame;return '숫자맞히기를 초기화했습니다. !숫자맞히기 1~100으로 새로 시작하세요.';}
+    if(!/^\d{1,3}$/.test(arg)||Number(arg)<1||Number(arg)>100)fail('사용법: !숫자맞히기 1~100 (7번 안에 맞히기) / !숫자맞히기 초기화');
+    u.numberGame??={secret:engine.int(1,100),attempts:0};const game=u.numberGame,guess=Number(arg);game.attempts++;
+    const solved=guess===game.secret,over=game.attempts>=7;
+    text=solved?`${u.name}님 정답! ${game.secret} · ${game.attempts}번 만에 성공했습니다.`:over?`7번의 기회를 모두 사용했습니다. 정답은 ${game.secret}! 다음 입력부터 새 게임입니다.`:`${guess}보다 ${guess<game.secret?'큰':'작은'} 숫자입니다. (${game.attempts}/7회)`;
+    result={guess,attempts:game.attempts,solved,over};if(solved||over)delete u.numberGame;
+  }
+  engine.store.log(r.id,u.id,`minigame-${key}`,result,now);return text;
+}
