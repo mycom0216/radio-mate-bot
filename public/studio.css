@@ -149,5 +149,4 @@ aside{background:#fffbfdf5;border-color:#eddee8}aside .brand{color:#77576f}.bran
 .welcome-stage .note-song{top:83px;bottom:auto;left:-23px}.welcome-stage .note-heart{top:89px;right:-22px}.welcome-stage .welcome-note{max-width:218px}.welcome-home .welcome-footer{line-height:1.8}
 @media(max-width:800px){.welcome-stage .note-song{top:65px;left:-23px}.welcome-stage .note-heart{top:77px;right:-23px}.welcome-stage .welcome-note{max-width:183px}.welcome-stage .welcome-note strong{font-size:8px}.welcome-stage .welcome-note small{font-size:7px}}
 
-.welcome-home.demo-first #connect-login{display:none}
 @media(max-width:800px){.welcome-home{row-gap:24px}.welcome-home .landing-copy{padding-top:0}.welcome-home .welcome-label{font-size:9px;padding:6px 10px}.welcome-home h1{margin-top:17px;margin-bottom:14px}.welcome-home .welcome-description{margin-bottom:17px;line-height:1.9}.welcome-home .welcome-promise{display:none}.welcome-home #login-note{margin:13px 0 0;font-size:9px}.welcome-stage{margin-top:0}}
