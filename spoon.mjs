@@ -36,8 +36,9 @@ export class Spoon {
     try{while(!signal.aborted){
       try{
         this.status.set(room,'방송 대기 / 연결 중');
-        const token=await this.access(room);
+        const token=await this.access(room);if(signal.aborted)return;
         const res=await fetch(`${BASE}/v1/live/events`,{headers:{Authorization:`Bearer ${token}`,Accept:'text/event-stream'},signal:AbortSignal.any([signal,AbortSignal.timeout(65*60*1000)])});
+        if(signal.aborted)return;
         if(res.status===404){this.setLive(room,false);this.status.set(room,'방송 시작 대기');}
         else if(res.status===401||res.status===403){this.setLive(room,false);this.status.set(room,`재연결 또는 권한 확인 필요 (${res.status})`);return;}
         else if(!res.ok)throw Error(`API ${res.status}`);
@@ -74,7 +75,7 @@ export class Spoon {
   async tick(){
     if(this.ticking)return;this.ticking=true;
     try{for(const id of this.store.ids()){
-      let notice=null,isIntro=false,autoChat=null;
+      let notice=null,isIntro=false,autoChat=null,announcement=null;
       this.store.transaction(id,r=>{
         this.engine.reset(r);
         if(!r.live||r.settings.quiet||Date.now()-r.lastResponse<r.settings.responseGap*1000)return;
@@ -83,10 +84,10 @@ export class Spoon {
         for(const a of r.settings.announcements){
           const key=`${id}:${a.id}`,last=this.timers.get(key);
           if(last===undefined){this.timers.set(key,Date.now());continue;}
-          if(a.enabled&&Date.now()-last>=a.minutes*60000){notice=a.text;this.timers.set(key,Date.now());r.lastResponse=Date.now();break;}
+          if(a.enabled&&Date.now()-last>=a.minutes*60000){notice=a.text;announcement={key,id:a.id,text:a.text,minutes:a.minutes};break;}
         }
       });
-      if(notice){const sent=await this.send(id,notice);if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
+      if(notice){const sent=await this.send(id,notice);if(announcement&&sent)this.store.transaction(id,r=>{const current=r.settings.announcements.find(a=>a.id===announcement.id);if(current?.enabled&&current.text===announcement.text&&current.minutes===announcement.minutes){this.timers.set(announcement.key,Date.now());r.lastResponse=Date.now();this.store.log(id,'system','announcement',{id:announcement.id});}});if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
     }}finally{this.ticking=false;}
   }
 }

@@ -94,7 +94,9 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await fetch(address+'/api/voice-inbox',{headers});assert.equal((await res.json()).cards[0].is_read,1);
     res=await request('/api/voice-link',{action:'disable'});assert.equal(res.status,200);
     res=await fetch(address+publicPath);assert.equal(res.status,404);
-    res=await request('/api/test',{message:'!복권지급 @a 12345',user:'dj',name:'DJ',dj:true});assert.equal(res.status,200);
+    res=await request('/api/test',{message:`!복권지급 @a ${Number.MAX_SAFE_INTEGER}`,user:'dj',name:'DJ',dj:true});assert.equal(res.status,200);
+    res=await request('/api/grant',{user:'a',kind:'tickets',amount:10,reason:'정수 범위 보호 확인'});assert.equal(res.status,400);
+    res=await fetch(address+'/api/room',{headers});assert.equal((await res.json()).users.a.tickets,Number.MAX_SAFE_INTEGER);
     res=await request('/api/test',{message:'!복권 초기화 @a',user:'a',name:'A',dj:false});assert.match((await res.json()).text,/DJ 전용/);
     res=await request('/api/test',{message:'!복권 초기화 @a',user:'dj',name:'DJ',dj:true});assert.match((await res.json()).text,/초기화/);
     res=await fetch(address+'/api/room',{headers});assert.equal((await res.json()).users.a.tickets,0);

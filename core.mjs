@@ -97,7 +97,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS backups(id TEXT PRIMARY KEY,room TEXT,time INTEGER,data TEXT);`);
   }
   ids(){return this.db.prepare('SELECT id FROM rooms').all().map(r=>r.id);}
-  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;return room;}
+  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);room.users=Object.assign(Object.create(null),room.users);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;return room;}
   create(id,name) {
     if(!this.load(id))this.save({id,name,settings:defaults(),month:dates().month,users:{},songs:[],current:null,previous:null,lastRequester:null,streak:0,lastResponse:0,live:false,noticeTimes:{},achievers:[],special:[]});
     return this.load(id);
@@ -113,7 +113,7 @@ export class Engine {
   reset(r){
     const {day,month}=dates(this.now());
     for(const u of Object.values(r.users)) {
-      if(u.month!==month){u.pt=0;u.tickets=0;u.keeps=[];u.month=month;}
+      if(u.month!==month){u.pt=0;u.tickets=0;u.ticketRevision=(u.ticketRevision||0)+1;u.keeps=[];u.month=month;}
       if(u.daily.day!==day)u.daily={day,fishExp:0,fishPt:0,oddPt:0,totalPt:0};
     }
     if(r.month!==month){r.month=month;this.store.log(r.id,'system','monthly-reset',{month},this.now());}
@@ -122,6 +122,7 @@ export class Engine {
     let allowed=Math.min(amount,Math.max(0,LIMIT.total-u.daily.totalPt));
     if(source==='fish')allowed=Math.min(allowed,Math.max(0,LIMIT.fish-u.daily.fishPt));
     if(source==='odd')allowed=Math.min(allowed,Math.max(0,LIMIT.odd-u.daily.oddPt));
+    if(!Number.isSafeInteger(u.pt+allowed))fail('포인트가 정확히 처리 가능한 정수 범위를 초과합니다.');
     u.pt+=allowed;u.daily.totalPt+=allowed;
     if(source==='fish')u.daily.fishPt+=allowed;
     if(source==='odd')u.daily.oddPt+=allowed;
@@ -134,9 +135,9 @@ export class Engine {
     const automatic=/^!\s*복권\s+자동\s*$/.test(String(event.message||'').trim());
     if(automatic&&user?.tickets>LOTTERY_CHUNK&&user.month===dates(now).month&&(event.isDj||now-r.lastResponse>=r.settings.responseGap*1000&&now-user.lastCommand>=r.settings.cooldown*1000)){
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
-      const count=user.tickets;if(!Number.isSafeInteger(count)||count<1)return this.handle(roomId,event);
+      const count=user.tickets,ticketRevision=user.ticketRevision||0;if(!Number.isSafeInteger(count)||count<1)return this.handle(roomId,event);
       const counts=await lotterySummaryAsync(count,(min,max)=>this.int(min,max));
-      return this.handle(roomId,event,{count,counts});
+      return this.handle(roomId,event,{count,counts,ticketRevision});
     }
     return this.handle(roomId,event);
   }
@@ -146,8 +147,19 @@ export class Engine {
       this.reset(r);
       if(!event.id||typeof event.id!=='string')throw Error('이벤트 ID가 필요합니다.');
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
-      let result;
-      try{result=this.command(r,event,now,preparedLottery);}catch(e){if(!(e instanceof RuleError))throw e;result={text:e.message};}
+      let result;const checkpoint=JSON.stringify(r);
+      this.store.db.exec('SAVEPOINT command_effects');
+      try{result=this.command(r,event,now,preparedLottery);this.store.db.exec('RELEASE command_effects');}
+      catch(e){
+        if(!(e instanceof RuleError))throw e;
+        const attempted=r.users[event.user?.id],commandTime=attempted?.lastCommand,commandName=attempted?.name;
+        this.store.db.exec('ROLLBACK TO command_effects; RELEASE command_effects');
+        for(const key of Object.keys(r))delete r[key];Object.assign(r,JSON.parse(checkpoint));
+        r.users=Object.assign(Object.create(null),r.users);
+        // Invalid attempts still obey the existing per-listener cooldown.
+        const original=r.users[event.user?.id];if(original&&commandTime===now){original.lastCommand=now;original.name=commandName;}
+        result={text:e.message};
+      }
       this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(result));
       return result;
     });
@@ -164,7 +176,7 @@ export class Engine {
       const targets=cmd==='복권초기화'?bits:bits.slice(1);
       if(targets.length!==1)fail('사용법: !복권 초기화 @고유ID 또는 !복권초기화 @고유ID');
       const uid=this.target(r,targets[0]),user=r.users[uid],previous=user.tickets;
-      user.tickets=0;
+      user.tickets=0;user.ticketRevision=(user.ticketRevision||0)+1;
       this.store.log(r.id,uid,'ticket-reset',{previous,balance:0,actor:e.user.id},now);
       return answer(`${user.name}님 복권 초기화 · ${n(previous)}장 → 0장 (EXP·PT 유지)`);
     }
@@ -178,7 +190,7 @@ export class Engine {
         const uid=this.target(r,target),user=r.users[uid],next=user.tickets+count;
         if(next<0)fail(`보유 복권 ${n(user.tickets)}장보다 많이 회수할 수 없습니다.`);
         if(!Number.isSafeInteger(next))fail('복권 보유량이 처리 가능한 범위를 초과합니다.');
-        user.tickets=next;this.store.log(r.id,uid,'ticket-grant',{count,actor:e.user.id,balance:next},now);
+        user.tickets=next;if(count!==0)user.ticketRevision=(user.ticketRevision||0)+1;this.store.log(r.id,uid,'ticket-grant',{count,actor:e.user.id,balance:next},now);
         return answer(count===0?`${user.name}님 복권 수량 변경 없음 · 보유 ${n(next)}장`:`${user.name}님 복권 ${n(Math.abs(count))}장 ${count<0?'회수':'지급'} · 보유 ${n(next)}장`);
       }
     }
@@ -232,7 +244,8 @@ export class Engine {
     if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
     if(cmd==='출석'){
       if(!s.attendance)fail('출석 기능이 꺼져 있습니다.');if(u.attendance===dates(now).day)fail('오늘은 이미 출석했습니다.');
-      u.attendance=dates(now).day;u.tickets++;this.store.log(r.id,u.id,'attendance',{tickets:1},now);return answer(`${u.name}님 출석! 복권 1장 지급`);
+      if(!Number.isSafeInteger(u.tickets+1))fail('복권 보유량이 정확히 처리 가능한 정수 범위를 초과합니다.');
+      u.attendance=dates(now).day;u.tickets++;u.ticketRevision=(u.ticketRevision||0)+1;this.store.log(r.id,u.id,'attendance',{tickets:1},now);return answer(`${u.name}님 출석! 복권 1장 지급`);
     }
     if(cmd==='복권'){
       const auto=bits.length===1&&bits[0]==='자동';
@@ -240,23 +253,27 @@ export class Engine {
       if(u.tickets<1)fail('복권이 부족합니다.');
       if(auto&&u.tickets>1){
         const used=u.tickets;if(!Number.isSafeInteger(used))fail('복권 보유 수량을 확인해주세요.');
-        if(preparedLottery&&preparedLottery.count!==used)fail('추첨 준비 중 복권 수량이 변경되었습니다. 수량은 차감하지 않았으니 다시 입력해주세요.');
+        if(preparedLottery&&(preparedLottery.count!==used||preparedLottery.ticketRevision!==(u.ticketRevision||0)))fail('추첨 준비 중 복권 수량이 변경되었습니다. 수량은 차감하지 않았으니 다시 입력해주세요.');
         if(used>LOTTERY_CHUNK&&!preparedLottery)fail('대량 복권은 비동기 처리로 실행해주세요.');
         const counts=preparedLottery?.counts||lotterySummary(used,(min,max)=>this.int(min,max)),exp=lotteryExp(counts);
         if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
-        u.tickets=0;u.exp+=exp;this.store.log(r.id,u.id,'lottery',{auto:true,used,counts,exp,remaining:0},now);
+        u.tickets=0;u.ticketRevision=(u.ticketRevision||0)+1;u.exp+=exp;this.store.log(r.id,u.id,'lottery',{auto:true,used,counts,exp,remaining:0},now);
         return answer(`자동 복권 ${n(used)}장 사용 · 3개 일치 ${n(counts[3])}회 / 2개 ${n(counts[2])}회 / 1개 ${n(counts[1])}회 / 꽝 ${n(counts[0])}회 · +${n(exp)} EXP · 남은 복권 0장`);
       }
-      if(auto&&preparedLottery&&preparedLottery.count!==u.tickets)fail('추첨 준비 중 복권 수량이 변경되었습니다. 다시 입력해주세요.');
+      if(auto&&preparedLottery&&(preparedLottery.count!==u.tickets||preparedLottery.ticketRevision!==(u.ticketRevision||0)))fail('추첨 준비 중 복권 수량이 변경되었습니다. 다시 입력해주세요.');
       const pick=()=>{const pool=[1,2,3,4,5,6,7,8,9],numbers=[];for(let i=0;i<3;i++)numbers.push(pool.splice(this.int(0,pool.length-1),1)[0]);return numbers;};
       const selected=auto?pick():bits.map(Number),draw=pick();
-      const matches=selected.filter(x=>draw.includes(x)).length,exp=[0,50,150,300][matches];u.tickets--;u.exp+=exp;
+      const matches=selected.filter(x=>draw.includes(x)).length,exp=[0,50,150,300][matches];
+      if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
+      u.tickets--;u.ticketRevision=(u.ticketRevision||0)+1;u.exp+=exp;
       this.store.log(r.id,u.id,'lottery',{draw,input:selected.map(String),auto,matches,exp,used:1,remaining:u.tickets},now);
       return answer(`${auto?`자동 선택 ${selected.join(' ')} · `:''}당첨 숫자 ${draw.join(' ')} · ${matches}개 일치! +${exp} EXP${auto?` · 1장 사용 · 남은 복권 ${n(u.tickets)}장`:''}`);
     }
     if(cmd==='낚시'){
       if(arg)fail('사용법: !낚시');
-      const exp=Math.min(LIMIT.exp-u.daily.fishExp,s.expPerCast*(active('exp')?2:1));u.exp+=exp;u.daily.fishExp+=exp;
+      const exp=Math.min(LIMIT.exp-u.daily.fishExp,s.expPerCast*(active('exp')?2:1));
+      if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다.');
+      u.exp+=exp;u.daily.fishExp+=exp;
       if(this.int(1,10000)<=s.miss*100){this.store.log(r.id,u.id,'fishing-miss',{exp},now);return answer(`이번엔 꽝! +${exp} EXP`);}
       let list=s.fish;
       if(active('rare')){const rare=this.int(1,100)<=70;list=list.filter(f=>(f.rarity>=2)===rare);}

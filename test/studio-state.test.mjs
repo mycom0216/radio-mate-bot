@@ -11,6 +11,7 @@ test('readiness uses both cooldown clocks, rounds up, and permits DJ testing',()
   const room={users:{u:{lastCommand:10000}},lastResponse:29000,settings:{cooldown:20,responseGap:3}};
   assert.equal(commandWait(room,'u',false,30000),2);assert.equal(commandWait(room,'guest',false,30001),2);
   assert.equal(commandWait(room,'u',true,30000),0);assert.equal(commandWait(room,'u',false,32000),0);
+  assert.equal(commandWait(room,'constructor',false,32000),0);
   assert.match(suppressionMessage({suppressed:'cooldown',retryAfterMs:19001}),/20초/);
   assert.match(suppressionMessage({suppressed:'quiet'}),/조용 모드/);
   assert.match(suppressionMessage({suppressed:'disabled'}),/청취자도/);

@@ -5,7 +5,7 @@ export function levelProgress(exp,step){
 }
 export function commandWait(room,userId,dj,now=Date.now()){
   if(dj)return 0;
-  const user=room.users[userId],settings=room.settings;
+  const user=Object.hasOwn(room.users,userId)?room.users[userId]:null,settings=room.settings;
   return Math.ceil(Math.max(0,(room.lastResponse||0)+settings.responseGap*1000-now,user?(user.lastCommand||0)+settings.cooldown*1000-now:0)/1000);
 }
 export function suppressionMessage(out){

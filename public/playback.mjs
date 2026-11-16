@@ -7,8 +7,8 @@ export class Playback {
     this.running=false;this.generation++;this.pause();this.onStatus(message);
   }
   async start(room){
-    if(this.pending)return;this.pending=true;
-    try{if(!room.current){const result=await this.api('/api/song',{action:'start'});room=result.room;this.onRoom(room);}this.running=true;await this.sync(room,true);}
+    if(this.pending)return;this.pending=true;const generation=this.generation;
+    try{if(!room.current){const result=await this.api('/api/song',{action:'start'});room=result.room;this.onRoom(room);}if(this.generation!==generation)return;this.running=true;await this.sync(room,true);}
     catch(e){this.stop(e.message);}finally{this.pending=false;}
   }
   async sync(room,force=false){

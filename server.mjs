@@ -114,7 +114,7 @@ const server=createServer(async(req,res)=>{
       }
       if(path==='/api/grant'){
         if(!Number.isSafeInteger(b.amount)||(b.amount===0&&b.kind!=='tickets')||Math.abs(b.amount)>100000000||!['pt','tickets'].includes(b.kind)||typeof b.reason!=='string'||!b.reason.trim())throw Error('지급 종류·금액·사유를 확인하세요.');
-        store.transaction(roomId,r=>{engine.reset(r);const u=r.users[b.user];if(!u)throw Error('청취자를 찾을 수 없습니다.');if(u[b.kind]+b.amount<0)throw Error('보유량보다 많이 회수할 수 없습니다.');u[b.kind]+=b.amount;store.log(roomId,u.id,'manual-adjust',{kind:b.kind,amount:b.amount,reason:b.reason});});reply(res,200,{ok:true});return;
+        store.transaction(roomId,r=>{engine.reset(r);const u=r.users[b.user];if(!u)throw Error('청취자를 찾을 수 없습니다.');const next=u[b.kind]+b.amount;if(next<0)throw Error('보유량보다 많이 회수할 수 없습니다.');if(!Number.isSafeInteger(next))throw Error('변경 후 보유량이 정확히 처리 가능한 정수 범위를 초과합니다.');u[b.kind]=next;if(b.kind==='tickets'&&b.amount!==0)u.ticketRevision=(u.ticketRevision||0)+1;store.log(roomId,u.id,'manual-adjust',{kind:b.kind,amount:b.amount,reason:b.reason});});reply(res,200,{ok:true});return;
       }
       if(path==='/api/keep'){
         store.transaction(roomId,r=>{
