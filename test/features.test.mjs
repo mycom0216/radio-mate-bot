@@ -58,7 +58,7 @@ test('an unsent like greeting does not consume the viewer cooldown; receipt surv
 });
 test('playback advances on ended once, respects auto off, and never skips unplayable entries',async()=>{
   let room={current:{id:'a',videoId:'M7lc1UVf-VE'},songs:[{id:'b',videoId:'dQw4w9WgXcQ'}]},calls=0,loads=[];
-  const p=new Playback({api:async(path,b)=>{calls++;assert.equal(b.expectedCurrentId,room.current.id);room={...room,previous:room.current,current:b.advance?room.songs.shift()||null:null};return {room};},load:async id=>loads.push(id),pause:()=>{},onRoom:()=>{},onStatus:()=>{}});
+  const p=new Playback({api:async(path,b)=>{if(path==='/api/song-resolve')throw Error('search not configured');calls++;assert.equal(b.expectedCurrentId,room.current.id);room={...room,previous:room.current,current:b.advance?room.songs.shift()||null:null};return {room};},load:async id=>loads.push(id),pause:()=>{},onRoom:()=>{},onStatus:()=>{}});
   await p.start(room);const ended=p.ended('a');await p.ended('a');await ended;assert.equal(calls,1);assert.deepEqual(loads,['M7lc1UVf-VE','dQw4w9WgXcQ']);await p.ended('a');assert.equal(calls,1);
   p.auto=false;await p.ended('b');assert.equal(calls,2);assert.equal(p.running,false);
   await p.start({current:{id:'text',title:'링크 없는 곡'},songs:[]});assert.equal(p.running,false);assert.equal(calls,2);

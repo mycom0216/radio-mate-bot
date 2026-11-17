@@ -72,6 +72,11 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/test',{message:'!신청곡 https://youtu.be/M7lc1UVf-VE',user:'a',name:'A',dj:true});assert.equal(res.status,200);
     res=await request('/api/song',{action:'start'});assert.equal(res.status,200);const playing=(await res.json()).room.current;assert.equal(playing.videoId,'M7lc1UVf-VE');
     res=await request('/api/song',{action:'start'});assert.equal((await res.json()).room.current.id,playing.id);
+    res=await request('/api/song-resolve',{id:playing.id,url:'https://evil.example/watch?v=M7lc1UVf-VE'});assert.equal(res.status,400);
+    res=await request('/api/song-resolve',{id:'missing',url:'https://youtu.be/M7lc1UVf-VE'});assert.equal(res.status,400);
+    res=await request('/api/song-resolve',{id:playing.id,url:'https://youtu.be/dQw4w9WgXcQ'});assert.equal(res.status,200);assert.equal((await res.json()).room.current.videoId,'dQw4w9WgXcQ');
+    res=await fetch(address+'/api/song-resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});assert.equal(res.status,401);
+
     res=await request('/api/song',{action:'ended',expectedCurrentId:'stale',advance:true});assert.equal(res.status,409);
     res=await request('/api/song',{action:'ended',expectedCurrentId:playing.id,advance:true});assert.equal(res.status,200);const ended=(await res.json()).room;assert.equal(ended.current,null);assert.equal(ended.previous.id,playing.id);
     res=await request('/api/song',{action:'ended',expectedCurrentId:playing.id,advance:true});assert.equal(res.status,409);
@@ -91,6 +96,10 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await fetch(address+publicPath,{method:'POST',headers:uploadHeaders,body:audio});assert.equal(res.status,201);const voiceCard=await res.json();
     res=await fetch(address+'/api/voice-file/'+voiceCard.id);assert.equal(res.status,401);
     res=await fetch(address+'/api/voice-file/'+voiceCard.id,{headers});assert.equal(res.status,200);assert.equal(res.headers.get('content-type'),'audio/wav');assert.deepEqual(Buffer.from(await res.arrayBuffer()),audio);
+
+    res=await fetch(address+'/api/voice-file/'+voiceCard.id,{headers:{...headers,Range:'bytes=0-15'}});assert.equal(res.status,206);assert.equal(res.headers.get('content-range'),'bytes 0-15/60');assert.deepEqual(Buffer.from(await res.arrayBuffer()),audio.subarray(0,16));
+    res=await fetch(address+'/api/voice-file/'+voiceCard.id,{headers:{...headers,Range:'bytes=-10'}});assert.equal(res.status,206);assert.deepEqual(Buffer.from(await res.arrayBuffer()),audio.subarray(50));
+    res=await fetch(address+'/api/voice-file/'+voiceCard.id,{headers:{...headers,Range:'bytes=999-'}});assert.equal(res.status,416);
     res=await request('/api/voice-action',{id:voiceCard.id,action:'read'},{...headers,'X-CSRF-Token':'wrong'});assert.equal(res.status,403);
     res=await request('/api/voice-action',{id:voiceCard.id,action:'read'});assert.equal(res.status,200);
     res=await fetch(address+'/api/voice-inbox',{headers});assert.equal((await res.json()).cards[0].is_read,1);
@@ -116,7 +125,7 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     const beforeDiagnosis=await (await fetch(address+'/api/room',{headers})).json();
     res=await fetch(address+'/api/diagnostics');assert.equal(res.status,401);
     res=await fetch(address+'/api/diagnostics',{headers});assert.equal(res.status,200);const diagnosis=await res.json();
-    assert.equal(diagnosis.checks.length,8);assert.deepEqual(Object.keys(diagnosis).sort(),['checkedAt','checks']);assert.doesNotMatch(JSON.stringify(diagnosis),new RegExp(csrf));
+    assert.equal(diagnosis.checks.length,10);assert.deepEqual(Object.keys(diagnosis).sort(),['checkedAt','checks']);assert.doesNotMatch(JSON.stringify(diagnosis),new RegExp(csrf));
     const afterDiagnosis=await (await fetch(address+'/api/room',{headers})).json();assert.equal(afterDiagnosis.settingsRevision,beforeDiagnosis.settingsRevision);assert.equal(afterDiagnosis.backups.length,beforeDiagnosis.backups.length);assert.deepEqual(afterDiagnosis.settings,beforeDiagnosis.settings);
     const queueSettingsRoom=await(await fetch(address+'/api/room',{headers})).json();
     res=await request('/api/settings',{settings:{...queueSettingsRoom.settings,cooldown:1,responseGap:1},expectedRevision:queueSettingsRoom.settingsRevision||0});assert.equal(res.status,200);

@@ -8,15 +8,29 @@ export class Playback {
   }
   async start(room){
     if(this.pending)return;this.pending=true;const generation=this.generation;
+    if(!room.current&&Array.isArray(room.songs)&&!room.songs.length){this.running=true;this.pending=false;this.onStatus('신청곡을 기다리는 중입니다. 새 신청곡이 들어오면 재생합니다.');return;}
     try{if(!room.current){const result=await this.api('/api/song',{action:'start'});room=result.room;this.onRoom(room);}if(this.generation!==generation)return;this.running=true;await this.sync(room,true);}
     catch(e){this.stop(e.message);}finally{this.pending=false;}
   }
   async sync(room,force=false){
     if(!this.running)return;
-    const song=room.current;if(!song){this.song=null;this.stop('대기열 재생이 끝났습니다. 신청곡을 추가한 뒤 재생을 시작하세요.');return;}
-    if(!force&&song.id===this.song?.id)return;
+    const song=room.current;if(!song){
+      if(this.song){this.pause();this.generation++;}this.song=null;
+      if(this.auto&&room.songs?.length){
+        const generation=++this.generation;
+        try{const result=await this.api('/api/song',{action:'start'});if(!this.running||generation!==this.generation)return;this.onRoom(result.room);await this.sync(result.room,true);}
+        catch(e){if(generation===this.generation)this.stop(e.message);}return;
+      }
+      if(this.auto){this.onStatus('신청곡을 기다리는 중입니다. 새 신청곡이 들어오면 재생합니다.');return;}
+      this.stop('대기열 재생이 끝났습니다.');return;
+    }
+    if(!force&&song.id===this.song?.id&&songVideoId(song)===songVideoId(this.song))return;
     this.song=song;const id=songVideoId(song);
-    if(!id){this.stop('현재곡에 YouTube 링크가 없습니다. 이 곡을 완료하거나 링크 신청곡을 선택하세요.');return;}
+    if(!id){
+      const generation=++this.generation;this.onStatus('곡 제목으로 YouTube 영상을 검색하는 중입니다…');
+      try{const result=await this.api('/api/song-resolve',{id:song.id});if(!this.running||generation!==this.generation)return;this.onRoom(result.room);await this.sync(result.room,true);}
+      catch(e){if(generation===this.generation)this.stop(e.message);}return;
+    }
     const generation=++this.generation;
     this.onStatus('YouTube 영상을 불러오는 중입니다…');
     try{await this.load(id,()=>this.running&&this.generation===generation,song.id);}

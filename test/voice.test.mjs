@@ -21,3 +21,7 @@ test('an upload cannot finish after its intake link is revoked',async()=>{
 test('voice intake enforces room capacity and per-connection upload rate',async()=>{
   const f=fixture();try{const link=f.voice.setLink('a','enable');for(let i=0;i<5;i++)await f.voice.upload(request(wav(),`voice-request-0000${i}`),link.token);await assert.rejects(f.voice.upload(request(wav(),'voice-request-00006'),link.token),/10분/);f.store.db.prepare('UPDATE voice_cards SET bytes=? WHERE room=?').run(100*1024*1024,'a');await assert.rejects(f.voice.upload(request(wav(),'voice-request-00007','other'),link.token),/가득/);}finally{f.close();}
 });
+
+test('voice link uses current public origin and stays disabled after shutdown',()=>{
+ const f=fixture();try{const link=f.voice.setLink('a','enable');assert.equal(f.voice.url('a','https://new.example'),'https://new.example/voice/'+link.token);f.voice.setLink('a','disable');assert.equal(f.voice.url('a','https://new.example'),null);}finally{f.close();}
+});

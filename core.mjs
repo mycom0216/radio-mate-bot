@@ -267,12 +267,11 @@ export class Engine {
     let u=r.users[e.user.id];
     if(u&&!dj&&now-u.lastCommand<s.cooldown*1000)return {text:null,suppressed:'cooldown',retryAfterMs:Math.max(u.lastCommand+s.cooldown*1000-now,r.lastResponse+s.responseGap*1000-now)};
     if(cmd==='내정보'&&arg==='생성'){
-      if(dj)fail('청취자용 프로필입니다.');
       if(!u){u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);}
       u.lastCommand=now;return answer(`${u.name}님 프로필이 준비되었습니다. !출석으로 복권을 받으세요.`);
     }
     if(u){u.name=e.user.nickname||u.name;u.lastCommand=now;}
-    if(cmd==='도움말')return answer(`시작 !내정보 생성 · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
+    if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`DJ에게 음성 보내기: ${r.voiceInboxUrl} (스푼 앱이 아닌 별도 접수함)`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
     if(cmd==='공지')return answer(s.notice);
@@ -283,7 +282,10 @@ export class Engine {
     if(cmd==='다음곡')return answer(r.songs[0]?`다음곡: ${r.songs[0].title}`:'다음 신청곡이 없습니다.');
     if(cmd==='신청곡목록')return answer(chatPage('신청곡',r.songs.map((v,i)=>`${i+1}. ${[...v.title].slice(0,70).join('')} (${[...v.name].slice(0,20).join('')})`),arg,cmd,'대기 중인 신청곡이 없습니다.'));
     if(cmd==='아이템'&&arg==='상점')return answer(s.items.filter(i=>i.enabled).map(i=>`${i.id}: ${i.name} ${n(i.price)} PT / 20분${i.stock===0?' (품절)':''}`).join('\n'));
-    if(!u)fail('먼저 !내정보 생성 을 입력해주세요.');
+    if(!u&&(cmd==='내정보'||dj)){
+      u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);u.lastCommand=now;
+    }
+    if(!u)fail('먼저 !내정보 를 입력하면 프로필이 자동으로 만들어집니다.');
     const quiz=playQuiz(this,r,u,cmd,arg,now,fail);if(quiz!==null)return answer(quiz);
     const mini=playMiniGame(this,r,u,cmd,arg,now,fail);if(mini!==null)return answer(mini);
     const active=id=>u.buffPaused?.[id]===undefined&&(u.buffs[id]||0)>now;
@@ -386,7 +388,7 @@ export class Engine {
       if(r.lastRequester===u.id&&r.streak>=2)fail('연속 신청은 최대 2곡입니다. 다른 분의 신청 후 다시 신청해주세요.');
       if(r.songs.filter(x=>x.user===u.id).length>=s.requestMax)fail('1인당 대기열 한도에 도달했습니다.');
       if(!s.duplicateSongs&&[r.current,...r.songs].some(x=>x&&(x.title.toLowerCase()===song.title.toLowerCase()||song.videoId&&songVideoId(x)===song.videoId)))fail('이미 등록된 곡입니다.');
-      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;touchQueue(r);r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title}`);
+      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;touchQueue(r);r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title.slice(0,65)} · ${song.videoId?"https://youtu.be/"+song.videoId:"DJ가 YouTube 영상을 연결해 재생합니다."}`);
     }
     return {text:null};
   }

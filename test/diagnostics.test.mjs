@@ -10,9 +10,17 @@ test('diagnostics expose a summary only and do not imply HTTPS or saved tokens p
  const room={live:true,settings:{quiet:false,fishing:false,goldenPolicy:'special'},users:{secret:{name:'private-name'}},voiceInboxUrl:'private-voice-token'};
  const result=buildDiagnostics({demo:false,configured:true,hasToken:true,room,publicUrl:'https://example.test',backups:3});
  assert.equal(result.checks.find(c=>c.id==='account').status,'pass');assert.match(result.checks.find(c=>c.id==='account').detail,/별도 확인/);assert.match(result.checks.find(c=>c.id==='public').detail,/형식만/);assert.match(result.checks.find(c=>c.id==='backups').detail,/잔액과 음성/);
- assert.doesNotMatch(JSON.stringify(result),/private-name|private-voice-token|secret/);assert.equal(result.checks.length,8);
+ assert.doesNotMatch(JSON.stringify(result),/private-name|private-voice-token|secret/);assert.equal(result.checks.length,10);
 });
 test('diagnostics rendering escapes displayed strings and offers a non-mutating refresh',()=>{
  const esc=x=>String(x).replaceAll('<','&lt;').replaceAll('>','&gt;');const html=diagnosticsHTML({checkedAt:0,checks:[{status:'warn',title:'<script>',detail:'<img>'}]},esc);
  assert.doesNotMatch(html,/<script>|<img>/);assert.match(html,/&lt;script&gt;/);assert.match(html,/diagnostics-refresh/);assert.match(html,/확인 필요/);
+});
+
+test('diagnostics report voice intake and missing title search configuration without exposing credentials',()=>{
+ const options={demo:false,configured:true,hasToken:true,room:{live:true,settings:{quiet:false}},voiceEnabled:true,youtubeConfigured:false};
+ const result=buildDiagnostics(options);
+ assert.equal(result.checks.find(c=>c.id==='voice').status,'pass');
+ assert.match(result.checks.find(c=>c.id==='youtube').title,/キー|키가 없/);
+ assert.equal(buildDiagnostics({...options,youtubeConfigured:true}).checks.find(c=>c.id==='youtube').status,'pass');
 });

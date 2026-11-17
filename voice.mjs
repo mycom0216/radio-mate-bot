@@ -2,6 +2,14 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync,readFileSync,unlinkSync} from 'node:fs';
 import {join} from 'node:path';
 export const MAX_VOICE_BYTES=8*1024*1024;
+export function audioRange(header,size){
+  if(!header)return {start:0,end:size-1};
+  const m=/^bytes=(\d*)-(\d*)$/.exec(header);
+  if(!m||!m[1]&&!m[2])return null;
+  const start=m[1]?Number(m[1]):Math.max(0,size-Number(m[2]));
+  const end=m[1]&&m[2]?Math.min(Number(m[2]),size-1):size-1;
+  return Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&start<=end&&start<size?{start,end}:null;
+}
 const fail=(message,status=400)=>{throw Object.assign(Error(message),{status});};
 export function audioType(b){
   if(b.length<12)return null;
@@ -19,6 +27,7 @@ export class VoiceInbox {
       CREATE TABLE IF NOT EXISTS voice_cards(id TEXT PRIMARY KEY,room TEXT NOT NULL,nickname TEXT NOT NULL,title TEXT NOT NULL,mime TEXT NOT NULL,bytes INTEGER NOT NULL,created INTEGER NOT NULL,is_read INTEGER NOT NULL DEFAULT 0,request_id TEXT NOT NULL,UNIQUE(room,request_id));`);
   }
   link(room){const row=this.db.prepare('SELECT token,enabled FROM voice_links WHERE room=?').get(room);return {token:row?.token||null,enabled:!!row?.enabled};}
+  url(room,origin){const link=this.link(room);return link.enabled?`${origin}/voice/${link.token}`:null;}
   setLink(room,action){
     if(!['enable','disable','rotate'].includes(action))fail('접수 링크 동작을 확인하세요.');
     const old=this.link(room),token=action==='rotate'||!old.token?randomBytes(32).toString('hex'):old.token;

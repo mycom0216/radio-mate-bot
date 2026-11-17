@@ -1,11 +1,13 @@
 import {applySongAction} from './song-queue.mjs';
+import {YouTubeSearch} from './youtube-search.mjs';
+import {youtubeId} from './public/song-utils.mjs';
 import {PublicSandbox} from './sandbox.mjs';
 import {readJSON,publicOrigin} from './http-utils.mjs';
 import {fullBackup} from './backup.mjs';
 import {renameSync,rmSync,readdirSync} from 'node:fs';
 import {deleteRoom,deleteListener,expireVoice} from './privacy.mjs';
 import {unlinkSync,openSync,closeSync} from 'node:fs';
-import {VoiceInbox} from './voice.mjs';
+import {VoiceInbox,audioRange} from './voice.mjs';
 import {keepName} from './public/song-utils.mjs';
 import { createServer } from 'node:http';
 import { randomBytes,randomUUID,createHash,timingSafeEqual } from 'node:crypto';
@@ -38,6 +40,7 @@ const voice=new VoiceInbox(store.db,join(DATA,'voice'));
 const publicDemo=env.PUBLIC_DEMO==='1'||env.PUBLIC_DEMO==='true';
 const sandbox=publicDemo?new PublicSandbox(join(DATA,'preview-voice'),{region:spoonRegion(env)}):null;
 const liveServices={store,engine,spoon,voice};
+const youtubeSearch=new YouTubeSearch({key:env.YOUTUBE_API_KEY||''});
 const servicesFor=room=>sandbox?.has(room)?sandbox.services:liveServices;
 const isDemo=room=>room==='demo'||!!sandbox?.has(room);
 const demoId='demo';if(!production)store.create(demoId,'나의 첫 라디오');
@@ -106,7 +109,7 @@ const server=createServer(async(req,res)=>{
       const s=requireSession(req),roomId=s.room;
       const {store,engine,spoon,voice}=servicesFor(roomId);
       if(req.method==='GET'&&path==='/api/diagnostics'){
-        reply(res,200,buildDiagnostics({demo:isDemo(roomId),configured:spoon.configured(),hasToken:!!store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(roomId),room:store.load(roomId),backups:store.db.prepare('SELECT COUNT(*) AS n FROM backups WHERE room=?').get(roomId).n,logs:store.logs(roomId),publicUrl:env.PUBLIC_URL}));return;
+        reply(res,200,buildDiagnostics({demo:isDemo(roomId),configured:spoon.configured(),hasToken:!!store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(roomId),room:store.load(roomId),backups:store.db.prepare('SELECT COUNT(*) AS n FROM backups WHERE room=?').get(roomId).n,logs:store.logs(roomId),publicUrl:env.PUBLIC_URL,voiceEnabled:voice.link(roomId).enabled,youtubeConfigured:!!env.YOUTUBE_API_KEY}));return;
       }
       if(req.method==='GET'&&path==='/api/export'){
         const data={version:1,exportedAt:Date.now(),room:store.load(roomId),logs:store.logs(roomId),voice:voice.list(roomId).map(card=>({...card,data:voice.file(roomId,card.id).data.toString('base64')}))};
@@ -115,11 +118,14 @@ const server=createServer(async(req,res)=>{
       }
       if(req.method==='GET'&&path==='/api/room'){store.transaction(roomId,r=>engine.reset(r));reply(res,200,safeRoom(roomId));return;}
       if(req.method==='GET'&&path==='/api/voice-inbox'){
-        const link=voice.link(roomId);reply(res,200,{enabled:link.enabled,url:link.token?`${env.PUBLIC_URL}/voice/${link.token}`:null,cards:voice.list(roomId)});return;
+        const link=voice.link(roomId);reply(res,200,{preview:!!sandbox?.has(roomId),enabled:link.enabled,url:link.token?`${env.PUBLIC_URL}/voice/${link.token}`:null,cards:voice.list(roomId)});return;
       }
       const voiceFile=/^\/api\/voice-file\/([a-f0-9-]{36})$/.exec(path);
       if(voiceFile&&req.method==='GET'){
-        const {row,data}=voice.file(roomId,voiceFile[1]);res.writeHead(200,{'Content-Type':row.mime,'Content-Length':data.length,'Cache-Control':'no-store','Content-Disposition':'inline'});res.end(data);return;
+        const {row,data}=voice.file(roomId,voiceFile[1]),range=audioRange(req.headers.range,data.length);
+        if(!range){res.writeHead(416,{'Content-Range':`bytes */${data.length}`});res.end();return;}
+        const {start,end}=range,partial=!!req.headers.range;
+        res.writeHead(partial?206:200,{'Content-Type':row.mime,'Content-Length':end-start+1,'Accept-Ranges':'bytes',...(partial?{'Content-Range':`bytes ${start}-${end}/${data.length}`} : {}),'Cache-Control':'no-store','Content-Disposition':'inline'});res.end(data.subarray(start,end+1));return;
       }
       if(req.method!=='POST')throw Object.assign(Error('지원하지 않는 요청입니다.'),{status:404});
       const key=digest(req.headers.cookie||'');const a=attempts.get(key)||{time:Date.now(),count:0};if(Date.now()-a.time>60000){a.time=Date.now();a.count=0;}if(++a.count>(sandbox?.has(roomId)?60:180))throw Object.assign(Error('요청이 너무 많습니다.'),{status:429});attempts.set(key,a);
@@ -152,6 +158,19 @@ const server=createServer(async(req,res)=>{
         if(!isDemo(roomId))throw Error('실제 방송에서는 테스트 명령을 실행할 수 없습니다.');
         if(sandbox?.has(roomId)&&!Object.hasOwn(store.load(roomId).users,String(b.user||'listener-1').slice(0,100))&&Object.keys(store.load(roomId).users).length>=100)throw Error('테스트 공간은 청취자 100명까지 만들 수 있습니다.');
         const result=await engine.handleAsync(roomId,{id:randomUUID(),user:{id:String(b.user||'listener-1').slice(0,100),nickname:String(b.name||'청취자').slice(0,40)},message:String(b.message||'').slice(0,500),isDj:b.dj===true});reply(res,200,result);return;
+      }
+      if(path==='/api/song-resolve'){
+        const snapshot=store.load(roomId),song=[snapshot.current,...snapshot.songs].find(x=>x&&x.id===b.id);
+        if(!song)throw Error('신청곡이 변경되었습니다. 새로고침해 주세요.');
+        const videoId=b.url?youtubeId(b.url):await youtubeSearch.find(song.title);
+        if(!videoId)throw Error('올바른 HTTPS YouTube 영상 링크를 입력하세요.');
+        store.transaction(roomId,r=>{
+          const target=[r.current,...r.songs].find(x=>x&&x.id===b.id);
+          if(!target||target.videoId!==song.videoId)throw Error('신청곡이 이미 변경되었습니다. 다시 확인하세요.');
+          if(!r.settings.duplicateSongs&&[r.current,...r.songs].some(x=>x&&x.id!==target.id&&x.videoId===videoId))throw Error('이미 대기열에 있는 영상입니다.');
+          target.videoId=videoId;target.url=`https://www.youtube.com/watch?v=${videoId}`;
+          r.queueRevision=(r.queueRevision||0)+1;delete r.songUndo;
+        });reply(res,200,{ok:true,room:safeRoom(roomId)});return;
       }
       if(path==='/api/song'){
         store.transaction(roomId,r=>{
@@ -209,7 +228,7 @@ const server=createServer(async(req,res)=>{
 });
 // Bound slow headers/uploads and idle keep-alive sockets on the public server.
 server.headersTimeout=15000;server.requestTimeout=120000;server.keepAliveTimeout=5000;
-for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;engine.syncBuffs(r);});spoon.start(id);}
+for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{r.voiceInboxUrl=voice.url(id,env.PUBLIC_URL);if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;engine.syncBuffs(r);});spoon.start(id);}
 const timer=setInterval(()=>spoon.tick().catch(e=>console.error('scheduler:',e.message)),5000);
 const cleanup=setInterval(()=>{sandbox?.expire();sandbox?.services.store.prune({eventsKeep:2000,backupsKeep:5,auditDays:1});const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
 server.listen(Number(env.PORT||4310),env.HOST||'127.0.0.1',()=>console.log(`Spoon Studio: http://${env.HOST||'127.0.0.1'}:${server.address().port} (${production?'production':'local demo'})`));

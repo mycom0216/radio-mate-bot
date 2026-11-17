@@ -24,3 +24,6 @@ data-public/
 
 *.rmbak
 deploy/tunnel-token.txt
+
+deploy/broadcast.env
+data-broadcast/
