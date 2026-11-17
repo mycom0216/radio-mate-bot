@@ -118,6 +118,16 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await fetch(address+'/api/diagnostics',{headers});assert.equal(res.status,200);const diagnosis=await res.json();
     assert.equal(diagnosis.checks.length,8);assert.deepEqual(Object.keys(diagnosis).sort(),['checkedAt','checks']);assert.doesNotMatch(JSON.stringify(diagnosis),new RegExp(csrf));
     const afterDiagnosis=await (await fetch(address+'/api/room',{headers})).json();assert.equal(afterDiagnosis.settingsRevision,beforeDiagnosis.settingsRevision);assert.equal(afterDiagnosis.backups.length,beforeDiagnosis.backups.length);assert.deepEqual(afterDiagnosis.settings,beforeDiagnosis.settings);
+    const queueSettingsRoom=await(await fetch(address+'/api/room',{headers})).json();
+    res=await request('/api/settings',{settings:{...queueSettingsRoom.settings,cooldown:1,responseGap:1},expectedRevision:queueSettingsRoom.settingsRevision||0});assert.equal(res.status,200);
+    await new Promise(r=>setTimeout(r,1100));await request('/api/test',{message:'!내정보 생성',user:'queue-owner',name:'신청자'});
+    for(const title of ['순서 관리 첫 곡','순서 관리 둘째 곡']){await new Promise(r=>setTimeout(r,1100));res=await request('/api/test',{message:'!신청곡 '+title,user:'queue-owner',name:'신청자'});assert.match((await res.json()).text,/신청 완료/);}
+    let queueRoom=await(await fetch(address+'/api/room',{headers})).json();const queueFirst=queueRoom.songs[0].id,queueSecond=queueRoom.songs[1].id,oldRevision=queueRoom.queueRevision;
+    res=await request('/api/song',{action:'move',id:queueSecond,direction:-1,expectedQueueRevision:oldRevision});assert.equal(res.status,200);queueRoom=(await res.json()).room;assert.equal(queueRoom.songs[0].id,queueSecond);
+    res=await request('/api/song',{action:'remove',id:queueFirst,expectedQueueRevision:oldRevision});assert.equal(res.status,409);
+    res=await request('/api/song',{action:'remove',id:queueFirst,expectedQueueRevision:queueRoom.queueRevision});assert.equal(res.status,200);queueRoom=(await res.json()).room;assert.equal(queueRoom.songUndo.song.id,queueFirst);
+    res=await request('/api/song',{action:'undo',expectedQueueRevision:queueRoom.queueRevision});assert.equal(res.status,200);assert.equal((await res.json()).room.songs[1].id,queueFirst);
+    await new Promise(r=>setTimeout(r,1100));res=await request('/api/test',{message:'!신청취소 1',user:'queue-owner',name:'신청자'});assert.match((await res.json()).text,/신청 취소/);
     res=await fetch(address+'/privacy');assert.equal(res.status,200);assert.doesNotMatch(await res.text(),/\{\{VOICE_DAYS\}\}/);
     res=await fetch(address+'/api/export');assert.equal(res.status,401);
     res=await fetch(address+'/api/export',{headers});assert.equal(res.status,200);const exported=await res.json();assert.equal(exported.room.id,'demo');assert.equal(exported.version,1);assert.equal(exported.tokens,undefined);assert.equal(exported.room.voiceInboxUrl,undefined);

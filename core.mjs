@@ -1,3 +1,4 @@
+import {touchQueue} from './song-queue.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
 import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
@@ -259,7 +260,7 @@ export class Engine {
     if(s.quiet&&['낚시','홀','짝','홀짝','복권','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답'].includes(cmd))return {text:null,suppressed:'quiet'};
     if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
     if(!dj&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
-    const known=['내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','랭크','신청곡','신청곡목록','현재곡','다음곡','이전곡','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+    const known=['내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
     if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
@@ -367,7 +368,16 @@ export class Engine {
       }
       fail('사용법: !아이템 구매 번호 / !아이템 사용 번호');
     }
+    if(cmd==='신청취소'||cmd==='신청곡취소'){
+      let index;
+      if(!arg){index=r.songs.findLastIndex(x=>x.user===u.id);}
+      else{if(!/^[1-9]\d*$/.test(arg)||!Number.isSafeInteger(Number(arg)))fail('사용법: !신청취소 또는 !신청취소 대기열번호');index=Number(arg)-1;}
+      const song=r.songs[index];if(!song)fail('취소할 대기 신청곡이 없습니다. 현재 재생 중인 곡은 취소할 수 없습니다.');
+      if(song.user!==u.id)fail('본인이 신청한 대기곡만 취소할 수 있습니다.');
+      touchQueue(r);r.songs.splice(index,1);this.store.log(r.id,u.id,'song-cancel',{songId:song.id,title:song.title},now);return answer('신청 취소: '+song.title);
+    }
     if(cmd==='신청곡'){
+
       if(!s.requests)fail('신청곡 접수가 닫혀 있습니다.');
       if(!arg||arg.length>500)fail('사용법: !신청곡 YouTube링크 [곡 제목] 또는 가수 - 제목');
       let song;try{song=parseSongRequest(arg);}catch(e){fail(e.message);}
@@ -375,7 +385,7 @@ export class Engine {
       if(r.lastRequester===u.id&&r.streak>=2)fail('연속 신청은 최대 2곡입니다. 다른 분의 신청 후 다시 신청해주세요.');
       if(r.songs.filter(x=>x.user===u.id).length>=s.requestMax)fail('1인당 대기열 한도에 도달했습니다.');
       if(!s.duplicateSongs&&[r.current,...r.songs].some(x=>x&&(x.title.toLowerCase()===song.title.toLowerCase()||song.videoId&&songVideoId(x)===song.videoId)))fail('이미 등록된 곡입니다.');
-      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title}`);
+      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;touchQueue(r);r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title}`);
     }
     return {text:null};
   }

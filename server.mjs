@@ -1,3 +1,4 @@
+import {applySongAction} from './song-queue.mjs';
 import {PublicSandbox} from './sandbox.mjs';
 import {readJSON,publicOrigin} from './http-utils.mjs';
 import {fullBackup} from './backup.mjs';
@@ -154,19 +155,7 @@ const server=createServer(async(req,res)=>{
       }
       if(path==='/api/song'){
         store.transaction(roomId,r=>{
-          if(b.action==='start'){
-            if(!r.current){if(!r.songs.length)throw Error('대기 중인 신청곡이 없습니다.');r.current=r.songs.shift();}
-          }else if(b.action==='ended'){
-            if(!r.current||typeof b.expectedCurrentId!=='string'||r.current.id!==b.expectedCurrentId)throw Object.assign(Error('현재곡이 이미 변경되었습니다. 새로고침 후 확인하세요.'),{status:409});
-            if(typeof b.advance!=='boolean')throw Error('자동 전환 여부를 확인하세요.');
-            r.previous=r.current;r.current=b.advance?(r.songs.shift()||null):null;
-          }else if(b.action==='next'){
-            if(!r.songs.length)throw Error('대기 중인 신청곡이 없습니다.');if(r.current)r.previous=r.current;r.current=r.songs.shift();
-          }else if(b.action==='remove'){
-            if(!r.songs.some(x=>x.id===b.id))throw Error('신청곡을 찾을 수 없습니다.');r.songs=r.songs.filter(x=>x.id!==b.id);
-          }else if(b.action==='finish'){
-            if(!r.current)throw Error('현재 재생 중인 곡이 없습니다.');r.previous=r.current;r.current=null;
-          }else throw Error('잘못된 동작입니다.');
+          applySongAction(r,b);
           store.log(roomId,'dj','song-action',b);
         });reply(res,200,{ok:true,room:safeRoom(roomId)});return;
       }

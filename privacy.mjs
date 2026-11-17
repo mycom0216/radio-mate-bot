@@ -1,10 +1,11 @@
+import {touchQueue} from './song-queue.mjs';
 import {unlinkSync} from 'node:fs';
 import {join} from 'node:path';
 function removeFile(dir,id){if(!/^[a-f0-9-]{36}$/.test(id))throw Error('잘못된 파일 ID');try{unlinkSync(join(dir,id));}catch(e){if(e.code!=='ENOENT')throw e;}}
 export function deleteListener(store,room,user){
   if(typeof user!=='string'||!Object.hasOwn(store.load(room)?.users||{},user))throw Error('등록된 청취자를 찾을 수 없습니다.');
   store.transaction(room,r=>{
-    delete r.users[user];if(r.likeGreetings)delete r.likeGreetings[user];
+    touchQueue(r);delete r.users[user];if(r.likeGreetings)delete r.likeGreetings[user];
     r.songs=r.songs.filter(s=>s.user!==user&&s.userId!==user);
     for(const key of ['current','previous'])if(r[key]?.user===user||r[key]?.userId===user)r[key]=null;
     r.special=r.special.filter(x=>x.user!==user);r.achievers=r.achievers.filter(x=>x.user!==user);
