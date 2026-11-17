@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../core.mjs';
@@ -23,4 +23,29 @@ test('prune trims old audit rows, events and extra backups; snapshot keeps rolli
     assert.equal(readdirSync(join(dir, 'bk')).length, 7);
     s.db.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('failed snapshot keeps the previous backup, repeated snapshots replace safely, invalid retention cannot erase data', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'studio-safe-'));
+  const s = new Store(join(dir, 'db.sqlite'));
+  try {
+    s.create('r', 'first');
+    const now = Date.now(), bk = join(dir, 'bk');
+    const file = s.snapshot(bk, { now });
+    const before = readFileSync(file);
+    const exec = s.db.exec.bind(s.db);
+    s.db.exec = sql => { if (sql.startsWith('VACUUM INTO')) throw Error('disk full'); return exec(sql); };
+    assert.throws(() => s.snapshot(bk, { now }), /disk full/);
+    assert.deepEqual(readFileSync(file), before);
+    assert.deepEqual(readdirSync(bk), [file.split(/[\\/]/).pop()]);
+    s.db.exec = exec;
+    s.transaction('r', r => { r.name = 'updated'; });
+    s.snapshot(bk, { now });
+    const restored = new Store(file);
+    try { assert.equal(restored.load('r').name, 'updated'); } finally { restored.db.close(); }
+    assert.throws(() => s.snapshot(bk, { keep: 0 }), /보관/);
+    s.log('r', 'u', 'saved', {});
+    assert.throws(() => s.prune({ eventsKeep: -1 }), /보관/);
+    assert.equal(s.logs('r').length, 1);
+  } finally { s.db.close(); rmSync(dir, { recursive: true, force: true }); }
 });

@@ -167,20 +167,23 @@ const server=createServer(async(req,res)=>{
       if(path==='/api/reconnect'){if(roomId!==demoId){spoon.stop(roomId);spoon.start(roomId);}reply(res,200,{ok:true});return;}
       throw Object.assign(Error('기능을 찾을 수 없습니다.'),{status:404});
     }
-    const files={'/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!files[path]){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
+    const files={'/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
     res.writeHead(200,{'Content-Type':path.endsWith('.png')?'image/png':path.endsWith('.svg')?'image/svg+xml':(/\.m?js$/).test(path)?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'public',files[path])));
   }catch(e){reply(res,e.status||400,{error:e.message});}
 });
+// Bound slow headers/uploads and idle keep-alive sockets on the public server.
+server.headersTimeout=15000;server.requestTimeout=120000;server.keepAliveTimeout=5000;
 for(const id of store.ids())if(id!==demoId)spoon.start(id);
 const timer=setInterval(()=>spoon.tick().catch(e=>console.error('scheduler:',e.message)),5000);
 const cleanup=setInterval(()=>{const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
 server.listen(Number(env.PORT||4310),env.HOST||'127.0.0.1',()=>console.log(`Spoon Studio: http://${env.HOST||'127.0.0.1'}:${server.address().port} (${production?'production':'local demo'})`));
 const maintenance=setInterval(runMaintenance,6*3600000);
 function runMaintenance(){try{store.prune();store.snapshot(join(DATA,'backups'));}catch(e){console.error('maintenance:',e.message);}}
-setTimeout(runMaintenance,30000).unref();
+const initialMaintenance=setTimeout(runMaintenance,30000);initialMaintenance.unref();
 process.on('unhandledRejection',e=>console.error('unhandledRejection:',e?.message||e));
-process.on('uncaughtException',e=>console.error('uncaughtException:',e?.message||e));
-function shutdown(){setTimeout(()=>process.exit(0),5000).unref();clearInterval(maintenance);clearInterval(timer);clearInterval(cleanup);for(const id of spoon.running.keys())spoon.stop(id);server.close(()=>{store.db.close();process.exit(0);});}
-process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
+process.on('uncaughtException',e=>{console.error('uncaughtException:',e?.message||e);shutdown(1);});
+let shuttingDown=false;
+function shutdown(code=0){if(shuttingDown)return;shuttingDown=true;setTimeout(()=>process.exit(code),5000).unref();clearTimeout(initialMaintenance);clearInterval(maintenance);clearInterval(timer);clearInterval(cleanup);for(const id of spoon.running.keys())spoon.stop(id);server.close(()=>{store.db.close();process.exit(code);});}
+process.on('SIGINT',()=>shutdown());process.on('SIGTERM',()=>shutdown());
 
 

@@ -1,0 +1,35 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm test
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t radio-mate:test .
+      - name: Start and check production container
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'docker logs radio-mate-check; docker rm -f radio-mate-check' EXIT
+          docker run -d --name radio-mate-check -p 127.0.0.1:4310:4310 -e PUBLIC_URL=https://radio.example.com -e TOKEN_KEY=$(openssl rand -hex 32) radio-mate:test
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4310/health; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4310/health
+          curl -fsS http://127.0.0.1:4310/minimi.js > /dev/null
+          curl -fsS http://127.0.0.1:4310/radio-mini.png > /dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:4310/api/demo)" != 200
