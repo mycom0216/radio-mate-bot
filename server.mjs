@@ -1,3 +1,4 @@
+import {readJSON,publicOrigin} from './http-utils.mjs';
 import {fullBackup} from './backup.mjs';
 import {renameSync,rmSync,readdirSync} from 'node:fs';
 import {deleteRoom,deleteListener,expireVoice} from './privacy.mjs';
@@ -14,7 +15,7 @@ import { Spoon,spoonRegion } from './spoon.mjs';
 import {buildDiagnostics} from './diagnostics.mjs';
 const ROOT=dirname(fileURLToPath(import.meta.url));
 const env={...process.env};env.PUBLIC_URL=(env.PUBLIC_URL||'http://localhost:4310').replace(/\/$/,'');
-const production=env.NODE_ENV==='production';spoonRegion(env);
+const production=env.NODE_ENV==='production';env.PUBLIC_URL=publicOrigin(env.PUBLIC_URL,{production});spoonRegion(env);
 const trustProxy=env.TRUST_PROXY==='1'||env.TRUST_PROXY==='true';
 function clientIp(req){if(trustProxy){const f=String(req.headers['x-forwarded-for']||'').split(',').pop().trim();if(f)return f;}return req.socket.remoteAddress||'';}
 if(production&&(!env.PUBLIC_URL.startsWith('https://')||!/^[a-fA-F0-9]{64}$/.test(env.TOKEN_KEY||'')))throw Error('운영 환경에는 PUBLIC_URL HTTPS와 TOKEN_KEY가 필요합니다.');
@@ -39,7 +40,7 @@ function sessionKey(req){const cookie=(req.headers.cookie||'').split(';').map(x=
 function session(req){const s=sessions.get(sessionKey(req));return s&&s.expires>Date.now()&&store.load(s.room)?s:null;}
 function newSession(res,room){const value=randomBytes(32).toString('hex'),s={room,csrf:randomBytes(24).toString('hex'),expires:Date.now()+12*3600000};sessions.set(digest(value),s);res.setHeader('Set-Cookie',`studio=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${production?'; Secure':''}`);return s;}
 function reply(res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
-async function body(req){let b='';for await(const c of req){b+=c;if(Buffer.byteLength(b)>256000)throw Error('요청이 너무 큽니다.');}return b?JSON.parse(b):{};}
+const body=readJSON;
 function requireSession(req){const s=session(req);if(!s)throw Object.assign(Error('로그인이 필요합니다.'),{status:401});if(req.method!=='GET'){
   const origin=req.headers.origin;if(origin&&origin!==env.PUBLIC_URL)throw Object.assign(Error('허용되지 않은 출처입니다.'),{status:403});
   const a=Buffer.from(req.headers['x-csrf-token']||''),b=Buffer.from(s.csrf);if(a.length!==b.length||!timingSafeEqual(a,b))throw Object.assign(Error('새로고침 후 다시 시도해주세요.'),{status:403});
@@ -202,7 +203,7 @@ const server=createServer(async(req,res)=>{
     }
     const files={'/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
     res.writeHead(200,{'Content-Type':path.endsWith('.png')?'image/png':path.endsWith('.svg')?'image/svg+xml':(/\.m?js$/).test(path)?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'public',files[path])));
-  }catch(e){reply(res,e.status||400,{error:e.message});}
+  }catch(e){if(e.status===413)res.setHeader('Connection','close');reply(res,e.status||400,{error:e.message});}
 });
 // Bound slow headers/uploads and idle keep-alive sockets on the public server.
 server.headersTimeout=15000;server.requestTimeout=120000;server.keepAliveTimeout=5000;

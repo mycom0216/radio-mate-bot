@@ -15,6 +15,8 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await fetch(address+'/api/demo',{method:'POST'});assert.equal(res.status,200);const cookie=res.headers.get('set-cookie').split(';')[0],{csrf}=await res.json();
     const headers={'Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf};
     const request=(path,body,h=headers)=>fetch(address+path,{method:'POST',headers:h,body:JSON.stringify(body)});
+    res=await fetch(address+'/api/test',{method:'POST',headers,body:'null'});assert.equal(res.status,400);
+    res=await fetch(address+'/api/test',{method:'POST',headers,body:JSON.stringify({message:'x'.repeat(256001)})});assert.equal(res.status,413);
     res=await request('/api/test',{message:'!내정보 생성',user:'a',name:'A'});assert.equal(res.status,200);
     res=await fetch(address+'/api/room',{headers});let r=await res.json();assert.equal(r.users.a.name,'A');
     for(const [count,replyText]of [[5,'5장 지급'],[-2,'2장 회수'],[0,'변경 없음'],[5000,'5,000장 지급'],[-5000,'5,000장 회수']]){res=await request('/api/test',{message:`!복권지급 @a ${count}`,user:'dj',name:'DJ',dj:true});assert.equal(res.status,200);assert.ok((await res.json()).text.includes(replyText));}
