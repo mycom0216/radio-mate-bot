@@ -1,6 +1,6 @@
 // Minimi: scatters the mascot into the page background and into any empty gap inside cards.
 (() => {
-  const SRC = '/radio-mini.png';
+  const SRC = '/radio-bloom-mini.webp';
   let seed = 7;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   function makeLayer() {

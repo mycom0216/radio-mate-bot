@@ -54,13 +54,13 @@ input,textarea,select,.field input,.field textarea,.field select{background:#fff
 .minimi-layer img{position:absolute;height:auto;opacity:.92;transform:rotate(var(--r)) scaleX(calc(1 - 2*var(--f)));filter:drop-shadow(0 6px 6px #b97d9c2e)}
 main,.welcome-home{position:relative;z-index:1}
 .card{position:relative}
-main .card:not(.stat-card):not(.playback-panel):after{content:'';position:absolute;right:24px;top:-27px;width:44px;height:38px;background:url(/radio-mini.png) center bottom/contain no-repeat;pointer-events:none;filter:drop-shadow(0 3px 3px #b97d9c30);transform:rotate(6deg)}
+main .card:not(.stat-card):not(.playback-panel):after{content:'';position:absolute;right:24px;top:-27px;width:44px;height:38px;background:url(/radio-bloom-mini.webp) center bottom/contain no-repeat;pointer-events:none;filter:drop-shadow(0 3px 3px #b97d9c30);transform:rotate(6deg)}
 main .grid>:nth-child(even) .card:not(.stat-card):after,main .grid>.card:nth-child(even):not(.stat-card):after{right:auto;left:28px;transform:rotate(-7deg) scaleX(-1)}
-main .stat-card:after{content:'';position:absolute;right:46px;bottom:10px;width:38px;height:34px;background:url(/radio-mini.png) center/contain no-repeat;pointer-events:none;transform:rotate(7deg)}
+main .stat-card:after{content:'';position:absolute;right:46px;bottom:10px;width:38px;height:34px;background:url(/radio-bloom-mini.webp) center/contain no-repeat;pointer-events:none;transform:rotate(7deg)}
 main .stat-card:nth-child(even):after{transform:rotate(-7deg) scaleX(-1)}
-.welcome-features article{position:relative}.welcome-features article:after{content:'';position:absolute;right:22px;top:-28px;width:46px;height:40px;background:url(/radio-mini.png) center bottom/contain no-repeat;pointer-events:none;filter:drop-shadow(0 3px 3px #b97d9c30);transform:rotate(8deg)}
+.welcome-features article{position:relative}.welcome-features article:after{content:'';position:absolute;right:22px;top:-28px;width:46px;height:40px;background:url(/radio-bloom-mini.webp) center bottom/contain no-repeat;pointer-events:none;filter:drop-shadow(0 3px 3px #b97d9c30);transform:rotate(8deg)}
 .welcome-features article:nth-child(2):after{transform:rotate(-8deg) scaleX(-1)}
-@media(min-width:801px){.aside-bottom{position:relative;padding-top:78px!important}.aside-bottom:before{content:'';position:absolute;left:50%;top:4px;width:78px;height:68px;margin-left:-39px;background:url(/radio-mini.png) center/contain no-repeat;filter:drop-shadow(0 4px 4px #b97d9c2e)}}
+@media(min-width:801px){.aside-bottom{position:relative;padding-top:78px!important}.aside-bottom:before{content:'';position:absolute;left:50%;top:4px;width:78px;height:68px;margin-left:-39px;background:url(/radio-bloom-mini.webp) center/contain no-repeat;filter:drop-shadow(0 4px 4px #b97d9c2e)}}
 @media(max-width:800px){.minimi-layer img{opacity:.6;width:32px!important}}
 @media(prefers-reduced-motion:no-preference){.minimi-layer img{animation:minimi-bob 5.5s ease-in-out infinite}@keyframes minimi-bob{50%{translate:0 -7px}}}
 .card>.minimi-gap{position:absolute;height:auto;pointer-events:none;opacity:.92;transform:rotate(var(--r)) scaleX(calc(1 - 2*var(--f)));filter:drop-shadow(0 4px 4px #b97d9c2a)}

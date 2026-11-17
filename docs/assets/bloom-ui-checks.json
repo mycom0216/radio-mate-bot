@@ -1,0 +1,149 @@
+{
+  "checks": [
+    {
+      "name": "welcome-desktop",
+      "width": 1440,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "welcome-mobile",
+      "width": 390,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "dashboard-mobile",
+      "width": 390,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "mobile-slide",
+      "width": 390,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "dashboard-desktop",
+      "width": 1440,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "dashboard-slide",
+      "width": 1440,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "games",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "songs",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "songs",
+      "width": 1440,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "fans",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "settings",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "settings",
+      "width": 1440,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "test",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "test",
+      "width": 1440,
+      "overflow": false,
+      "missing": []
+    },
+    {
+      "name": "voice",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "games",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "name": "songs",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "name": "fans",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "name": "settings",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "name": "test",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "name": "voice",
+      "width": 1024,
+      "overflow": false
+    },
+    {
+      "name": "games",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "songs",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "fans",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "settings",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "test",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "voice",
+      "width": 390,
+      "overflow": false
+    }
+  ],
+  "errors": []
+}

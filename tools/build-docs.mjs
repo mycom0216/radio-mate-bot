@@ -1,4 +1,4 @@
-import {mkdirSync,writeFileSync,appendFileSync} from 'node:fs';
+import {mkdirSync,writeFileSync,appendFileSync,existsSync,readFileSync} from 'node:fs';
 const out='docs';mkdirSync(`${out}/assets`,{recursive:true});
 const esc=s=>String(s).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const table=(heads,rows)=>`<table><thead><tr>${heads.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${x}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
@@ -7,6 +7,8 @@ const list=items=>`<ul>${items.map(x=>`<li>${x}</li>`).join('')}</ul>`;
 const source='<p class="source">기준: 2026.11.17 GitHub main 다운로드 소스 및 이 폴더의 수정본. <a href="https://github.com/mycom0216/radio-mate-bot">github.com/mycom0216/radio-mate-bot</a><br>근거 파일: core.mjs · server.mjs · spoon.mjs · voice.mjs · public/ · test/. 실제 방송 송신·운영 배포 검증은 별도입니다.</p>';
 const pages=[];const outputs=[];
 function doc(name,title,subtitle,sections,landscape=false){
+ if(name==='05-포트폴리오'&&existsSync(out+'/'+name+'.html')&&readFileSync(out+'/'+name+'.html','utf8').includes('Radio Mate 최신 포트폴리오')){outputs.push({name,title,pages:12,landscape:true});return;}
+
  if(name.startsWith('02-')||name.startsWith('04-'))sections[0]=sections[0].replace(source,'');
  sections=sections.map(s=>s.replace('Song: id, user, name, text, at 및 지원 링크의 videoId / url.','Song: id, user, name, title, videoId. 일반 제목 요청은 videoId가 null입니다.'));
  const html=`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} · Spoon Studio</title><link rel="stylesheet" href="document.css"></head><body class="${landscape?'landscape':''}"><div class="toolbar"><a href="index.html">← 문서 모음</a><span>브라우저에서 읽거나 인쇄하여 PDF로 저장하세요.</span></div>${sections.map((s,i)=>`<section class="page"><header><span>SPOON STUDIO <b>♡</b> PROJECT BOOK</span><span>${title}</span></header>${i===0?`<div class="doc-kicker">${subtitle}</div>`:''}${s}<footer><span>RADIO MATE BOT · 2026.11.17 · v1.0</span><span>${String(i+1).padStart(2,'0')} / ${String(sections.length).padStart(2,'0')}</span></footer></section>`).join('')}</body></html>`;
