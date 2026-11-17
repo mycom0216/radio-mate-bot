@@ -1,5 +1,6 @@
 import {applySongAction} from './song-queue.mjs';
 import {YouTubeSearch} from './youtube-search.mjs';
+import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {youtubeId} from './public/song-utils.mjs';
 import {PublicSandbox} from './sandbox.mjs';
 import {readJSON,publicOrigin} from './http-utils.mjs';
@@ -83,7 +84,7 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&Object.hasOwn(listenerFiles,path)){
       const name=listenerFiles[path];res.writeHead(200,{'Content-Type':name.endsWith('.mjs')?'text/javascript; charset=utf-8':name.endsWith('.css')?'text/css; charset=utf-8':name.endsWith('.png')?'image/png':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'extensions','listener-voice',name)));return;
     }
-    if(path==='/api/session'&&req.method==='GET'){const s=session(req);reply(res,200,{loggedIn:!!s,room:s?.room,csrf:s?.csrf,demo:!production||publicDemo,testing:isDemo(s?.room),publicDemo,chargeRegion:spoonRegion(env),configured:spoon.configured(),defaults:defaults()});return;}
+    if(path==='/api/session'&&req.method==='GET'){const s=session(req);reply(res,200,{loggedIn:!!s,room:s?.room,csrf:s?.csrf,demo:!production||publicDemo,testing:isDemo(s?.room),publicDemo,chargeRegion:spoonRegion(env),configured:spoon.configured(),youtubeSearchConfigured:!!env.YOUTUBE_API_KEY,defaults:defaults()});return;}
     if(path==='/api/demo'&&req.method==='POST'&&(!production||publicDemo)){
       if(req.headers.origin&&req.headers.origin!==env.PUBLIC_URL)throw Error('허용되지 않은 출처입니다.');
       if(publicDemo){
@@ -162,13 +163,14 @@ const server=createServer(async(req,res)=>{
       if(path==='/api/song-resolve'){
         const snapshot=store.load(roomId),song=[snapshot.current,...snapshot.songs].find(x=>x&&x.id===b.id);
         if(!song)throw Error('신청곡이 변경되었습니다. 새로고침해 주세요.');
-        const videoId=b.url?youtubeId(b.url):await youtubeSearch.find(song.title);
+        const videoId=b.url?youtubeId(b.url):savedSongVideo(snapshot,song.title)||await youtubeSearch.find(song.title);
         if(!videoId)throw Error('올바른 HTTPS YouTube 영상 링크를 입력하세요.');
         store.transaction(roomId,r=>{
           const target=[r.current,...r.songs].find(x=>x&&x.id===b.id);
           if(!target||target.videoId!==song.videoId)throw Error('신청곡이 이미 변경되었습니다. 다시 확인하세요.');
           if(!r.settings.duplicateSongs&&[r.current,...r.songs].some(x=>x&&x.id!==target.id&&x.videoId===videoId))throw Error('이미 대기열에 있는 영상입니다.');
           target.videoId=videoId;target.url=`https://www.youtube.com/watch?v=${videoId}`;
+          rememberSongVideo(r,target,videoId);
           r.queueRevision=(r.queueRevision||0)+1;delete r.songUndo;
         });reply(res,200,{ok:true,room:safeRoom(roomId)});return;
       }

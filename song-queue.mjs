@@ -8,7 +8,12 @@ export function applySongAction(room,request,now=Date.now()){
   if(request.expectedQueueRevision!==undefined&&(!Number.isSafeInteger(request.expectedQueueRevision)||request.expectedQueueRevision!==(room.queueRevision||0)))fail('다른 탭이나 채팅에서 대기열이 변경되었습니다. 새로고침 후 다시 확인하세요.',409);
   if(Object.hasOwn(request,'expectedCurrentId')&&request.expectedCurrentId!==(room.current?.id||null))fail('현재곡이 이미 변경되었습니다. 새로고침 후 확인하세요.',409);
   if(action==='move'||action==='undo')if(!Number.isSafeInteger(request.expectedQueueRevision))fail('최신 대기열 정보를 확인한 뒤 다시 시도하세요.',409);
-  if(action==='start'){
+  if(action==='select'){
+    if(!Number.isSafeInteger(request.expectedQueueRevision))fail('최신 대기열을 확인한 뒤 다시 시도하세요.',409);
+    const index=room.songs.findIndex(s=>s.id===request.id);if(index<0)fail('신청곡이 이미 변경되었습니다.',409);
+    touchQueue(room);if(room.current)room.previous=room.current;
+    room.current=room.songs.splice(index,1)[0];
+  }else if(action==='start'){
     if(room.current)return;
     if(!room.songs.length)fail('대기 중인 신청곡이 없습니다.');
     touchQueue(room);room.current=room.songs.shift();

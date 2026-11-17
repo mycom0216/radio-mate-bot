@@ -17,15 +17,17 @@
   <div id="demo-banner" class="banner" hidden><strong>연습 공간</strong><span>마음 편히 눌러보세요. 실제 방송에는 전송되지 않아요.</span></div>
   <div id="session-alert" class="session-alert" role="alert" hidden><div><strong>로그인이 만료되었습니다.</strong><p>작성한 내용은 이 화면에 유지됩니다. 다시 연결한 뒤 작업을 실행해 주세요.</p></div><button data-action="reauth">다시 연결</button></div>
   <p id="page-description" class="page-description"></p>
-  <div id="content" aria-live="polite"></div>
-  <div id="save-bar" class="save-bar" hidden><div><strong>저장하지 않은 변경사항</strong><span>저장하면 방송에 적용됩니다.</span></div><div class="inline"><button data-action="discard">변경 취소</button><button class="primary" data-action="save">변경사항 저장</button></div></div>
   <section id="playback-panel" class="card playback-panel" aria-label="YouTube 신청곡 플레이어" hidden>
     <div class="section-head"><h2>YouTube 신청곡 재생</h2><label class="switch"><input id="autoplay-enabled" type="checkbox" checked>끝나면 다음 곡 자동재생</label></div>
+    <p id="playback-setup" class="note"></p>
     <p id="playback-song" class="small"></p><div id="youtube-player"></div>
-    <div class="actions"><button id="playback-start" class="primary">재생 시작 / 이어서 재생</button><button id="playback-pause">일시정지</button></div>
+    <div class="actions"><button id="playback-start" class="primary">재생 시작 / 이어서 재생</button><button id="playback-pause">일시정지</button><a id="playback-watch" target="_blank" rel="noopener noreferrer" hidden>YouTube에서 직접 열기 ↗</a></div>
     <p id="playback-status" role="status">YouTube 링크 신청곡을 추가하고 재생을 시작하세요.</p>
     <p class="small">이 브라우저에서만 재생됩니다. 한 기기에서 재생하고, 방송 송출에는 해당 소리를 오디오 입력으로 연결하세요. 브라우저를 닫으면 자동재생이 중지됩니다. 링크 없는 곡과 재생 오류에서는 자동으로 건너뛰지 않습니다.</p>
   </section>
+  <div id="content" aria-live="polite"></div>
+  <div id="save-bar" class="save-bar" hidden><div><strong>저장하지 않은 변경사항</strong><span>저장하면 방송에 적용됩니다.</span></div><div class="inline"><button data-action="discard">변경 취소</button><button class="primary" data-action="save">변경사항 저장</button></div></div>
+
   <footer>한국 시간 기준 · 매일 00:00 일일 한도 초기화 · 매월 1일 PT·복권·킵 초기화 · EXP·도감 유지</footer></main>
 </div><div id="toast" role="status" aria-live="polite" hidden></div>
 <script src="/minimi.js" defer></script><p style="text-align:center;font-size:12px"><a href="/privacy" target="_blank" rel="noopener">개인정보 · 보관 기간 안내</a></p></body></html>

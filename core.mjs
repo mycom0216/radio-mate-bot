@@ -1,5 +1,6 @@
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue} from './song-queue.mjs';
+import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
 import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
@@ -384,10 +385,12 @@ export class Engine {
       if(!s.requests)fail('신청곡 접수가 닫혀 있습니다.');
       if(!arg||arg.length>500)fail('사용법: !신청곡 YouTube링크 [곡 제목] 또는 가수 - 제목');
       let song;try{song=parseSongRequest(arg);}catch(e){fail(e.message);}
+      song.videoId||=savedSongVideo(r,song.title);
       if(song.title.length>150)fail('곡 제목은 150자 이내로 입력하세요.');
       if(r.lastRequester===u.id&&r.streak>=2)fail('연속 신청은 최대 2곡입니다. 다른 분의 신청 후 다시 신청해주세요.');
       if(r.songs.filter(x=>x.user===u.id).length>=s.requestMax)fail('1인당 대기열 한도에 도달했습니다.');
       if(!s.duplicateSongs&&[r.current,...r.songs].some(x=>x&&(x.title.toLowerCase()===song.title.toLowerCase()||song.videoId&&songVideoId(x)===song.videoId)))fail('이미 등록된 곡입니다.');
+      if(song.videoId)rememberSongVideo(r,song,song.videoId);
       r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;touchQueue(r);r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title.slice(0,65)} · ${song.videoId?"https://youtu.be/"+song.videoId:"DJ가 YouTube 영상을 연결해 재생합니다."}`);
     }
     return {text:null};

@@ -27,3 +27,4 @@ deploy/tunnel-token.txt
 
 deploy/broadcast.env
 data-broadcast/
+deploy/youtube-setup-result.json
