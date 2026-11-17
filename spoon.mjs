@@ -1,6 +1,9 @@
 import {autoChatCandidate} from './extras.mjs';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-const BASE='https://kr-openapi.spooncast.net';
+const REGIONS={kr:'https://kr-openapi.spooncast.net',jp:'https://jp-openapi.spooncast.net'};
+export function spoonRegion(env={}){const region=String(env.SPOON_REGION||'kr').toLowerCase();if(!REGIONS[region])throw Error('SPOON_REGION은 kr 또는 jp여야 합니다.');return region;}
+// SPOON_API_BASE exists only so tests can point at a local mock; it is ignored in production.
+export function apiBase(env={}){if(env.SPOON_API_BASE&&env.NODE_ENV!=='production')return String(env.SPOON_API_BASE).replace(/\/$/,'');return REGIONS[spoonRegion(env)];}
 export function seal(data,key){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',Buffer.from(key,'hex'),iv);const encrypted=Buffer.concat([c.update(JSON.stringify(data),'utf8'),c.final()]);return Buffer.concat([iv,c.getAuthTag(),encrypted]).toString('base64');}
 export function unseal(text,key){const b=Buffer.from(text,'base64'),c=createDecipheriv('aes-256-gcm',Buffer.from(key,'hex'),b.subarray(0,12));c.setAuthTag(b.subarray(12,28));return JSON.parse(Buffer.concat([c.update(b.subarray(28)),c.final()]).toString('utf8'));}
 export async function* frames(body){
@@ -9,9 +12,9 @@ export async function* frames(body){
   finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 export class Spoon {
-  constructor(store,engine,env){this.store=store;this.engine=engine;this.env=env;this.running=new Map();this.status=new Map();this.refreshes=new Map();this.sendTimes=new Map();this.sendEpochs=new Map();this.greeted=new Set();this.timers=new Map();}
+  constructor(store,engine,env){this.store=store;this.engine=engine;this.env=env;this.base=apiBase(env);this.running=new Map();this.status=new Map();this.refreshes=new Map();this.sendTimes=new Map();this.sendEpochs=new Map();this.greeted=new Set();this.timers=new Map();}
   configured(){return !!(this.env.SPOON_CLIENT_ID&&this.env.SPOON_CLIENT_SECRET&&/^[a-fA-F0-9]{64}$/.test(this.env.TOKEN_KEY||''));}
-  async tokenRequest(fields){const res=await fetch(`${BASE}/v1/oauth/token`,{method:'POST',headers:{Authorization:`Basic ${Buffer.from(`${this.env.SPOON_CLIENT_ID}:${this.env.SPOON_CLIENT_SECRET}`).toString('base64')}`,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields),signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error(`Spoon 인증 실패 (${res.status}). 새로 연결해주세요.`);return {...await res.json(),expiresAt:Date.now()+3600000};}
+  async tokenRequest(fields){const res=await fetch(`${this.base}/v1/oauth/token`,{method:'POST',headers:{Authorization:`Basic ${Buffer.from(`${this.env.SPOON_CLIENT_ID}:${this.env.SPOON_CLIENT_SECRET}`).toString('base64')}`,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields),signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error(`Spoon 인증 실패 (${res.status}). 새로 연결해주세요.`);return {...await res.json(),expiresAt:Date.now()+3600000};}
   saveToken(room,t){t.expiresAt=Date.now()+(t.expires_in||3600)*1000;this.store.db.prepare('INSERT INTO tokens VALUES(?,?) ON CONFLICT(room) DO UPDATE SET data=excluded.data').run(room,seal(t,this.env.TOKEN_KEY));this.refreshes.delete(room);}
   async access(room){
     if(this.refreshes.has(room))return this.refreshes.get(room);
@@ -20,7 +23,7 @@ export class Spoon {
     const replacement=()=>{const current=this.store.db.prepare('SELECT data FROM tokens WHERE room=?').get(room);if(current&&current.data!==row.data){const newer=unseal(current.data,this.env.TOKEN_KEY);if(newer.expiresAt>Date.now())return newer.access_token;}return null;};
     const p=(async()=>{let next;try{next=await this.tokenRequest({grant_type:'refresh_token',refresh_token:t.refresh_token});}catch(error){const newer=replacement();if(newer)return newer;throw error;}const newer=replacement();if(newer)return newer;this.saveToken(room,next);return next.access_token;})();this.refreshes.set(room,p);try{return await p;}finally{if(this.refreshes.get(room)===p)this.refreshes.delete(room);}
   }
-  async connect(code){const token=await this.tokenRequest({grant_type:'authorization_code',code,redirect_uri:`${this.env.PUBLIC_URL}/oauth/callback`});const res=await fetch(`${BASE}/v1/me`,{headers:{Authorization:`Bearer ${token.access_token}`},signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('DJ 정보를 확인할 수 없습니다. me.read 권한을 확인하세요.');const {userId}=await res.json();if(!userId)throw Error('DJ ID가 없습니다.');this.store.create(userId,`DJ ${userId.slice(0,6)}`);this.stop(userId);this.saveToken(userId,token);this.start(userId);return userId;}
+  async connect(code){const token=await this.tokenRequest({grant_type:'authorization_code',code,redirect_uri:`${this.env.PUBLIC_URL}/oauth/callback`});const res=await fetch(`${this.base}/v1/me`,{headers:{Authorization:`Bearer ${token.access_token}`},signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('DJ 정보를 확인할 수 없습니다. me.read 권한을 확인하세요.');const {userId}=await res.json();if(!userId)throw Error('DJ ID가 없습니다.');this.store.create(userId,`DJ ${userId.slice(0,6)}`);this.stop(userId);this.saveToken(userId,token);this.start(userId);return userId;}
   async send(room,message){
     if(!message)return false;
     const now=Date.now(),r=this.store.load(room);if(!r?.live)return false;
@@ -32,7 +35,7 @@ export class Spoon {
     try{
       const token=await this.access(room);
       if((this.sendEpochs.get(room)||0)!==epoch||!this.store.load(room)?.live)return false;
-      const res=await fetch(`${BASE}/v1/live/chat`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:clipped}),signal:AbortSignal.timeout(10000)});
+      const res=await fetch(`${this.base}/v1/live/chat`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:clipped}),signal:AbortSignal.timeout(10000)});
       if(!res.ok)this.store.log(room,'system','chat-send-failed',{status:res.status});return res.ok;
     }catch{if((this.sendEpochs.get(room)||0)===epoch)this.store.log(room,'system','chat-send-failed',{reason:'connection-or-authentication'});return false;}
   }
@@ -43,7 +46,7 @@ export class Spoon {
       try{
         this.status.set(room,'방송 대기 / 연결 중');
         const token=await this.access(room);if(signal.aborted)return;
-        const res=await fetch(`${BASE}/v1/live/events`,{headers:{Authorization:`Bearer ${token}`,Accept:'text/event-stream'},signal:AbortSignal.any([signal,AbortSignal.timeout(65*60*1000)])});
+        const res=await fetch(`${this.base}/v1/live/events`,{headers:{Authorization:`Bearer ${token}`,Accept:'text/event-stream'},signal:AbortSignal.any([signal,AbortSignal.timeout(65*60*1000)])});
         if(signal.aborted)return;
         if(res.status===404){this.setLive(room,false);this.status.set(room,'방송 시작 대기');}
         else if(res.status===401||res.status===403){this.setLive(room,false);this.status.set(room,`재연결 또는 권한 확인 필요 (${res.status})`);return;}

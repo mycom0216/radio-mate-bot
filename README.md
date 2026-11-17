@@ -98,6 +98,7 @@ HOST=0.0.0.0
 PORT=4310
 ```
 
+- 지역: 개발자 앱을 등록한 지역에 맞춰 `SPOON_REGION=kr`(한국, 기본) 또는 `jp`(일본)를 설정합니다. 로그인 주소(`/kr` 또는 `/jp`)와 API 서버(`kr-openapi`/`jp-openapi`)가 함께 바뀝니다. 한 서버는 한 지역만 지원하며, DJ 계정의 지역이 앱 지역과 다르면 방송을 찾지 못합니다.
 - 개발자센터 Redirect URI: `https://your-domain.example/oauth/callback`
 - 요청 scope: `me.read events.chat chat.send events.presence events.like events.donation`
 - 입장 이벤트 수신에는 봇 계정을 방송 매니저로 지정해야 합니다. 채팅/후원 권한과 별개입니다.
@@ -224,3 +225,8 @@ ERD는 실제 SQLite 7개 테이블과 방송 JSON 내부 모델을 구분했습
 - 리버스 프록시 뒤에서 운영할 때 `TRUST_PROXY=1`을 설정하면 음성 접수 제한이 `X-Forwarded-For`의 클라이언트 IP 기준으로 적용됩니다. 프록시 없이 공개하면 안 됩니다.
 - Docker 이미지가 모든 서버 모듈을 포함하도록 수정했습니다(이전에는 일부 모듈이 빠져 컨테이너가 시작되지 않았습니다).
 - 처리되지 않은 예외로 프로세스가 죽지 않도록 로그만 남기고, 종료 시 5초 안에 강제 종료합니다.
+
+### 지역(일본) 지원과 모의 연동 테스트
+
+- `SPOON_REGION=jp`로 일본 서버를 사용할 수 있습니다. 잘못된 값은 서버 시작 시 거부합니다.
+- `test/spoon-e2e.test.mjs`는 로컬 모의 스푼 API로 OAuth 로그인(state 재사용 거부 포함) → 토큰 교환(Basic 인증) → `/v1/me` → SSE 채팅 이벤트 수신 → `/v1/live/chat` 응답 전송까지 검증합니다. 실제 스푼 서버·계정이 아니라 문서 기준 모의 서버입니다. `SPOON_API_BASE`는 테스트 전용이며 운영 환경에서는 무시됩니다.

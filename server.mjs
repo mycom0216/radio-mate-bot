@@ -6,11 +6,11 @@ import { mkdirSync,readFileSync,existsSync,writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname,join } from 'node:path';
 import { Store,Engine,defaults,validateSettings,dates,LIMIT } from './core.mjs';
-import { Spoon } from './spoon.mjs';
+import { Spoon,spoonRegion } from './spoon.mjs';
 import {buildDiagnostics} from './diagnostics.mjs';
 const ROOT=dirname(fileURLToPath(import.meta.url));
 const env={...process.env};env.PUBLIC_URL=(env.PUBLIC_URL||'http://localhost:4310').replace(/\/$/,'');
-const production=env.NODE_ENV==='production';
+const production=env.NODE_ENV==='production';spoonRegion(env);
 const trustProxy=env.TRUST_PROXY==='1'||env.TRUST_PROXY==='true';
 function clientIp(req){if(trustProxy){const f=String(req.headers['x-forwarded-for']||'').split(',').pop().trim();if(f)return f;}return req.socket.remoteAddress||'';}
 if(production&&(!env.PUBLIC_URL.startsWith('https://')||!/^[a-fA-F0-9]{64}$/.test(env.TOKEN_KEY||'')))throw Error('운영 환경에는 PUBLIC_URL HTTPS와 TOKEN_KEY가 필요합니다.');
@@ -67,7 +67,7 @@ const server=createServer(async(req,res)=>{
     if(path==='/oauth/start'&&req.method==='GET'){
       if(!spoon.configured())throw Error('서버의 SPOON_CLIENT_ID와 SPOON_CLIENT_SECRET을 설정해주세요.');
       const state=randomBytes(32).toString('hex');oauth.set(digest(state),Date.now()+10*60000);res.setHeader('Set-Cookie',`oauth=${state}; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=600${production?'; Secure':''}`);
-      const q=new URLSearchParams({response_type:'code',client_id:env.SPOON_CLIENT_ID,redirect_uri:`${env.PUBLIC_URL}/oauth/callback`,scope:'me.read events.chat chat.send events.presence events.like events.donation',state});res.writeHead(302,{Location:`https://developers.spooncast.net/kr/oauth/authorize?${q}`});res.end();return;
+      const q=new URLSearchParams({response_type:'code',client_id:env.SPOON_CLIENT_ID,redirect_uri:`${env.PUBLIC_URL}/oauth/callback`,scope:'me.read events.chat chat.send events.presence events.like events.donation',state});res.writeHead(302,{Location:`https://developers.spooncast.net/${spoonRegion(env)}/oauth/authorize?${q}`});res.end();return;
     }
     if(path==='/oauth/callback'&&req.method==='GET'){
       const state=url.searchParams.get('state')||'',cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('oauth='))?.slice(6);
