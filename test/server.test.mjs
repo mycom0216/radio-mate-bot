@@ -68,8 +68,9 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/song',{action:'finish'});assert.equal(res.status,200);
     res=await request('/api/song',{action:'finish'});assert.equal(res.status,400);
     res=await fetch(address+'/api/room',{headers});r=await res.json();assert.equal(r.previous.title,'가수 - 첫 곡');
-    res=await request('/api/test',{message:'!이전곡',user:'a',name:'A',dj:true});assert.equal((await res.json()).text,'이전곡: 가수 - 첫 곡');
+    res=await request('/api/test',{message:'!이전곡',user:'a',name:'A',dj:true});assert.match((await res.json()).text,/이전곡: 가수 - 첫 곡.*선택됨/);
     res=await request('/api/test',{message:'!신청곡 https://youtu.be/M7lc1UVf-VE',user:'a',name:'A',dj:true});assert.equal(res.status,200);
+    res=await request('/api/test',{message:'!다음곡',user:'a',name:'A',dj:true});assert.match((await res.json()).text,/선택됨/);
     res=await request('/api/song',{action:'start'});assert.equal(res.status,200);const playing=(await res.json()).room.current;assert.equal(playing.videoId,'M7lc1UVf-VE');
     res=await request('/api/song',{action:'start'});assert.equal((await res.json()).room.current.id,playing.id);
     res=await request('/api/song-resolve',{id:playing.id,url:'https://evil.example/watch?v=M7lc1UVf-VE'});assert.equal(res.status,400);
@@ -89,7 +90,10 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/voice-link',{action:'enable'});assert.equal(res.status,200);
     res=await fetch(address+'/api/voice-inbox',{headers});const inbox=await res.json();assert.equal(inbox.enabled,true);
     const voiceToken=new URL(inbox.url).pathname.split('/').at(-1),publicPath='/api/voice-public/'+voiceToken;
-    res=await fetch(address+'/voice/'+voiceToken);assert.equal(res.status,200);assert.match(await res.text(),/voice-form/);
+    assert.equal(voiceToken.length,43);
+    for(const path of [new URL(inbox.url).pathname,'/voice/'+Buffer.from(voiceToken,'base64url').toString('hex')]){
+      res=await fetch(address+path);assert.equal(res.status,200);assert.match(await res.text(),/voice-form/);
+    }
     const audio=Buffer.alloc(60);audio.write('RIFF');audio.writeUInt32LE(52,4);audio.write('WAVEfmt ',8);audio.writeUInt32LE(16,16);audio.writeUInt16LE(1,20);audio.writeUInt16LE(1,22);audio.writeUInt32LE(8000,24);audio.writeUInt32LE(16000,28);audio.writeUInt16LE(2,32);audio.writeUInt16LE(16,34);audio.write('data',36);audio.writeUInt32LE(16,40);
     const uploadHeaders={'Content-Type':'audio/wav','X-Voice-Name':encodeURIComponent('방문자'),'X-Voice-Title':encodeURIComponent('음성 테스트'),'X-Voice-Request':'http-voice-request-001'};
     res=await fetch(address+publicPath,{method:'POST',headers:{...uploadHeaders,Origin:'https://evil.example'},body:audio});assert.equal(res.status,403);

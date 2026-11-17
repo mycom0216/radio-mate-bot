@@ -66,7 +66,7 @@ const server=createServer(async(req,res)=>{
   try{
     req.clientIp=clientIp(req);
     const url=new URL(req.url,env.PUBLIC_URL),path=url.pathname;
-    const voicePublic=/^\/api\/voice-public\/([a-f0-9]{64})$/.exec(path);
+    const voicePublic=/^\/api\/voice-public\/([a-f0-9]{64}|[A-Za-z0-9_-]{43})$/.exec(path);
     if(voicePublic){
       res.setHeader('Referrer-Policy','no-referrer');
       if(req.method==='GET'){const roomId=voice.resolve(voicePublic[1]);reply(res,200,{name:store.load(roomId).name,maxBytes:8388608});return;}
@@ -75,7 +75,7 @@ const server=createServer(async(req,res)=>{
         reply(res,201,await voice.upload(req,voicePublic[1]));return;
       }throw Object.assign(Error('지원하지 않는 요청입니다.'),{status:405});
     }
-    if(/^\/voice\/[a-f0-9]{64}$/.test(path)&&req.method==='GET'){
+    if((/^\/voice\/[a-f0-9]{64}$/.test(path)||/^\/v\/[A-Za-z0-9_-]{43}$/.test(path))&&req.method==='GET'){
       res.setHeader('Referrer-Policy','no-referrer');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(readFileSync(join(ROOT,'public','voice.html')));return;
     }
     if(path==='/privacy'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(readFileSync(join(ROOT,'public','privacy.html'),'utf8').replaceAll('{{VOICE_DAYS}}',voiceRetention?String(voiceRetention)+'일':'DJ가 삭제할 때까지'));return;}
@@ -98,7 +98,7 @@ const server=createServer(async(req,res)=>{
     if(path==='/oauth/start'&&req.method==='GET'){
       if(!spoon.configured())throw Error('서버의 SPOON_CLIENT_ID와 SPOON_CLIENT_SECRET을 설정해주세요.');
       const state=randomBytes(32).toString('hex');oauth.set(digest(state),Date.now()+10*60000);res.setHeader('Set-Cookie',`oauth=${state}; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=600${production?'; Secure':''}`);
-      const q=new URLSearchParams({response_type:'code',client_id:env.SPOON_CLIENT_ID,redirect_uri:`${env.PUBLIC_URL}/oauth/callback`,scope:'me.read events.chat chat.send events.presence events.like events.donation',state});res.writeHead(302,{Location:`https://developers.spooncast.net/${spoonRegion(env)}/oauth/authorize?${q}`});res.end();return;
+      const q=new URLSearchParams({response_type:'code',client_id:env.SPOON_CLIENT_ID,redirect_uri:`${env.PUBLIC_URL}/oauth/callback`,scope:'me.read listeners.read events.chat chat.send events.presence events.like events.donation',state});res.writeHead(302,{Location:`https://developers.spooncast.net/${spoonRegion(env)}/oauth/authorize?${q}`});res.end();return;
     }
     if(path==='/oauth/callback'&&req.method==='GET'){
       const state=url.searchParams.get('state')||'',cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('oauth='))?.slice(6);
@@ -119,7 +119,7 @@ const server=createServer(async(req,res)=>{
       }
       if(req.method==='GET'&&path==='/api/room'){store.transaction(roomId,r=>engine.reset(r));reply(res,200,safeRoom(roomId));return;}
       if(req.method==='GET'&&path==='/api/voice-inbox'){
-        const link=voice.link(roomId);reply(res,200,{preview:!!sandbox?.has(roomId),enabled:link.enabled,url:link.token?`${env.PUBLIC_URL}/voice/${link.token}`:null,cards:voice.list(roomId)});return;
+        const link=voice.link(roomId);reply(res,200,{preview:!!sandbox?.has(roomId),enabled:link.enabled,url:voice.url(roomId,env.PUBLIC_URL),cards:voice.list(roomId)});return;
       }
       const voiceFile=/^\/api\/voice-file\/([a-f0-9-]{36})$/.exec(path);
       if(voiceFile&&req.method==='GET'){
@@ -131,7 +131,7 @@ const server=createServer(async(req,res)=>{
       if(req.method!=='POST')throw Object.assign(Error('지원하지 않는 요청입니다.'),{status:404});
       const key=digest(req.headers.cookie||'');const a=attempts.get(key)||{time:Date.now(),count:0};if(Date.now()-a.time>60000){a.time=Date.now();a.count=0;}if(++a.count>(sandbox?.has(roomId)?60:180))throw Object.assign(Error('요청이 너무 많습니다.'),{status:429});attempts.set(key,a);
       const b=await body(req);
-      if(path==='/api/voice-link'){if(sandbox?.has(roomId))throw Error('공개 테스트에서는 실제 음성을 접수하지 않습니다. DJ 연결 후 사용하세요.');store.transaction(roomId,r=>{const link=voice.setLink(roomId,b.action);r.voiceInboxUrl=link.enabled?`${env.PUBLIC_URL}/voice/${link.token}`:null;store.log(roomId,'dj','voice-link',{action:b.action});});reply(res,200,{ok:true});return;}
+      if(path==='/api/voice-link'){if(sandbox?.has(roomId))throw Error('공개 테스트에서는 실제 음성을 접수하지 않습니다. DJ 연결 후 사용하세요.');store.transaction(roomId,r=>{voice.setLink(roomId,b.action);r.voiceInboxUrl=voice.url(roomId,env.PUBLIC_URL);store.log(roomId,'dj','voice-link',{action:b.action});});reply(res,200,{ok:true});return;}
       if(path==='/api/voice-action'){voice.action(roomId,b.id,b.action);store.log(roomId,'dj','voice-action',{id:b.id,action:b.action});reply(res,200,{ok:true});return;}
       if(path==='/api/outbox-retry'){if(b.confirm!=='중복 가능성 확인')throw Error('재전송 전 확인이 필요합니다.');spoon.outbox.retry(roomId,b.id);reply(res,200,{ok:true});return;}
       if(path==='/api/outbox-cancel'){spoon.outbox.cancel(roomId,b.id);reply(res,200,{ok:true});return;}
@@ -230,7 +230,7 @@ const server=createServer(async(req,res)=>{
 });
 // Bound slow headers/uploads and idle keep-alive sockets on the public server.
 server.headersTimeout=15000;server.requestTimeout=120000;server.keepAliveTimeout=5000;
-for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{r.voiceInboxUrl=voice.url(id,env.PUBLIC_URL);if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;engine.syncBuffs(r);});spoon.start(id);}
+for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{r.voiceInboxUrl=voice.url(id,env.PUBLIC_URL);if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;r.listenerSnapshot={};engine.syncBuffs(r);});spoon.start(id);}
 const timer=setInterval(()=>spoon.tick().catch(e=>console.error('scheduler:',e.message)),5000);
 const cleanup=setInterval(()=>{sandbox?.expire();sandbox?.services.store.prune({eventsKeep:2000,backupsKeep:5,auditDays:1});const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
 server.listen(Number(env.PORT||4310),env.HOST||'127.0.0.1',()=>console.log(`Spoon Studio: http://${env.HOST||'127.0.0.1'}:${server.address().port} (${production?'production':'local demo'})`));

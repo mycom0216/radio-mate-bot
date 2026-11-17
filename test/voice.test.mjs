@@ -5,7 +5,7 @@ import {mkdtempSync,rmSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
 import {Store} from '../core.mjs';
-import {VoiceInbox,audioType,MAX_VOICE_BYTES} from '../voice.mjs';
+import {VoiceInbox,audioType,MAX_VOICE_BYTES,voiceSlug,voiceToken} from '../voice.mjs';
 function fixture(){const dir=mkdtempSync(join(tmpdir(),'radio-voice-test-')),store=new Store();store.create('a','A');store.create('b','B');const voice=new VoiceInbox(store.db,dir);return {dir,store,voice,close(){store.db.close();if(!resolve(dir).startsWith(resolve(tmpdir())+sep))throw Error('Unsafe test cleanup');rmSync(dir,{recursive:true,force:true});}};}
 function wav(){const b=Buffer.alloc(60);b.write('RIFF');b.writeUInt32LE(52,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(8000,24);b.writeUInt32LE(16000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(16,40);return b;}
 function request(data=wav(),id='voice-request-00001',ip='127.0.0.1'){const req=Readable.from([data]);req.headers={'x-voice-name':encodeURIComponent('청취자'),'x-voice-title':encodeURIComponent('안녕하세요'),'x-voice-request':id,'content-length':String(data.length)};req.socket={remoteAddress:ip};return req;}
@@ -23,5 +23,15 @@ test('voice intake enforces room capacity and per-connection upload rate',async(
 });
 
 test('voice link uses current public origin and stays disabled after shutdown',()=>{
- const f=fixture();try{const link=f.voice.setLink('a','enable');assert.equal(f.voice.url('a','https://new.example'),'https://new.example/voice/'+link.token);f.voice.setLink('a','disable');assert.equal(f.voice.url('a','https://new.example'),null);}finally{f.close();}
+ const f=fixture();try{const link=f.voice.setLink('a','enable');assert.equal(f.voice.url('a','https://new.example'),'https://new.example/v/'+voiceSlug(link.token));f.voice.setLink('a','disable');assert.equal(f.voice.url('a','https://new.example'),null);}finally{f.close();}
+});
+
+test('compact voice links preserve the full token and share revocation and upload checks',async()=>{
+ const f=fixture();try{
+  const link=f.voice.setLink('a','enable'),slug=voiceSlug(link.token);
+  assert.equal(slug.length,43);assert.equal(voiceToken(slug),link.token);assert.equal(f.voice.resolve(slug),'a');assert.equal(f.voice.resolve(link.token),'a');
+  const upload=await f.voice.upload(request(),slug);assert.equal(f.voice.list('a')[0].id,upload.id);
+  assert.equal(voiceToken(slug+'x'),null);assert.equal(voiceToken('!'.repeat(43)),null);
+  f.voice.setLink('a','rotate');assert.throws(()=>f.voice.resolve(slug),/중지/);assert.throws(()=>f.voice.resolve(link.token),/중지/);
+ }finally{f.close();}
 });

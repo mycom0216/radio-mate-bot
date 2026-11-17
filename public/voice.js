@@ -40,8 +40,12 @@ $('voice-form').onsubmit=async event=>{
   }catch(error){status(`${error.message||'전송 중 오류가 발생했습니다.'} 다시 전송을 누르면 중복 접수를 확인합니다.`);}finally{sending=false;controls();}
 };
 window.addEventListener('pagehide',()=>{recordAttempt++;if(recorder?.state==='recording')recorder.stop();stopTracks();if(clipUrl)URL.revokeObjectURL(clipUrl);});
+async function checkIntake(){
+ $('voice-retry').hidden=true;$('voice-intro').textContent='접수 상태를 확인하고 있습니다…';
 try{
-  const res=await fetch(endpoint),data=await res.json();if(!res.ok)throw Error(data.error);
+  const res=await fetch(endpoint,{signal:AbortSignal.timeout(12000),cache:'no-store'});if(!res.headers.get('content-type')?.includes('application/json'))throw Error('접수 서버에 연결하지 못했습니다. Safari·Chrome에서 다시 열어주세요.');const data=await res.json();if(!res.ok)throw Error(data.error);
   $('voice-heading').textContent=`${data.name}에게 음성 보내기`;$('voice-intro').textContent='팬 등록 없이 보낼 수 있는 별도 음성메시지 접수함입니다.';$('voice-form').hidden=false;controls();
   if(!navigator.mediaDevices?.getUserMedia||!globalThis.MediaRecorder)status('이 환경에서는 직접 녹음을 사용할 수 없습니다. 음성 파일을 선택해 보내세요.');
-}catch(error){$('voice-intro').textContent='현재 접수할 수 없습니다.';status(error.message||'접수 링크를 확인해 주세요.');}
+}catch(error){$('voice-intro').textContent='접수 상태를 확인하지 못했습니다.';status(error.name==='TimeoutError'?'서버 응답이 지연됩니다. 다시 확인하거나 Safari·Chrome에서 열어주세요.':error.message||'접수 링크를 확인해 주세요.');$('voice-retry').hidden=false;}
+}
+$('voice-retry').onclick=()=>void checkIntake();void checkIntake();

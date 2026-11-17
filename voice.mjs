@@ -2,6 +2,12 @@ import {randomBytes,randomUUID} from 'node:crypto';
 import {mkdirSync,writeFileSync,readFileSync,unlinkSync} from 'node:fs';
 import {join} from 'node:path';
 export const MAX_VOICE_BYTES=8*1024*1024;
+export const voiceSlug=token=>Buffer.from(token,'hex').toString('base64url');
+export function voiceToken(value){
+  if(/^[a-f0-9]{64}$/.test(value))return value;
+  if(/^[A-Za-z0-9_-]{43}$/.test(value)){const token=Buffer.from(value,'base64url').toString('hex');if(voiceSlug(token)===value)return token;}
+  return null;
+}
 export function audioRange(header,size){
   if(!header)return {start:0,end:size-1};
   const m=/^bytes=(\d*)-(\d*)$/.exec(header);
@@ -27,13 +33,13 @@ export class VoiceInbox {
       CREATE TABLE IF NOT EXISTS voice_cards(id TEXT PRIMARY KEY,room TEXT NOT NULL,nickname TEXT NOT NULL,title TEXT NOT NULL,mime TEXT NOT NULL,bytes INTEGER NOT NULL,created INTEGER NOT NULL,is_read INTEGER NOT NULL DEFAULT 0,request_id TEXT NOT NULL,UNIQUE(room,request_id));`);
   }
   link(room){const row=this.db.prepare('SELECT token,enabled FROM voice_links WHERE room=?').get(room);return {token:row?.token||null,enabled:!!row?.enabled};}
-  url(room,origin){const link=this.link(room);return link.enabled?`${origin}/voice/${link.token}`:null;}
+  url(room,origin){const link=this.link(room);return link.enabled?`${origin}/v/${voiceSlug(link.token)}`:null;}
   setLink(room,action){
     if(!['enable','disable','rotate'].includes(action))fail('접수 링크 동작을 확인하세요.');
     const old=this.link(room),token=action==='rotate'||!old.token?randomBytes(32).toString('hex'):old.token;
     this.db.prepare('INSERT INTO voice_links VALUES(?,?,?) ON CONFLICT(room) DO UPDATE SET token=excluded.token,enabled=excluded.enabled').run(room,token,action==='disable'?0:1);return this.link(room);
   }
-  resolve(token){if(!/^[a-f0-9]{64}$/.test(token))fail('접수 링크가 유효하지 않습니다.',404);const row=this.db.prepare('SELECT room FROM voice_links WHERE token=? AND enabled=1').get(token);if(!row)fail('접수가 중지되었거나 변경된 링크입니다.',404);return row.room;}
+  resolve(value){const token=voiceToken(value);if(!token)fail('접수 링크가 유효하지 않습니다.',404);const row=this.db.prepare('SELECT room FROM voice_links WHERE token=? AND enabled=1').get(token);if(!row)fail('접수가 중지되었거나 변경된 링크입니다.',404);return row.room;}
   list(room){return this.db.prepare('SELECT id,nickname,title,mime,bytes,created,is_read FROM voice_cards WHERE room=? ORDER BY created DESC').all(room);}
   file(room,id){if(!/^[a-f0-9-]{36}$/.test(id))fail('음성 메시지를 찾을 수 없습니다.',404);const row=this.db.prepare('SELECT * FROM voice_cards WHERE room=? AND id=?').get(room,id);if(!row)fail('음성 메시지를 찾을 수 없습니다.',404);return {row,data:readFileSync(join(this.dir,id))};}
   action(room,id,action){

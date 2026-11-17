@@ -6,13 +6,22 @@ export class Playback {
   stop(message='일시정지했습니다. 재생 시작을 누르면 이어서 재생합니다.'){
     this.running=false;this.generation++;this.pause();this.onStatus(message);
   }
+  async syncControl(room){
+    const control=room.playbackControl;
+    if(!control||control.id===this.controlId)return false;
+    this.controlId=control.id;
+    const age=Date.now()-control.time;if(!Number.isFinite(age)||age< -5000||age>60000)return false;
+    if(control.action==='pause'){this.stop('DJ의 !멈춤 명령으로 일시정지했습니다.');return true;}
+    if(control.action==='play'){await this.start(room);return true;}return false;
+  }
   async start(room){
     if(this.pending)return;this.pending=true;const generation=this.generation;
-    if(!room.current&&Array.isArray(room.songs)&&!room.songs.length){this.running=true;this.pending=false;this.onStatus('신청곡을 기다리는 중입니다. 새 신청곡이 들어오면 재생합니다.');return;}
-    try{if(!room.current){const result=await this.api('/api/song',{action:'start'});room=result.room;this.onRoom(room);}if(this.generation!==generation)return;this.running=true;await this.sync(room,true);}
+    if(!room.current&&!room.songSelection&&Array.isArray(room.songs)&&!room.songs.length){this.running=true;this.pending=false;this.onStatus('신청곡을 기다리는 중입니다. 새 신청곡이 들어오면 재생합니다.');return;}
+    try{if(!room.current||room.songSelection){const result=await this.api('/api/song',{action:'start',expectedQueueRevision:room.queueRevision||0,expectedCurrentId:room.current?.id||null});room=result.room;this.onRoom(room);}if(this.generation!==generation)return;this.running=true;await this.sync(room,true);}
     catch(e){this.stop(e.message);}finally{this.pending=false;}
   }
   async sync(room,force=false){
+    if(room.playbackControl&&room.playbackControl.id!==this.controlId&&await this.syncControl(room))return;
     if(!this.running)return;
     const song=room.current;if(!song){
       if(this.song){this.pause();this.generation++;}this.song=null;

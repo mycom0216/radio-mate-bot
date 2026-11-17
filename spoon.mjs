@@ -93,10 +93,26 @@ export class Spoon {
       await new Promise(resolve=>{const timer=setTimeout(done,backoff);function done(){clearTimeout(timer);signal.removeEventListener('abort',done);resolve();}signal.addEventListener('abort',done,{once:true});});backoff=Math.min(60000,backoff*1.5);
     }}finally{if(this.running.get(room)===controller&&this.store.load(room)){this.setLive(room,false);this.running.delete(room);}}
   }
-  setLive(room,live){this.store.transaction(room,r=>{this.engine.syncBuffs(r);r.live=live;this.engine.syncBuffs(r);if(live&&!r.introDueAt)r.introDueAt=Date.now()+600000;});}
+  setLive(room,live){this.store.transaction(room,r=>{this.engine.syncBuffs(r);if(r.live!==live)r.listenerSnapshot={};r.live=live;this.engine.syncBuffs(r);if(live&&!r.introDueAt)r.introDueAt=Date.now()+600000;});}
+  async pollListeners(room){
+    try{
+      const token=await this.access(room),listeners=[],seen=new Set();let cursor=null;
+      do{
+        const url=new URL(`${this.base}/v1/live/listeners`);if(cursor)url.searchParams.set('cursor',cursor);
+        const res=await fetch(url,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});
+        if(!res.ok)throw Error(res.status===403?'청취 자동 보상: listeners.read 권한으로 스푼을 다시 연결하세요.':`청취자 확인 실패 (${res.status}) · 이번 시간은 적립하지 않습니다.`);
+        const page=await res.json();if(!Array.isArray(page.listeners)||page.nextCursor!==null&&typeof page.nextCursor!=='string')throw Error('청취자 응답 형식을 확인하지 못했습니다.');
+        listeners.push(...page.listeners);cursor=page.nextCursor;
+        if(cursor){if(seen.has(cursor)||seen.size>=100)throw Error('청취자 목록 전체를 확인하지 못했습니다.');seen.add(cursor);}
+      }while(cursor);
+      this.engine.listenerSnapshot(room,listeners);
+    }catch(error){if(this.store.load(room))this.store.transaction(room,r=>{r.listenerSnapshot={};r.listeningStatus=error.message;});}
+  }
   async tick(){
     if(this.ticking)return;this.ticking=true;
     try{for(const id of this.store.ids()){
+      const listeningRoom=this.store.load(id),pollKey='listeners:'+id;
+      if(this.configured()&&listeningRoom.live&&listeningRoom.settings.listenRewards&&Date.now()-(this.timers.get(pollKey)||0)>=60000){this.timers.set(pollKey,Date.now());await this.pollListeners(id);}
       let notice=null,isIntro=false,autoChat=null,announcement=null;
       this.store.transaction(id,r=>{
         this.engine.reset(r);

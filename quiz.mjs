@@ -13,6 +13,13 @@ const questions=[
 ].map(([id,question,answers])=>({id,question,answers}));
 export const defaultQuizQuestions=()=>structuredClone(questions);
 const normalize=text=>String(text).normalize('NFKC').replace(/\s+/gu,'').toLocaleLowerCase('ko-KR');
+export function quizHint(answer){
+  return [...String(answer).normalize('NFC')].map(char=>{
+    const code=char.codePointAt(0)-0xac00;
+    if(code>=0&&code<11172)return 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'[Math.floor(code/588)];
+    return /[\p{L}\p{N}]/u.test(char)?'○':char;
+  }).join('');
+}
 export function playQuiz(engine,r,u,cmd,arg,now,fail){
   if(!['퀴즈','정답'].includes(cmd))return null;
   if(!r.settings.quiz)fail('퀴즈가 꺼져 있습니다. !게임 on으로 켜거나 게임 설정에서 활성화하세요.');
@@ -33,11 +40,13 @@ export function playQuiz(engine,r,u,cmd,arg,now,fail){
       const selected=pool[engine.int(0,pool.length-1)];u.quizSeen.push(selected.id);
       round=u.quizRound={...selected,reward:r.settings.quizExp,expiresAt:now+(r.settings.quizMinutes||5)*60000};
     }
-    return `${u.name}님 퀴즈! ${round.question}\n!정답 답안 으로 입력하세요. 정답 +${round.reward} EXP · 남은 시간 ${Math.ceil((round.expiresAt-now)/60000)}분 · !퀴즈 포기`;
+    const hint=quizHint(round.answers[0]),suffix=`\n정답: ${[...hint].slice(0,40).join('')} (초성)\n!정답 답안 · +${round.reward} EXP · ${Math.ceil((round.expiresAt-now)/60000)}분 · !퀴즈 포기`;
+    const prefix=`${[...u.name].slice(0,12).join('')}님 퀴즈! `,budget=200-[...prefix+suffix].length;
+    return prefix+[...round.question].slice(0,Math.max(1,budget)).join('')+suffix;
   }
   if(!arg.trim())fail('사용법: !정답 답안 (먼저 !퀴즈로 문제를 받아 주세요.)');
   if(!round)fail('진행 중인 문제가 없거나 시간이 지났습니다. !퀴즈로 새 문제를 받아 주세요.');
-  if(!round.answers.some(answer=>normalize(answer)===normalize(arg)))return `${u.name}님, 아쉬워요! 다시 생각해 보세요. !정답 답안 / !퀴즈 포기`;
+  if(!round.answers.some(answer=>normalize(answer)===normalize(arg)))return `${u.name}님, 아쉬워요! 정답: ${quizHint(round.answers[0])} (초성) · !정답 답안 / !퀴즈 포기`;
   const next=u.exp+round.reward;
   if(!Number.isSafeInteger(next))fail('경험치가 처리 가능한 범위를 초과해 지급하지 않았습니다.');
   const previousLevel=Math.floor(u.exp/r.settings.levelStep)+1,level=Math.floor(next/r.settings.levelStep)+1;
