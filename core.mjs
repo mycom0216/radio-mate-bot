@@ -144,7 +144,7 @@ export class Engine {
     for(const u of Object.values(r.users)){
       u.buffPaused??={};
       for(const item of r.settings.items){
-        const paused=r.settings.pauseItems&&(r.id!=='demo'&&!r.live||r.settings.quiet||!(item.id==='odd'?r.settings.odd:r.settings.fishing));
+        const paused=r.settings.pauseItems&&(r.id!=='demo'&&!r.demo&&!r.live||r.settings.quiet||!(item.id==='odd'?r.settings.odd:r.settings.fishing));
         const since=u.buffPaused[item.id];
         if(since!==undefined){const elapsed=Math.max(0,now-since);if(u.buffs[item.id]>since)u.buffs[item.id]=Math.min(Number.MAX_SAFE_INTEGER,u.buffs[item.id]+elapsed);}
         if(paused)u.buffPaused[item.id]=now;else delete u.buffPaused[item.id];
