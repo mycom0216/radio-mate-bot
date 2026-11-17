@@ -1,4 +1,5 @@
 import {Outbox} from './outbox.mjs';
+import {expireQuizRounds} from './quiz.mjs';
 import {autoChatCandidate} from './extras.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 const REGIONS={kr:'https://kr-openapi.spooncast.net',jp:'https://jp-openapi.spooncast.net'};
@@ -116,6 +117,7 @@ export class Spoon {
       let notice=null,isIntro=false,autoChat=null,announcement=null;
       this.store.transaction(id,r=>{
         this.engine.reset(r);
+        if(r.live&&!r.settings.quiet)for(const expired of expireQuizRounds(this.engine,r,Date.now()))this.outbox.enqueue(id,expired.key,expired.text);
         if(!r.live||r.settings.quiet||Date.now()-r.lastResponse<r.settings.responseGap*1000)return;
         if(r.settings.introEnabled){if(!r.introDueAt)r.introDueAt=Date.now()+600000;if(Date.now()>=r.introDueAt){notice=r.settings.introText;isIntro=true;return;}}
         autoChat=autoChatCandidate(r,Date.now(),(min,max)=>this.engine.int(min,max));if(autoChat){notice=autoChat.text;return;}

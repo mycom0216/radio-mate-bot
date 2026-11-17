@@ -7,7 +7,7 @@ test('quiz initials mask non-Hangul answers and keep hints within the chat limit
  assert.equal(quizHint('안경'),'ㅇㄱ');assert.equal(quizHint('서울 특별시'),'ㅅㅇ ㅌㅂㅅ');assert.equal(quizHint('60분'),'○○ㅂ');assert.equal(quizHint('radio mate'),'○○○○○ ○○○○');
  const store=new Store();store.create('r','R');const engine=new Engine(store);
  try{store.transaction('r',r=>Object.assign(r.settings,{quiz:true,quizQuestions:[{id:'one',question:'문'.repeat(200),answers:['안경']}]}));
- const out=engine.handle('r',{id:'quiz',message:'!퀴즈',isDj:true,user:{id:'dj',nickname:'DJ'}});assert.match(out.text,/정답: ㅇㄱ \(초성\)/);assert.ok([...out.text].length<=200);assert.ok(!out.text.includes('안경'));
+ const out=engine.handle('r',{id:'quiz',message:'!퀴즈',isDj:true,user:{id:'dj',nickname:'DJ'}});assert.match(out.text,/초성: ㅇㄱ \(힌트: 단어\)/);assert.ok([...out.text].length<=200);assert.ok(!out.text.includes('안경'));
  }finally{store.db.close();}
 });
 test('listening rewards count consecutive snapshots once, cap per day and exclude disconnected gaps',()=>{

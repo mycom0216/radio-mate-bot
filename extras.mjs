@@ -1,16 +1,18 @@
 import {defaultQuizQuestions} from './quiz.mjs';
-export function extraDefaults(){return {listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:12,rps:false,dice:false,numberGuess:false,quiz:false,quizExp:50,quizMinutes:5,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.']};}
+export function extraDefaults(){return {listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.']};}
 export function normalizeExtras(settings){const d=extraDefaults();for(const [key,value]of Object.entries(d))if(settings[key]===undefined)settings[key]=value;return settings;}
 export function validateExtras(s){
   normalizeExtras(s);
+  if(!Number.isInteger(s.quizExpChance)||s.quizExpChance<0||s.quizExpChance>100||!Number.isSafeInteger(s.quizTickets)||s.quizTickets<1||s.quizTickets>100)throw Error('퀴즈 EXP 확률은 0~100%, 복권 보상은 1~100장으로 설정하세요.');
   if(typeof s.listenRewards!=='boolean'||!Number.isInteger(s.listenMinutes)||s.listenMinutes<1||s.listenMinutes>120||!Number.isInteger(s.listenTickets)||s.listenTickets<1||s.listenTickets>100||!Number.isInteger(s.listenDailyCap)||s.listenDailyCap<1||s.listenDailyCap>1000)throw Error('청취 보상은 간격 1~120분, 복권 1~100장, 일일 한도 1~1000장으로 설정하세요.');
   for(const key of ['rps','dice','numberGuess','quiz','autoChatEnabled'])if(typeof s[key]!=='boolean')throw Error('미니게임·자동채팅 ON/OFF 값을 확인하세요.');
   if(!Number.isSafeInteger(s.quizExp)||s.quizExp<1||s.quizExp>1000000)throw Error('퀴즈 정답 경험치는 1~1,000,000 EXP 정수로 입력하세요.');
-  if(!Number.isSafeInteger(s.quizMinutes)||s.quizMinutes<1||s.quizMinutes>60)throw Error('퀴즈 제한시간은 1~60분으로 입력하세요.');
+  if(!Number.isSafeInteger(s.quizMinutes)||s.quizMinutes<1||s.quizMinutes>30)throw Error('퀴즈 제한시간은 1~30분으로 입력하세요.');
   if(!Array.isArray(s.quizQuestions)||s.quizQuestions.length>100||s.quiz&&!s.quizQuestions.length)throw Error('퀴즈는 최대 100문제이며 사용하려면 한 문제 이상 등록하세요.');
   const questionIds=new Set();for(const q of s.quizQuestions){
     if(!q||typeof q.id!=='string'||!/^[\w-]{1,64}$/.test(q.id)||questionIds.has(q.id)||typeof q.question!=='string'||!q.question.trim()||q.question.length>200||!Array.isArray(q.answers)||!q.answers.length||q.answers.length>10||q.answers.some(a=>typeof a!=='string'||!a.trim()||a.length>80))throw Error('퀴즈 문제는 1~200자, 정답은 각 1~80자·최대 10개로 입력하세요.');
     questionIds.add(q.id);
+    for(const [field,max]of [['category',40],['meaning',200]])if(q[field]!==undefined&&(typeof q[field]!=='string'||q[field].length>max))throw Error('퀴즈 힌트·뜻의 입력 길이를 확인하세요.');
   }
   if(!['sequential','random'].includes(s.autoChatMode)||!Number.isInteger(s.autoChatMinutes)||s.autoChatMinutes<1||s.autoChatMinutes>1440)throw Error('자동채팅 방식·간격(1~1440분)을 확인하세요.');
   if(!Array.isArray(s.autoChatMessages)||s.autoChatMessages.length>30||s.autoChatMessages.some(t=>typeof t!=='string'||!t.trim()||t.length>200)||s.autoChatEnabled&&!s.autoChatMessages.length)throw Error('자동채팅 문구는 각 1~200자, 최대 30개로 등록하세요.');

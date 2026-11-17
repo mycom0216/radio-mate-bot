@@ -56,7 +56,7 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     await new Promise(resolve=>setTimeout(resolve,1100));
     res=await request('/api/test',{message:'!출석',user:'a',name:'A'});assert.match((await res.json()).text,/출석/);
     await new Promise(resolve=>setTimeout(resolve,1100));
-    res=await request('/api/test',{message:'!복권 자동',user:'a',name:'A'});assert.match((await res.json()).text,/자동 복권 4장 사용/);
+    res=await request('/api/test',{message:'!복권 자동',user:'a',name:'A'});assert.match((await res.json()).text,/자동 복권 23장 사용/);
     res=await fetch(address+'/api/room',{headers});assert.equal((await res.json()).users.a.tickets,0);
     await new Promise(resolve=>setTimeout(resolve,1100));
     res=await request('/api/test',{message:'!신청곡 가수 - 첫 곡',user:'a',name:'A'});
@@ -81,6 +81,22 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/song',{action:'ended',expectedCurrentId:'stale',advance:true});assert.equal(res.status,409);
     res=await request('/api/song',{action:'ended',expectedCurrentId:playing.id,advance:true});assert.equal(res.status,200);const ended=(await res.json()).room;assert.equal(ended.current,null);assert.equal(ended.previous.id,playing.id);
     res=await request('/api/song',{action:'ended',expectedCurrentId:playing.id,advance:true});assert.equal(res.status,409);
+    // Exercise the actual chat HTTP path, including a plain numeric follow-up.
+    res=await request('/api/test',{message:'!이전곡 삭제',user:'dj',name:'DJ',dj:true});assert.match((await res.json()).text,/1\./);
+    res=await request('/api/test',{message:'1',user:'dj',name:'DJ',dj:true});assert.match((await res.json()).text,/신청곡 삭제/);
+    r=await (await fetch(address+'/api/room',{headers})).json();assert.notEqual(r.previous?.id,playing.id);assert.equal(r.songSelection,undefined);assert.equal(r.songDeletePrompt,undefined);assert.ok(!r.songHistory.some(song=>song.id===playing.id));
+    res=await request('/api/test',{message:'!신청곡 HTTP 삭제 검증',user:'dj',name:'DJ',dj:true});assert.match((await res.json()).text,/신청 완료/);
+    r=await (await fetch(address+'/api/room',{headers})).json();const purgeId=r.songs[0].id;
+    res=await request('/api/song',{action:'start'});assert.equal(res.status,200);
+    res=await request('/api/song',{action:'purge',id:purgeId});assert.equal(res.status,200);r=(await res.json()).room;assert.equal(r.current,null);assert.equal(r.playbackControl.action,'pause');assert.ok(!r.songHistory.some(song=>song.id===purgeId));
+    res=await request('/api/test',{message:'!내정보',user:'nick-target',name:'콰앙별빛',dj:true});assert.equal(res.status,200);
+    res=await request('/api/test',{message:'!복권지급 @콰앙 3',user:'dj',name:'DJ',dj:true});assert.match((await res.json()).text,/3장 지급/);
+    r=await (await fetch(address+'/api/room',{headers})).json();assert.equal(r.users['nick-target'].tickets,3);
+    res=await request('/api/identity-alias',{action:'set',user:'nick-target',alias:'fan_account',email:'fan@example.test'});assert.equal(res.status,200);
+    res=await request('/api/test',{message:'!복권지급 fan@example.test 2',user:'dj',name:'DJ',dj:true});assert.match((await res.json()).text,/2장 지급/);
+    res=await request('/api/grant',{target:'@fan_account',kind:'tickets',amount:1,reason:'연결 ID 지급 검증'});assert.equal(res.status,200);
+    r=await (await fetch(address+'/api/room',{headers})).json();assert.equal(r.users['nick-target'].tickets,6);assert.ok(!JSON.stringify(r).includes('fan@example.test'));
+    res=await request('/api/identity-alias',{action:'clear',user:'nick-target'});assert.equal(res.status,200);
     for(const text of [' 보상 ','보상']){res=await request('/api/keep',{action:'add',user:'a',text});assert.equal(res.status,200);}
     res=await request('/api/keep',{action:'use',user:'a',text:'보상',expectedCount:2});assert.equal(res.status,200);
     res=await request('/api/keep',{action:'use',user:'a',text:'보상',expectedCount:2});assert.equal(res.status,409);

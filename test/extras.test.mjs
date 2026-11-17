@@ -5,6 +5,7 @@ import {Spoon} from '../spoon.mjs';
 import {autoChatCandidate} from '../extras.mjs';
 function fixture(){
   const store=new Store();store.create('a','A');let now=Date.parse('2026-11-16T00:00:00Z'),draw=0,count=0;
+  store.transaction('a',r=>Object.assign(r.settings,{quizMinutes:5,quizExpChance:100,quizQuestions:[{id:'capital',question:'대한민국의 수도는 어디일까요?',answers:['서울','서울특별시']},{id:'week',question:'일주일은 모두 며칠일까요?',answers:['7','7일','칠일']}]}));
   const engine=new Engine(store,{now:()=>now,int:(min,max)=>Math.min(max,Math.max(min,draw))});
   const event=(message,user='u')=>({id:`extra-${++count}`,message,user:{id:user,nickname:'청취자'}});
   const say=(message,user='u')=>{now+=21000;return engine.handle('a',event(message,user));};

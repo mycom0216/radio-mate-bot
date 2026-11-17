@@ -22,7 +22,7 @@ test('fishing and odd/even overflow roll back EXP, book, PT, limits and audit wr
   assert.equal(f.store.logs('a').filter(l=>['fishing','pt-reward','odd-even'].includes(l.type)).length,0);f.store.db.close();
 });
 test('reserved object property names cannot impersonate an existing listener',()=>{
-  const f=fixture();assert.match(f.say('!복권지급 @__proto__ 3','dj',true).text,/대상을 고유 ID/);
+  const f=fixture();assert.match(f.say('!복권지급 @__proto__ 3','dj',true).text,/일치하는 청취자가 없습니다/);
   f.say('!내정보 생성','__proto__');f.say('!내정보 생성','constructor');
   const users=f.store.load('a').users;assert.equal(Object.hasOwn(users,'__proto__'),true);assert.equal(users.__proto__.tickets,0);assert.equal(users.constructor.id,'constructor');
   f.say('!복권지급 @__proto__ 3','dj',true);assert.equal(f.store.load('a').users.__proto__.tickets,3);assert.equal(f.user().tickets,0);f.store.db.close();

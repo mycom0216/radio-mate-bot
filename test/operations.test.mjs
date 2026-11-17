@@ -25,8 +25,8 @@ test('paged replies stay within 200 code points and expose all entries without f
 test('reward and outbox commit together; replay never rewards or queues twice',()=>{
  const store=new Store();try{store.create('a','A');const e=new Engine(store);const ev={id:'p',user:{id:'u',nickname:'팬'},message:'!내정보 생성',delivery:true};
  e.handle('a',ev);assert.equal(new Outbox(store).list('a').length,1);assert.equal(e.handle('a',ev).duplicate,true);assert.equal(new Outbox(store).list('a').length,1);
- const event={...ev,id:'attendance',message:'!출석',isDj:true};e.handle('a',event);assert.equal(store.load('a').users.u.tickets,1);assert.equal(new Outbox(store).list('a').length,2);
- assert.equal(e.handle('a',event).duplicate,true);assert.equal(store.load('a').users.u.tickets,1);
+ const event={...ev,id:'attendance',message:'!출석',isDj:true};e.handle('a',event);assert.equal(store.load('a').users.u.tickets,20);assert.equal(new Outbox(store).list('a').length,2);
+ assert.equal(e.handle('a',event).duplicate,true);assert.equal(store.load('a').users.u.tickets,20);
  const previous=store.save.bind(store);store.save=()=>{throw Error('write failure');};assert.throws(()=>e.handle('a',{...ev,id:'broken',isDj:true,message:'!내정보'}),/write failure/);store.save=previous;
  assert.equal(store.db.prepare('SELECT 1 FROM outbox WHERE event_key=?').get('broken'),undefined);
  }finally{store.db.close();}

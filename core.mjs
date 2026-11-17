@@ -2,6 +2,8 @@ import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './pub
 import {touchQueue,applySongAction} from './song-queue.mjs';
 import {rewardListening} from './listening.mjs';
 import {parseTicketGrant,resolveTarget} from './targets.mjs';
+import {deleteSongCommand} from './song-deletion.mjs';
+import {affinityScore,affinityRank,creditChat} from './public/affinity.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
@@ -10,7 +12,7 @@ import {playQuiz} from './quiz.mjs';
 import {extraDefaults,normalizeExtras,validateExtras,keywordReply,playMiniGame} from './extras.mjs';
 import {parseSongRequest,songVideoId,groupKeeps} from './public/song-utils.mjs';
 import { DatabaseSync } from 'node:sqlite';
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomInt, randomUUID,randomBytes } from 'node:crypto';
 import { mkdirSync, renameSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -143,7 +145,13 @@ export class Store {
   logs(id){return this.db.prepare('SELECT * FROM audit WHERE room=? ORDER BY seq DESC LIMIT 200').all(id).map(r=>({...r,data:JSON.parse(r.data)}));}
 }
 export class Engine {
-  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1),region='kr'}={}){this.store=store;this.now=now;this.int=int;this.region=region;}
+  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1),region='kr',identityKey=randomBytes(32).toString('hex')}={}){this.store=store;this.now=now;this.int=int;this.region=region;this.identityKey=identityKey;}
+  deleteSong(r,event,input,scope,now){
+    if(event.isDj!==true)fail('신청곡 삭제는 DJ 전용입니다. 본인 신청곡은 !신청취소를 사용하세요.');
+    let result;try{result=deleteSongCommand(r,event.user.id,input,scope,now);}catch(error){fail(error.message);}
+    if(result.stopped)r.playbackControl={id:randomUUID(),action:'pause',time:now};
+    this.store.log(r.id,event.user.id,'song-delete-command',{input,scope:scope||'context',result:result.text},now);r.lastResponse=now;return {text:result.text};
+  }
   listenerSnapshot(room,listeners,now=this.now()){
     this.store.transaction(room,r=>{this.reset(r);const rewards=rewardListening(r,listeners,now,(id,name)=>freshUser(id,name,dates(now).month));for(const reward of rewards)this.store.log(room,reward.user,'listening-reward',reward,now);r.listeningStatus='청취자 목록 확인 중 · 1분 간격으로 접속 시간을 추정합니다.';});
   }
@@ -182,6 +190,14 @@ export class Engine {
   weighted(list){const total=list.reduce((s,f)=>s+f.weight,0);let pick=this.int(0,999999)/1000000*total;for(const f of list){pick-=f.weight;if(pick<0)return f;}return list.at(-1);}
   async handleAsync(roomId,event){
     const r=this.store.load(roomId),user=r?.users[event.user?.id],now=this.now();
+    if(event.isDj===true&&/^!\s*재생\s*$/u.test(String(event.message||'').trim())&&this.searchSong){
+      if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
+      const selected=r.songSelection,target=selected?.kind==='queue'?r.songs.find(song=>song.id===selected.id):selected?.kind==='previous'?r.previous:r.current||r.songs[0];
+      if(target&&!songVideoId(target))try{
+        const videoId=await this.searchSong(target.title);
+        this.store.transaction(roomId,current=>{const song=[current.current,current.previous,...current.songs].find(song=>song?.id===target.id);if(song&&song.title===target.title&&!songVideoId(song)){song.videoId=videoId;rememberSongVideo(current,song,videoId);touchQueue(current);}});
+      }catch{/* The request still works when search is unavailable; the player can retry. */}
+    }
     const automatic=/^!\s*복권\s+자동\s*$/.test(String(event.message||'').trim());
     if(automatic&&user?.tickets>LOTTERY_CHUNK&&user.month===dates(now).month&&(event.isDj||now-r.lastResponse>=r.settings.responseGap*1000&&now-user.lastCommand>=r.settings.cooldown*1000)){
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
@@ -197,6 +213,10 @@ export class Engine {
       this.reset(r);
       if(!event.id||typeof event.id!=='string')throw Error('이벤트 ID가 필요합니다.');
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
+      if(Object.hasOwn(r.users,event.user?.id)){
+        const actor=r.users[event.user.id];if(typeof event.user.nickname==='string'&&event.user.nickname.trim())actor.name=event.user.nickname;
+        if(String(event.message||'').trim()&&creditChat(r,actor,now))this.store.log(r.id,actor.id,'affinity-chat',{points:5},now);
+      }
       let result;const checkpoint=JSON.stringify(r);
       this.store.db.exec('SAVEPOINT command_effects');
       try{result=this.command(r,event,now,preparedLottery);this.store.db.exec('RELEASE command_effects');}
@@ -218,9 +238,16 @@ export class Engine {
   }
   command(r,e,now,preparedLottery=null){
     const s=r.settings,text=String(e.message??'').trim();
-    if(!text.startsWith('!')){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
+    if(!text.startsWith('!')){
+      if(e.isDj&&r.songDeletePrompt?.actor===e.user?.id){
+        if(r.songDeletePrompt.expires<=now){delete r.songDeletePrompt;return {text:'삭제 선택 시간이 지났습니다. !삭제로 새 목록을 열어주세요.'};}
+        return this.deleteSong(r,e,text,undefined,now);
+      }
+      const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;
+    }
     const bits=text.slice(1).trim().split(/\s+/),cmd=bits.shift()||'',arg=bits.join(' ');
     const dj=e.isDj===true;
+    if(dj&&r.songDeletePrompt?.actor===e.user?.id&&!['삭제','이전곡','다음곡'].includes(cmd))delete r.songDeletePrompt;
     const answer=t=>{r.lastResponse=now;return {text:t};};
     const ticketReset=cmd==='복권초기화'||cmd==='복권'&&bits[0]==='초기화';
     if(ticketReset){
@@ -267,7 +294,7 @@ export class Engine {
     if(s.quiet&&['낚시','홀','짝','홀짝','복권','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답'].includes(cmd))return {text:null,suppressed:'quiet'};
     if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
     if(!dj&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
-    const known=['내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+    const known=['내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
     if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
@@ -278,45 +305,50 @@ export class Engine {
     }
     if(u){u.name=e.user.nickname||u.name;u.lastCommand=now;}
     if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
-    if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 접수: ${r.voiceInboxUrl}\n안 열리면 링크를 복사해 Safari·Chrome에서 열어주세요. 별도 DJ 수신함으로 전달됩니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
+    if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
     if(cmd==='공지')return answer(s.notice);
     if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');
-    if(['랭킹','랭킹조회'].includes(cmd))return answer(chatPage('팬랭킹',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,'랭킹','등록된 청취자가 없습니다.'));
-    if(cmd==='이전곡'){if(dj&&r.previous)r.songSelection={kind:'previous',id:r.previous.id,title:r.previous.title};return answer(r.previous?`이전곡: ${r.previous.title}${dj?' · 선택됨. !재생으로 재생하세요.':''}`:'이전에 재생한 곡이 없습니다.');}
+    if(['랭킹','랭킹조회','애청랭킹'].includes(cmd))return answer(chatPage('애청지수 순위',affinityRank(r.users).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(affinityScore(v))}점`),arg,'랭킹','등록된 청취자가 없습니다.'));
+    if(cmd==='경험치랭킹')return answer(chatPage('경험치 순위',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,cmd,'등록된 청취자가 없습니다.'));
+    if(['라디오메이트','봇호출'].includes(cmd))return answer('라디오메이트 명령 수신 중입니다. 다른 DJ 방송 연결은 라디오메이트 공용 HTTPS 화면에서 해당 DJ 계정으로 스푼 연결에 동의해 주세요. 방송이 시작되면 봇이 자동 접속합니다.');
+    if(cmd==='이전곡'){
+      if(arg==='삭제'||arg.startsWith('삭제 '))return this.deleteSong(r,e,arg.slice(2).trim(),'previous',now);
+      if(dj){delete r.songDeletePrompt;if(r.previous)r.songSelection={kind:'previous',id:r.previous.id,title:r.previous.title};else delete r.songSelection;}
+      return answer(r.previous?`이전곡: ${r.previous.title}${dj?' · 선택됨. !재생으로 재생하세요.':''}`:'이전에 재생한 곡이 없습니다.');
+    }
     if(cmd==='현재곡')return answer(r.current?`현재곡: ${r.current.title}`:'현재곡이 없습니다.');
-    if(cmd==='다음곡'){if(dj&&r.songs[0])r.songSelection={kind:'queue',id:r.songs[0].id,title:r.songs[0].title};return answer(r.songs[0]?`다음곡: ${r.songs[0].title}${dj?' · 선택됨. !재생으로 재생하세요.':''}`:'다음 신청곡이 없습니다.');}
+    if(cmd==='다음곡'){
+      if(arg==='삭제'||arg.startsWith('삭제 '))return this.deleteSong(r,e,arg.slice(2).trim(),'queue',now);
+      if(dj){delete r.songDeletePrompt;if(r.songs[0])r.songSelection={kind:'queue',id:r.songs[0].id,title:r.songs[0].title};else delete r.songSelection;}
+      return answer(r.songs[0]?`다음곡: ${r.songs[0].title}${dj?' · 선택됨. !재생으로 재생하세요.':''}`:'다음 신청곡이 없습니다.');
+    }
     if(cmd==='신청곡목록'||cmd==='신청곡'&&!arg)return answer(chatPage('신청곡',r.songs.map((v,i)=>`${i+1}. ${[...v.title].slice(0,70).join('')} (${[...v.name].slice(0,20).join('')})`),arg,'신청곡목록','대기 중인 신청곡이 없습니다. !신청곡 가수 - 제목으로 신청하세요.'));
     if(cmd==='재생'||cmd==='멈춤'){
       if(!dj)fail('재생·멈춤은 DJ 전용 명령입니다.');
       if(arg)fail('사용법: !재생 또는 !멈춤');
       if(cmd==='재생'&&(r.current||r.songs.length||r.songSelection))applySongAction(r,{action:'start'},now);
       r.playbackControl={id:randomUUID(),action:cmd==='재생'?'play':'pause',time:now};
+      r.playbackState=cmd==='재생'?'requested':'paused';
       this.store.log(r.id,e.user.id,'playback-control',{action:r.playbackControl.action},now);
-      return answer(cmd==='멈춤'?'멈춤 요청을 보냈습니다. 열린 DJ 관리 화면에서 재생을 멈춥니다.':`재생 요청: ${r.current?.title||'새 신청곡 대기'} · PC의 DJ 관리 화면을 열어두세요. 브라우저가 차단하면 재생 버튼을 한 번 눌러주세요.`);
+      return answer(cmd==='멈춤'?'멈춤 요청을 보냈습니다. 연결된 휴대폰·PC 플레이어를 일시정지합니다.':`재생 요청: ${(r.current?.title||'새 신청곡 대기').slice(0,45)}${songVideoId(r.current)?'\nhttps://youtu.be/'+songVideoId(r.current):''}\n${this.publicUrl?'플레이어: '+this.publicUrl+'/player':'휴대폰·PC 플레이어에서 재생합니다.'}`);
     }
     if(cmd==='삭제'){
-      if(!dj)fail('신청곡 삭제는 DJ 전용입니다. 본인 신청곡은 !신청취소를 사용하세요.');
-      if(arg&&!/^[1-9]\d*$/.test(arg))fail('사용법: !삭제 또는 !삭제 대기번호');
-      if(!arg&&r.songSelection?.kind==='previous')fail('이전곡은 완료 기록입니다. 대기곡 삭제는 !삭제 번호로 입력하세요.');
-      const selected=arg?r.songs[Number(arg)-1]:r.songSelection?.kind==='queue'?r.songs.find(x=>x.id===r.songSelection.id):!r.current?r.songs[0]:null;
-      if(selected){applySongAction(r,{action:'remove',id:selected.id,expectedQueueRevision:r.queueRevision||0},now);return answer(`신청곡 삭제: ${selected.title} · 관리 화면에서 5분 이내 되돌릴 수 있습니다.`);}
-      if(arg||!r.current)fail('삭제할 신청곡이 없습니다. !신청곡목록에서 번호를 확인하세요.');
-      const title=r.current.title;applySongAction(r,{action:'finish'},now);r.playbackControl={id:randomUUID(),action:'pause',time:now};return answer(`현재곡 종료: ${title} · 완료 목록에 보관했습니다.`);
+      return this.deleteSong(r,e,arg,undefined,now);
     }
     if(cmd==='아이템'&&arg==='상점')return answer(s.items.filter(i=>i.enabled).map(i=>`${i.id}: ${i.name} ${n(i.price)} PT / 20분${i.stock===0?' (품절)':''}`).join('\n'));
-    if(!u&&(cmd==='내정보'||dj)){
+    if(!u&&(cmd==='내정보'||cmd==='애청지수'||dj)){
       u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);u.lastCommand=now;
     }
     if(!u)fail('먼저 !내정보 를 입력하면 프로필이 자동으로 만들어집니다.');
     const quiz=playQuiz(this,r,u,cmd,arg,now,fail);if(quiz!==null)return answer(quiz);
     const mini=playMiniGame(this,r,u,cmd,arg,now,fail);if(mini!==null)return answer(mini);
     const active=id=>u.buffPaused?.[id]===undefined&&(u.buffs[id]||0)>now;
-    if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n애청지수 ${Math.floor((u.listeningMs||0)/60000)} · 확인된 청취 ${Math.floor((u.listeningMs||0)/60000)}분\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
+    if(cmd==='내정보'||cmd==='애청지수')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n애청지수 ${affinityScore(u)}점 · 청취 ${Math.floor((u.listeningMs||0)/60000)}분 · 채팅 ${u.chatAffinityPoints||0}점\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
     if(cmd==='출석'){
       if(!s.attendance)fail('출석 기능이 꺼져 있습니다.');if(u.attendance===dates(now).day)fail('오늘은 이미 출석했습니다.');
-      if(!Number.isSafeInteger(u.tickets+1))fail('복권 보유량이 정확히 처리 가능한 정수 범위를 초과합니다.');
-      u.attendance=dates(now).day;u.tickets++;u.ticketRevision=(u.ticketRevision||0)+1;this.store.log(r.id,u.id,'attendance',{tickets:1},now);return answer(`${u.name}님 출석! 복권 1장 지급`);
+      if(!Number.isSafeInteger(u.tickets+20))fail('복권 보유량이 정확히 처리 가능한 정수 범위를 초과합니다.');
+      u.attendance=dates(now).day;u.tickets+=20;u.ticketRevision=(u.ticketRevision||0)+1;this.store.log(r.id,u.id,'attendance',{tickets:20},now);return answer(`${u.name}님 출석! 복권 20장 지급`);
     }
     if(cmd==='복권'){
       const auto=bits.length===1&&bits[0]==='자동';
@@ -435,7 +467,7 @@ export class Engine {
     });
   }
   target(r,target){
-    try{return resolveTarget(r.users,target);}catch(error){fail(error.message);}
+    try{return resolveTarget(r.users,target,{identityKey:this.identityKey,room:r.id});}catch(error){fail(error.message);}
   }
 }
 class RuleError extends Error {}

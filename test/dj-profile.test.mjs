@@ -11,7 +11,7 @@ test('DJ can create and view their own profile and play without a registration d
   assert.match(say('!내정보').text,/방송 DJ.*Lv\./s);
   assert.match(say('!내정보 생성').text,/프로필이 준비/);
   assert.match(say('!내정보').text,/방송 DJ.*Lv\./s);
-  assert.match(say('!출석').text,/복권 1장 지급/);
+  assert.match(say('!출석').text,/복권 20장 지급/);
   const before=store.load('room').users.host;
   say('!내정보 생성');const after=store.load('room').users.host;
   assert.equal(after.tickets,before.tickets);assert.equal(after.exp,before.exp);assert.equal(after.attendance,before.attendance);

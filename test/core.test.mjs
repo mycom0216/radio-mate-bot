@@ -15,10 +15,10 @@ function setup(){
   return {store,engine,say,user,mutate,draw,advance:ms=>time+=ms,setTime:ms=>time=ms};
 }
 test('attendance once a Korean day, room isolation and deduplicated events',()=>{
-  const f=setup();f.say('! 내정보 생성');f.say('!출석',{event:'attendance'});assert.equal(f.user().tickets,1);
-  assert.equal(f.say('!출석',{event:'attendance'}).duplicate,true);f.say('!출석');assert.equal(f.user().tickets,1);
+  const f=setup();f.say('! 내정보 생성');f.say('!출석',{event:'attendance'});assert.equal(f.user().tickets,20);
+  assert.equal(f.say('!출석',{event:'attendance'}).duplicate,true);f.say('!출석');assert.equal(f.user().tickets,20);
   f.say('!내정보 생성',{room:'b'});assert.equal(f.store.load('b').users.u1.tickets,0);
-  f.setTime(Date.parse('2026-11-16T15:00:00Z'));f.say('!출석');assert.equal(f.user().tickets,2);
+  f.setTime(Date.parse('2026-11-16T15:00:00Z'));f.say('!출석');assert.equal(f.user().tickets,40);
 });
 
 test('suppressed command metadata explains waiting and quiet mode without changing balances',()=>{
@@ -94,9 +94,9 @@ test('DJ ticket grants and recovery have no 1000-ticket cap and preserve exact b
 });
 test('lottery rejects duplicates, matches without order, and consumes one ticket',()=>{
   const f=setup();f.say('!내정보 생성');f.say('!출석');
-  f.say('!복권 3 3 9');assert.equal(f.user().tickets,1);
+  f.say('!복권 3 3 9');assert.equal(f.user().tickets,20);
   f.draw(2,4,6); // 3,6,9 after removal from the shrinking pool
-  const result=f.say('!복권 9 3 6');assert.match(result.text,/3개 일치/);assert.equal(f.user().exp,300);assert.equal(f.user().tickets,0);
+  const result=f.say('!복권 9 3 6');assert.match(result.text,/3개 일치/);assert.equal(f.user().exp,300);assert.equal(f.user().tickets,19);
 });
 test('fishing EXP and PT cap independently; EXP doubles and clips to the cap',()=>{
   const f=setup();f.say('!내정보 생성');
@@ -140,18 +140,18 @@ test('listeners enable games and attend; disabling games and sensitive commands 
   assert.equal(f.store.load('a').settings.roulette,false);
   f.say('!내정보 생성');assert.match(f.say('!게임 off').text,/DJ 전용/);assert.match(f.say('!게임 off',{dj:true}).text,/게임 OFF/);
   assert.equal(f.say('!게임 on',{wait:1000}).text,null);assert.equal(f.store.load('a').settings.fishing,false);
-  assert.match(f.say('!출석').text,/복권 1장 지급/);assert.equal(f.user().tickets,1);
-  assert.match(f.say('!출석').text,/이미 출석/);assert.equal(f.user().tickets,1);
+  assert.match(f.say('!출석').text,/복권 20장 지급/);assert.equal(f.user().tickets,20);
+  assert.match(f.say('!출석').text,/이미 출석/);assert.equal(f.user().tickets,20);
   f.say('!게임 on');assert.match(f.say('!홀짝 off').text,/DJ 전용/);f.say('!홀짝 off',{dj:true});assert.equal(f.store.load('a').settings.odd,false);assert.equal(f.store.load('a').settings.fishing,true);
   assert.match(f.say('!게임 상태').text,/홀짝 OFF/);
   assert.match(f.say('!조용 on').text,/DJ 전용/);assert.equal(f.store.load('a').settings.quiet,false);
-  assert.match(f.say('!복권지급 @u1 9').text,/DJ 전용/);assert.equal(f.user().tickets,1);
+  assert.match(f.say('!복권지급 @u1 9').text,/DJ 전용/);assert.equal(f.user().tickets,20);
   assert.equal(f.store.load('b').settings.rps,false);f.store.db.close();
 });
 
 test('automatic lottery picks 3 distinct numbers, spends one ticket and preserves all payout levels',()=>{
   for(const [draw,expected]of [[[0,0,0],300],[[0,0,1],150],[[0,2,2],50],[[3,3,3],0]]){
-    const f=setup();f.say('!내정보 생성');f.say('!출석');f.draw(0,0,0,...draw);
+    const f=setup();f.say('!내정보 생성');f.say('!출석');f.mutate((r,u)=>u.tickets=1);f.draw(0,0,0,...draw);
     const result=f.say('!복권 자동');assert.match(result.text,/자동 선택 1 2 3/);assert.equal(f.user().tickets,0);assert.equal(f.user().exp,expected);
     const log=f.store.logs('a').find(l=>l.type==='lottery');assert.equal(log.data.auto,true);assert.equal(new Set(log.data.input).size,3);assert.ok(log.data.input.every(n=>Number(n)>=1&&Number(n)<=9));assert.equal(new Set(log.data.draw).size,3);f.store.db.close();
   }

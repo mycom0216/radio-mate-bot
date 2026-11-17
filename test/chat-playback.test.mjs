@@ -34,6 +34,6 @@ test('DJ selects next/previous, plays that selection and deletes queued songs wi
   say('!다음곡');assert.equal(store.load('r').songSelection.title,'둘째 곡');assert.equal(store.load('r').current.id,first);
   say('!재생');assert.equal(store.load('r').current.title,'둘째 곡');assert.equal(store.load('r').songs.length,0);assert.equal(store.load('r').songHistory[0].id,first);
   say('!이전곡');say('!재생');assert.equal(store.load('r').current.id,first);assert.equal(store.load('r').songHistory[0].title,'둘째 곡');
-  store.transaction('r',r=>{r.lastRequester=null;r.streak=0;});say('!신청곡 삭제할 곡');say('!다음곡');assert.match(say('!삭제').text,/신청곡 삭제/);assert.equal(store.load('r').songs.length,0);assert.equal(store.load('r').current.id,first);assert.ok(store.load('r').songUndo);
+  store.transaction('r',r=>{r.lastRequester=null;r.streak=0;});say('!신청곡 삭제할 곡');say('!다음곡');assert.match(say('!삭제').text,/1\. 삭제할 곡/);assert.match(say('1').text,/신청곡 삭제/);assert.equal(store.load('r').songs.length,0);assert.equal(store.load('r').current.id,first);assert.equal(store.load('r').songUndo,undefined);
  }finally{store.db.close();}
 });

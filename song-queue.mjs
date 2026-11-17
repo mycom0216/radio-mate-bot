@@ -34,6 +34,17 @@ export function applySongAction(room,request,now=Date.now()){
   }else if(action==='finish'){
     if(!room.current)fail('현재 재생 중인 곡이 없습니다.');
     touchQueue(room);complete(room,now);room.current=null;delete room.songSelection;
+  }else if(action==='purge'){
+    const all=[...room.songs,room.current,room.previous,...(room.songHistory||[])].filter(Boolean),target=all.find(song=>song.id===request.id);
+    if(!target)fail('삭제할 신청곡이 이미 변경되었습니다.',409);
+    const key=title=>String(title||'').normalize('NFKC').replace(/\s+/gu,'').toLocaleLowerCase('ko-KR');
+    const same=song=>song&&(song.id===target.id||target.videoId&&song.videoId===target.videoId||key(song.title)===key(target.title));
+    touchQueue(room);room.songs=room.songs.filter(song=>!same(song));room.songHistory=(room.songHistory||[]).filter(song=>!same(song));
+    if(same(room.current))room.current=null;
+    if(same(room.previous))room.previous=room.songHistory.find(song=>song.id!==room.current?.id)||null;
+    room.songLibrary=(room.songLibrary||[]).filter(song=>!same(song));
+    delete room.songSelection;delete room.songDeletePrompt;
+    if(!room.songs.length){room.lastRequester=null;room.streak=0;}
   }else if(action==='remove'){
     const index=room.songs.findIndex(x=>x.id===request.id);if(index<0)fail('신청곡을 찾을 수 없습니다.');
     const song=room.songs[index];touchQueue(room);room.songs.splice(index,1);
