@@ -11,6 +11,8 @@ import {buildDiagnostics} from './diagnostics.mjs';
 const ROOT=dirname(fileURLToPath(import.meta.url));
 const env={...process.env};env.PUBLIC_URL=(env.PUBLIC_URL||'http://localhost:4310').replace(/\/$/,'');
 const production=env.NODE_ENV==='production';
+const trustProxy=env.TRUST_PROXY==='1'||env.TRUST_PROXY==='true';
+function clientIp(req){if(trustProxy){const f=String(req.headers['x-forwarded-for']||'').split(',').pop().trim();if(f)return f;}return req.socket.remoteAddress||'';}
 if(production&&(!env.PUBLIC_URL.startsWith('https://')||!/^[a-fA-F0-9]{64}$/.test(env.TOKEN_KEY||'')))throw Error('운영 환경에는 PUBLIC_URL HTTPS와 TOKEN_KEY가 필요합니다.');
 const DATA=env.DATA_DIR||join(ROOT,'data');
 mkdirSync(DATA,{recursive:true});
@@ -37,6 +39,7 @@ const server=createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   try{
+    req.clientIp=clientIp(req);
     const url=new URL(req.url,env.PUBLIC_URL),path=url.pathname;
     const voicePublic=/^\/api\/voice-public\/([a-f0-9]{64})$/.exec(path);
     if(voicePublic){
@@ -172,7 +175,12 @@ for(const id of store.ids())if(id!==demoId)spoon.start(id);
 const timer=setInterval(()=>spoon.tick().catch(e=>console.error('scheduler:',e.message)),5000);
 const cleanup=setInterval(()=>{const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
 server.listen(Number(env.PORT||4310),env.HOST||'127.0.0.1',()=>console.log(`Spoon Studio: http://${env.HOST||'127.0.0.1'}:${server.address().port} (${production?'production':'local demo'})`));
-function shutdown(){clearInterval(timer);clearInterval(cleanup);for(const id of spoon.running.keys())spoon.stop(id);server.close(()=>{store.db.close();process.exit(0);});}
+const maintenance=setInterval(runMaintenance,6*3600000);
+function runMaintenance(){try{store.prune();store.snapshot(join(DATA,'backups'));}catch(e){console.error('maintenance:',e.message);}}
+setTimeout(runMaintenance,30000).unref();
+process.on('unhandledRejection',e=>console.error('unhandledRejection:',e?.message||e));
+process.on('uncaughtException',e=>console.error('uncaughtException:',e?.message||e));
+function shutdown(){setTimeout(()=>process.exit(0),5000).unref();clearInterval(maintenance);clearInterval(timer);clearInterval(cleanup);for(const id of spoon.running.keys())spoon.stop(id);server.close(()=>{store.db.close();process.exit(0);});}
 process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
 
 
