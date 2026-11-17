@@ -14,3 +14,10 @@ preview-checked.png
 
 tmp/
 output/
+
+deploy/https.env
+deploy/cloudflared.exe
+deploy/*.log
+deploy/*.pid
+deploy/temporary.env
+data-public/
