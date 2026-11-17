@@ -1,3 +1,4 @@
+import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue} from './song-queue.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
@@ -23,7 +24,7 @@ export function defaults() {
     ...extraDefaults(),
     pauseItems:false, cooldown:20, responseGap:3, quiet:false, fishing:false, odd:false,
     roulette:false, rouletteRewards:[{id:'miss',name:'꽝',weight:1,miss:true}],
-    spoonNotice:'/스푼 <<<< 스푼 할인 충전 안내를 확인해 보세요! 할인 적용 여부와 최종 결제 금액은 충전 화면에서 확인해 주세요.',
+    spoonNotice:DEFAULT_CHARGE_NOTICE,
     introEnabled:true,introText:'🤖 Spoon Studio는 신청곡·출석·게임·킵 관리를 돕는 방송 도우미입니다. 명령어는 !도움말로 확인하세요.',
     likeGreetingEnabled:true,likeGreeting:'{name}님, 좋아요 감사합니다 ♥',
     attendance:true, requests:true, duplicateSongs:false, requestMax:10,
@@ -104,7 +105,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS backups(id TEXT PRIMARY KEY,room TEXT,time INTEGER,data TEXT);`);
   }
   ids(){return this.db.prepare('SELECT id FROM rooms').all().map(r=>r.id);}
-  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);room.users=Object.assign(Object.create(null),room.users);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;return room;}
+  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);room.users=Object.assign(Object.create(null),room.users);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;if(room.settings.spoonNotice===LEGACY_CHARGE_NOTICE)room.settings.spoonNotice=DEFAULT_CHARGE_NOTICE;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;return room;}
   create(id,name) {
     if(!this.load(id))this.save({id,name,settings:defaults(),month:dates().month,users:{},songs:[],current:null,previous:null,lastRequester:null,streak:0,lastResponse:0,live:false,noticeTimes:{},achievers:[],special:[]});
     return this.load(id);
@@ -139,7 +140,7 @@ export class Store {
   logs(id){return this.db.prepare('SELECT * FROM audit WHERE room=? ORDER BY seq DESC LIMIT 200').all(id).map(r=>({...r,data:JSON.parse(r.data)}));}
 }
 export class Engine {
-  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1)}={}){this.store=store;this.now=now;this.int=int;}
+  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1),region='kr'}={}){this.store=store;this.now=now;this.int=int;this.region=region;}
   syncBuffs(r,now=this.now()){
     r.itemCheckedAt=now;
     for(const u of Object.values(r.users)){
@@ -273,7 +274,7 @@ export class Engine {
     if(u){u.name=e.user.nickname||u.name;u.lastCommand=now;}
     if(cmd==='도움말')return answer(`시작 !내정보 생성 · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`DJ에게 음성 보내기: ${r.voiceInboxUrl} (스푼 앱이 아닌 별도 접수함)`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
-    if(cmd==='스푼')return answer(s.spoonNotice);
+    if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
     if(cmd==='공지')return answer(s.notice);
     if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');
     if(['랭킹','랭킹조회'].includes(cmd))return answer(chatPage('팬랭킹',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,'랭킹','등록된 청취자가 없습니다.'));

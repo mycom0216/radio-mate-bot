@@ -6,9 +6,9 @@ import {deleteRoom} from './privacy.mjs';
 
 // Public previews never share the production database or OAuth credentials.
 export class PublicSandbox {
-  constructor(voiceDir,{now=()=>Date.now(),limit=30}={}){
+  constructor(voiceDir,{now=()=>Date.now(),limit=30,region='kr'}={}){
     this.now=now;this.limit=limit;this.rooms=new Map();
-    const store=new Store(),engine=new Engine(store),spoon=new Spoon(store,engine,{});
+    const store=new Store(),engine=new Engine(store,{region}),spoon=new Spoon(store,engine,{});
     const voice=new VoiceInbox(store.db,voiceDir);this.services={store,engine,spoon,voice};
   }
   create(){

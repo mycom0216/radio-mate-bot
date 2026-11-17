@@ -33,10 +33,10 @@ if(existsSync(lockFile)){
 const lockHandle=openSync(lockFile,'wx',0o600);writeFileSync(lockHandle,String(process.pid));closeSync(lockHandle);
 process.on('exit',()=>{try{if(readFileSync(lockFile,'utf8')===String(process.pid))unlinkSync(lockFile);}catch{}});
 const voiceRetention=Number(env.VOICE_RETENTION_DAYS||0);if(!Number.isSafeInteger(voiceRetention)||voiceRetention<0||voiceRetention>3650)throw Error('VOICE_RETENTION_DAYS는 0~3650 정수여야 합니다.');
-const store=new Store(join(DATA,'studio.sqlite')),engine=new Engine(store),spoon=new Spoon(store,engine,env);
+const store=new Store(join(DATA,'studio.sqlite')),engine=new Engine(store,{region:spoonRegion(env)}),spoon=new Spoon(store,engine,env);
 const voice=new VoiceInbox(store.db,join(DATA,'voice'));
 const publicDemo=env.PUBLIC_DEMO==='1'||env.PUBLIC_DEMO==='true';
-const sandbox=publicDemo?new PublicSandbox(join(DATA,'preview-voice')):null;
+const sandbox=publicDemo?new PublicSandbox(join(DATA,'preview-voice'),{region:spoonRegion(env)}):null;
 const liveServices={store,engine,spoon,voice};
 const servicesFor=room=>sandbox?.has(room)?sandbox.services:liveServices;
 const isDemo=room=>room==='demo'||!!sandbox?.has(room);
@@ -80,7 +80,7 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&Object.hasOwn(listenerFiles,path)){
       const name=listenerFiles[path];res.writeHead(200,{'Content-Type':name.endsWith('.mjs')?'text/javascript; charset=utf-8':name.endsWith('.css')?'text/css; charset=utf-8':name.endsWith('.png')?'image/png':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'extensions','listener-voice',name)));return;
     }
-    if(path==='/api/session'&&req.method==='GET'){const s=session(req);reply(res,200,{loggedIn:!!s,room:s?.room,csrf:s?.csrf,demo:!production||publicDemo,testing:isDemo(s?.room),publicDemo,configured:spoon.configured(),defaults:defaults()});return;}
+    if(path==='/api/session'&&req.method==='GET'){const s=session(req);reply(res,200,{loggedIn:!!s,room:s?.room,csrf:s?.csrf,demo:!production||publicDemo,testing:isDemo(s?.room),publicDemo,chargeRegion:spoonRegion(env),configured:spoon.configured(),defaults:defaults()});return;}
     if(path==='/api/demo'&&req.method==='POST'&&(!production||publicDemo)){
       if(req.headers.origin&&req.headers.origin!==env.PUBLIC_URL)throw Error('허용되지 않은 출처입니다.');
       if(publicDemo){
@@ -203,7 +203,7 @@ const server=createServer(async(req,res)=>{
       if(path==='/api/reconnect'){if(!isDemo(roomId)){spoon.stop(roomId);spoon.start(roomId);}reply(res,200,{ok:true});return;}
       throw Object.assign(Error('기능을 찾을 수 없습니다.'),{status:404});
     }
-    const files={'/bloom.css':'bloom.css','/radio-bloom.webp':'radio-bloom.webp','/radio-bloom-mini.webp':'radio-bloom-mini.webp','/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
+    const files={'/spoon-charge.mjs':'spoon-charge.mjs','/bloom.css':'bloom.css','/radio-bloom.webp':'radio-bloom.webp','/radio-bloom-mini.webp':'radio-bloom-mini.webp','/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
     res.writeHead(200,{'Content-Type':path.endsWith('.webp')?'image/webp':path.endsWith('.png')?'image/png':path.endsWith('.svg')?'image/svg+xml':(/\.m?js$/).test(path)?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'public',files[path])));
   }catch(e){if(e.status===413)res.setHeader('Connection','close');reply(res,e.status||400,{error:e.message});}
 });

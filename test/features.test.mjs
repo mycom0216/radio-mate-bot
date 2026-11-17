@@ -38,9 +38,9 @@ test('keep grouping preserves quantity and normalizes legacy spacing without del
   assert.deepEqual(groupKeeps([' 노래 ','노래','춤']),[{name:'노래',count:2},{name:'춤',count:1}]);
 });
 test('spoon recharge guidance returns the configurable message and observes command cooldown',()=>{
-  const f=setup();assert.match(f.say('!스푼').text,/\/스푼/);f.say('!내정보 생성');
+  const f=setup();assert.match(f.say('!스푼').text,/billing\.spooncast\.net/);f.say('!내정보 생성');
   f.store.transaction('a',r=>r.settings.spoonNotice='/스푼 할인 조건을 확인하세요.');
-  assert.equal(f.say('!스푼').text,'/스푼 할인 조건을 확인하세요.');
+  assert.match(f.say('!스푼').text,/^\/스푼 할인 조건을 확인하세요\./);
   const out=f.engine.handle('a',{id:'fast-spoon',message:'!스푼',user:{id:'u',nickname:'팬'}});assert.equal(out.text,null);f.store.db.close();
 });
 test('like greeting enforces 10 minute per ID interval, global gap, event dedup and quiet mode',()=>{
