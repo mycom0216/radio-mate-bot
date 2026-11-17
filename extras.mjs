@@ -1,11 +1,11 @@
 import {defaultQuizQuestions} from './quiz.mjs';
-export function extraDefaults(){return {listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.']};}
+export function extraDefaults(){return {affinityNotices:true,listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.']};}
 export function normalizeExtras(settings){const d=extraDefaults();for(const [key,value]of Object.entries(d))if(settings[key]===undefined)settings[key]=value;return settings;}
 export function validateExtras(s){
   normalizeExtras(s);
   if(!Number.isInteger(s.quizExpChance)||s.quizExpChance<0||s.quizExpChance>100||!Number.isSafeInteger(s.quizTickets)||s.quizTickets<1||s.quizTickets>100)throw Error('퀴즈 EXP 확률은 0~100%, 복권 보상은 1~100장으로 설정하세요.');
   if(typeof s.listenRewards!=='boolean'||!Number.isInteger(s.listenMinutes)||s.listenMinutes<1||s.listenMinutes>120||!Number.isInteger(s.listenTickets)||s.listenTickets<1||s.listenTickets>100||!Number.isInteger(s.listenDailyCap)||s.listenDailyCap<1||s.listenDailyCap>1000)throw Error('청취 보상은 간격 1~120분, 복권 1~100장, 일일 한도 1~1000장으로 설정하세요.');
-  for(const key of ['rps','dice','numberGuess','quiz','autoQuizEnabled','autoChatEnabled'])if(typeof s[key]!=='boolean')throw Error('미니게임·자동채팅 ON/OFF 값을 확인하세요.');
+  for(const key of ['rps','dice','numberGuess','quiz','autoQuizEnabled','autoChatEnabled','affinityNotices'])if(typeof s[key]!=='boolean')throw Error('미니게임·자동채팅 ON/OFF 값을 확인하세요.');
   if(!Number.isSafeInteger(s.quizExp)||s.quizExp<1||s.quizExp>1000000)throw Error('퀴즈 정답 경험치는 1~1,000,000 EXP 정수로 입력하세요.');
   if(!Number.isInteger(s.autoQuizMinutes)||s.autoQuizMinutes<1||s.autoQuizMinutes>1440)throw Error('자동 퀴즈 간격은 1~1440분으로 입력하세요.');
   if(!Number.isSafeInteger(s.quizMinutes)||s.quizMinutes<1||s.quizMinutes>30)throw Error('퀴즈 제한시간은 1~30분으로 입력하세요.');

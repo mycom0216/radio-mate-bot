@@ -166,6 +166,15 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/listener-delete',{user:'a',confirm:'wrong'});assert.equal(res.status,400);
     res=await request('/api/listener-delete',{user:'a',confirm:'청취자 삭제'});assert.equal(res.status,200);assert.equal((await (await fetch(address+'/api/room',{headers})).json()).users.a,undefined);
     res=await request('/api/outbox-retry',{id:'missing',confirm:'wrong'});assert.equal(res.status,400);
+    await new Promise(r=>setTimeout(r,1100));res=await request('/api/test',{message:'!킵',user:'fresh-keep',name:'청취자 킵',dj:false});assert.match((await res.json()).text,/보관 중인 킵이 없습니다/);
+    res=await request('/api/keep',{action:'add',user:'fresh-keep',text:'청취자 보상'});assert.equal(res.status,200);
+    await new Promise(r=>setTimeout(r,1100));res=await request('/api/test',{message:'!킵 사용 1',user:'fresh-keep',name:'청취자 킵',dj:false});assert.match((await res.json()).text,/킵 사용 완료/);
+    let keepRoom=await(await fetch(address+'/api/room',{headers})).json();assert.deepEqual(keepRoom.users['fresh-keep'].keeps,[]);assert.equal(keepRoom.users['fresh-keep'].keepHistory[0].kind,'used');
+    await new Promise(r=>setTimeout(r,1100));res=await request('/api/test',{message:'!킵 취소',user:'fresh-keep',name:'청취자 킵',dj:false});assert.match((await res.json()).text,/킵 사용 취소/);
+    keepRoom=await(await fetch(address+'/api/room',{headers})).json();assert.deepEqual(keepRoom.users['fresh-keep'].keeps,['청취자 보상']);assert.equal(keepRoom.users['fresh-keep'].keepHistory[0].kind,'cancelled');
+    res=await request('/api/grant',{user:'fresh-keep',kind:'pt',amount:20000,reason:'상점 구매 경로 검증'});assert.equal(res.status,200);
+    await new Promise(r=>setTimeout(r,1100));res=await request('/api/test',{message:'!구매 exp',user:'fresh-keep',name:'청취자 킵'});assert.match((await res.json()).text,/구매 완료/);
+    keepRoom=await(await fetch(address+'/api/room',{headers})).json();assert.equal(keepRoom.users['fresh-keep'].bag.exp,1);assert.equal(keepRoom.users['fresh-keep'].pt,0);
     res=await request('/api/logout',{});assert.equal(res.status,200);
     res=await fetch(address+'/api/room',{headers});assert.equal(res.status,401);
   }finally{const exited=new Promise(resolve=>proc.once('exit',resolve));proc.kill();await exited;rmSync(data,{recursive:true,force:true});}

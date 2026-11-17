@@ -3,14 +3,14 @@ import {touchQueue,applySongAction} from './song-queue.mjs';
 import {rewardListening} from './listening.mjs';
 import {parseTicketGrant,resolveTarget} from './targets.mjs';
 import {deleteSongCommand} from './song-deletion.mjs';
-import {affinityScore,affinityRank,creditChat} from './public/affinity.mjs';
+import {affinityScore,affinityRank,creditChat,collectAffinityNotices} from './public/affinity.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
 import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
 import {playQuiz} from './quiz.mjs';
 import {extraDefaults,normalizeExtras,validateExtras,keywordReply,playMiniGame} from './extras.mjs';
-import {parseSongRequest,songVideoId,groupKeeps} from './public/song-utils.mjs';
+import {parseSongRequest,songVideoId,groupKeeps,keepName,keepExpiryLabel} from './public/song-utils.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomInt, randomUUID,randomBytes } from 'node:crypto';
 import { mkdirSync, renameSync, rmSync, readdirSync } from 'node:fs';
@@ -153,7 +153,10 @@ export class Engine {
     this.store.log(r.id,event.user.id,'song-delete-command',{input,scope:scope||'context',result:result.text},now);r.lastResponse=now;return {text:result.text};
   }
   listenerSnapshot(room,listeners,now=this.now()){
-    this.store.transaction(room,r=>{this.reset(r);const rewards=rewardListening(r,listeners,now,(id,name)=>freshUser(id,name,dates(now).month));for(const reward of rewards)this.store.log(room,reward.user,'listening-reward',reward,now);r.listeningStatus='청취자 목록 확인 중 · 1분 간격으로 접속 시간을 추정합니다.';});
+    this.store.transaction(room,r=>{this.reset(r);const rewards=rewardListening(r,listeners,now,(id,name)=>freshUser(id,name,dates(now).month));for(const reward of rewards)this.store.log(room,reward.user,'listening-reward',reward,now);
+      const notices=collectAffinityNotices(r,now),header='라디오메이트 자체 애청지수 상승',footer='※ 스푼 공식 애청온도와 별개';let lines=[],batch=0;
+      const flush=()=>{if(lines.length)new Outbox(this.store).enqueue(room,'affinity-notice:'+now+':'+batch++,[header,...lines,footer].join('\n'),now);lines=[];};
+      for(const notice of notices){const line=[...notice.name].slice(0,14).join('')+'님 +'+notice.gain+'° → '+notice.total+'°';if([header,...lines,line,footer].join('\n').length>200)flush();lines.push(line);this.store.log(room,notice.user,'affinity-notice',{gain:notice.gain,total:notice.total},now);}flush();r.listeningStatus='청취자 목록 확인 중 · 1분 간격으로 접속 시간을 추정합니다.';});
   }
   syncBuffs(r,now=this.now()){
     r.itemCheckedAt=now;
@@ -245,7 +248,9 @@ export class Engine {
       }
       const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;
     }
-    const bits=text.slice(1).trim().split(/\s+/),cmd=bits.shift()||'',arg=bits.join(' ');
+    const bits=text.slice(1).trim().split(/\s+/);let cmd=bits.shift()||'';
+    if(cmd==='구매'){cmd='아이템';bits.unshift('구매');}
+    const arg=bits.join(' ');
     const dj=e.isDj===true;
     if(dj&&r.songDeletePrompt?.actor===e.user?.id&&!['삭제','이전곡','다음곡'].includes(cmd))delete r.songDeletePrompt;
     const answer=t=>{r.lastResponse=now;return {text:t};};
@@ -312,12 +317,14 @@ export class Engine {
     if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
-    if(u&&!dj&&now-u.lastCommand<s.cooldown*1000)return {text:null,suppressed:'cooldown',retryAfterMs:Math.max(u.lastCommand+s.cooldown*1000-now,r.lastResponse+s.responseGap*1000-now)};
+    const interactionKey=cmd==='킵'?'lastKeepCommand':['아이템','가방','버프'].includes(cmd)?'lastItemCommand':null;
+    if(u&&!dj&&!interactionKey&&now-u.lastCommand<s.cooldown*1000)return {text:null,suppressed:'cooldown',retryAfterMs:Math.max(u.lastCommand+s.cooldown*1000-now,r.lastResponse+s.responseGap*1000-now)};
+    if(u&&!dj&&interactionKey&&now-(u[interactionKey]||0)<1000)return {text:null,suppressed:'cooldown',retryAfterMs:1000-(now-u[interactionKey])};
     if(cmd==='내정보'&&arg==='생성'){
       if(!u){u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);}
       u.lastCommand=now;return answer(`${u.name}님 프로필이 준비되었습니다. !출석으로 복권을 받으세요.`);
     }
-    if(u){u.name=e.user.nickname||u.name;u.lastCommand=now;}
+    if(u){u.name=e.user.nickname||u.name;if(interactionKey)u[interactionKey]=now;else u.lastCommand=now;}
     if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
@@ -350,15 +357,20 @@ export class Engine {
     if(cmd==='삭제'){
       return this.deleteSong(r,e,arg,undefined,now);
     }
-    if(cmd==='아이템'&&arg==='상점')return answer(s.items.filter(i=>i.enabled).map(i=>`${i.id}: ${i.name} ${n(i.price)} PT / 20분${i.stock===0?' (품절)':''}`).join('\n'));
-    if(!u&&(cmd==='내정보'||cmd==='애청지수'||cmd==='정답'&&r.autoQuizRound||dj)){
-      u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);u.lastCommand=now;
+    if(cmd==='아이템'&&bits[0]==='상점'&&!s.items.some(i=>i.enabled))return answer('판매 중인 아이템이 없습니다.');
+    if(cmd==='아이템'&&bits[0]==='상점')return answer(chatPage('아이템 상점',[
+      '구매: !구매 ID/번호/이름 · 사용: !아이템 사용 ID (20분)',
+      ...s.items.flatMap((i,index)=>i.enabled?[`${index+1}. ${i.name.slice(0,28)} (${i.id}) ${n(i.price)} PT${i.stock===0?' · 품절':''}`]:[])
+    ],bits.slice(1).join(' '),'아이템 상점','판매 중인 아이템이 없습니다.'));
+    if(!u&&(cmd==='내정보'||cmd==='애청지수'||cmd==='킵'||cmd==='아이템'&&bits[0]==='구매'||cmd==='정답'&&r.autoQuizRound||dj)){
+      u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);if(interactionKey)u[interactionKey]=now;else u.lastCommand=now;
     }
     if(!u)fail('먼저 !내정보 를 입력하면 프로필이 자동으로 만들어집니다.');
     const quiz=playQuiz(this,r,u,cmd,arg,now,fail);if(quiz!==null)return answer(quiz);
     const mini=playMiniGame(this,r,u,cmd,arg,now,fail);if(mini!==null)return answer(mini);
     const active=id=>u.buffPaused?.[id]===undefined&&(u.buffs[id]||0)>now;
-    if(cmd==='내정보'||cmd==='애청지수')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n애청지수 ${affinityScore(u)}점 · 청취 ${Math.floor((u.listeningMs||0)/60000)}분 · 채팅 ${u.chatAffinityPoints||0}점\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
+    if(cmd==='애청지수')return answer(u.name+'님 라디오메이트 애청지수 '+affinityScore(u)+'°\n최근 집계 상승분 +'+(u.affinityLastNotifiedGain||0)+'°\n청취 '+Math.floor((u.listeningMs||0)/60000)+'분 · 채팅 기여 '+(u.chatAffinityPoints||0)+'점\n자체 지수(1점=1°)이며 스푼 공식 애청온도와 별개입니다.');
+    if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n애청지수 ${affinityScore(u)}점 · 청취 ${Math.floor((u.listeningMs||0)/60000)}분 · 채팅 ${u.chatAffinityPoints||0}점\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
     if(cmd==='출석'){
       if(!s.attendance)fail('출석 기능이 꺼져 있습니다.');if(u.attendance===dates(now).day)fail('오늘은 이미 출석했습니다.');
       if(!Number.isSafeInteger(u.tickets+20))fail('복권 보유량이 정확히 처리 가능한 정수 범위를 초과합니다.');
@@ -425,13 +437,46 @@ export class Engine {
       this.store.log(r.id,u.id,'roulette',{name,miss:reward.miss},now);
       return answer(reward.miss?`${u.name}님 룰렛 결과: ${name} · 보유 킵에는 추가되지 않으며 사용내역에 기록했습니다.`:`${u.name}님 룰렛 당첨: ${name} · 킵에 자동 등록했습니다.`);
     }
-    if(cmd==='킵')return answer(chatPage('보유 킵',groupKeeps(u.keeps).map((k,i)=>`${i+1}. ${k.name} ×${k.count}`),arg,cmd,'보관 중인 킵이 없습니다.'));
+    if(cmd==='킵'){
+      if(bits[0]==='취소'){
+        const selector=keepName(bits.slice(1).join(' '));
+        const completed=[...(u.keepHistory||[])].filter(k=>k.kind==='used').reverse();
+        const entry=!selector?completed.find(k=>dj||k.actor===u.id):/^[1-9]\d*$/.test(selector)?completed[Number(selector)-1]:completed.find(k=>keepName(k.text)===selector);
+        if(!entry)fail('취소할 사용 완료 내역이 없습니다. !킵 완료로 확인하세요.');
+        if(!dj&&entry.actor!==u.id)fail('DJ가 처리한 킵은 DJ에게 취소를 요청하세요.');
+        if(dates(entry.time).month!==dates(now).month)fail('지난달 사용 내역은 월간 초기화 후 복원할 수 없습니다.');
+        entry.kind='cancelled';entry.cancelledAt=now;entry.cancelledBy=u.id;
+        u.keeps.push(keepName(entry.text));
+        this.store.log(r.id,u.id,'keep-update',{action:'cancel-use',id:entry.id,text:entry.text,actor:u.id,source:'chat'},now);
+        return answer(`${u.name}님 킵 사용 취소: ${entry.text}\n보유 킵 목록으로 1개를 돌려놓았습니다. !킵으로 확인하세요.`);
+      }
+      if(bits[0]==='사용'){
+        const selector=keepName(bits.slice(1).join(' '));
+        if(!selector)fail('사용법: !킵 사용 번호 또는 !킵 사용 보상명 · !킵으로 내 목록을 확인하세요.');
+        const grouped=groupKeeps(u.keeps);
+        const selected=/^[1-9]\d*$/.test(selector)?grouped[Number(selector)-1]:grouped.find(k=>k.name===selector);
+        if(!selected)fail('내 보유 킵에서 해당 보상을 찾을 수 없습니다. !킵으로 현재 번호를 확인하세요.');
+        const index=u.keeps.findIndex(k=>keepName(k)===selected.name);
+        u.keeps.splice(index,1);u.keepHistory??=[];
+        u.keepHistory.push({id:randomUUID(),text:selected.name,kind:'used',time:now,actor:u.id});
+        this.store.log(r.id,u.id,'keep-update',{action:'use',text:selected.name,actor:u.id,source:'chat'},now);
+        return answer(`${u.name}님 킵 사용 완료: ${selected.name} · 남은 수량 ${selected.count-1}개\n완료 내역으로 옮겼습니다. !킵 완료 · 되돌리기: !킵 취소`);
+      }
+      if(bits[0]==='완료')return answer(chatPage('킵 사용 완료', [...(u.keepHistory||[])].filter(k=>k.kind==='used').reverse().map((k,i)=>`${i+1}. ${k.text} · ${new Date(k.time).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}`),bits.slice(1).join(' '),'킵 완료','사용 완료한 킵이 없습니다.'));
+      const expiry='유효: '+keepExpiryLabel(now);
+      return answer(chatPage('보유 킵',u.keeps.length?[expiry,...groupKeeps(u.keeps).map((k,i)=>`${i+1}. ${k.name} ×${k.count}`)]:[],arg,cmd,`${expiry}\n보관 중인 킵이 없습니다.`));
+    }
     if(cmd==='가방')return answer(s.items.map(i=>`${i.id}: ${i.name} ×${u.bag[i.id]||0}`).join('\n'));
     if(cmd==='버프')return answer(s.items.filter(i=>(u.buffs[i.id]||0)>now).map(i=>`${i.name}: ${Math.ceil((u.buffs[i.id]-now)/60000)}분 남음${u.buffPaused?.[i.id]!==undefined?' (일시정지)':''}`).join('\n')||'적용 중인 효과가 없습니다.');
     if(cmd==='아이템'){
-      const [action,id]=bits,item=s.items.find(i=>i.id===id||String(s.items.indexOf(i)+1)===id);if(!item)fail('아이템 번호 또는 ID를 확인하세요. 예: !아이템 구매 exp');
+      const action=bits[0],selector=keepName(bits.slice(1).join(' '));
+      const matches=s.items.filter((i,index)=>i.id.toLowerCase()===selector.toLowerCase()||String(index+1)===selector||keepName(i.name)===selector);
+      if(matches.length!==1)fail('아이템을 하나만 정확히 지정하세요. 예: !구매 rare / !아이템 구매 1 / !아이템 사용 exp');
+      const item=matches[0];
       if(action==='구매'){
-        if(!item.enabled)fail('판매 중지 상품입니다.');if(item.stock===0)fail('품절 상품입니다.');if(u.pt<item.price)fail('포인트가 부족합니다.');u.pt-=item.price;if(item.stock!==null&&item.stock!==undefined){item.stock--;r.settingsRevision=(r.settingsRevision||0)+1;}u.bag[item.id]=(u.bag[item.id]||0)+1;this.store.log(r.id,u.id,'purchase',{item:item.id,price:item.price},now);return answer(`${item.name} 구매 완료`);
+        if(!item.enabled)fail('판매 중지 상품입니다.');if(item.stock===0)fail('품절 상품입니다.');if(u.pt<item.price)fail(`포인트가 부족합니다. 필요 ${n(item.price)} PT / 보유 ${n(u.pt)} PT`);
+        if(!Number.isSafeInteger((u.bag[item.id]||0)+1))fail('아이템 보유량을 더 늘릴 수 없습니다.');
+        u.pt-=item.price;if(item.stock!==null&&item.stock!==undefined){item.stock--;r.settingsRevision=(r.settingsRevision||0)+1;}u.bag[item.id]=(u.bag[item.id]||0)+1;this.store.log(r.id,u.id,'purchase',{item:item.id,price:item.price},now);return answer(`${item.name} 구매 완료 · ${n(item.price)} PT 차감\n잔액 ${n(u.pt)} PT · 가방 ${u.bag[item.id]}개\n사용: !아이템 사용 ${item.id}`);
       }
       if(action==='사용'){
         if(!(u.bag[item.id]>0))fail('보유 아이템이 없습니다.');if(item.id==='odd'?!s.odd:!s.fishing)fail('관련 게임이 꺼져 있습니다.');

@@ -29,7 +29,7 @@ test('roulette wins become grouped keeps; misses only enter history; event repla
   const f=setup();f.say('!내정보 생성');assert.match(f.say('!룰렛').text,/꺼져/);
   const settings=defaults();settings.roulette=true;assert.throws(()=>validateSettings(settings),/당첨 보상/);
   settings.rouletteRewards=[{id:'win',name:'노래',weight:1,miss:false},{id:'miss',name:'꽝',weight:1,miss:true}];validateSettings(settings);f.store.transaction('a',r=>r.settings=settings);
-  f.draw(0);f.say('!룰렛');f.say('!룰렛');assert.equal(f.say('!킵').text,'1. 노래 ×2');
+  f.draw(0);f.say('!룰렛');f.say('!룰렛');assert.match(f.say('!킵').text,/유효: 2026-11-30 23:59:59 \(한국 시간\)\n1\. 노래 ×2/);
   f.draw(999999);f.say('!룰렛');let u=f.store.load('a').users.u;assert.deepEqual(u.keeps,['노래','노래']);assert.equal(u.keepHistory.length,1);assert.equal(u.keepHistory[0].kind,'miss');
   f.advance(21000);const event={id:'replay',message:'!룰렛',user:{id:'u',nickname:'팬'}};f.engine.handle('a',event);f.engine.handle('a',event);u=f.store.load('a').users.u;assert.equal(u.keepHistory.length,2);
   f.advance(32*86400000);f.say('!내정보');u=f.store.load('a').users.u;assert.deepEqual(u.keeps,[]);assert.equal(u.keepHistory.length,2);f.store.db.close();

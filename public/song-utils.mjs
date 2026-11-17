@@ -20,4 +20,9 @@ export function parseSongRequest(text){
 }
 export function songVideoId(song){return song?.videoId||youtubeId(song?.title);}
 export const keepName=value=>String(value).trim().normalize('NFC');
+export function keepExpiryLabel(ms=Date.now()){
+  const date=new Date(ms+9*3600000),year=date.getUTCFullYear(),month=date.getUTCMonth()+1;
+  const day=new Date(Date.UTC(year,month,0)).getUTCDate();
+  return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')} 23:59:59 (한국 시간)`;
+}
 export function groupKeeps(keeps=[]){const counts=new Map();for(const raw of keeps){const name=keepName(raw);counts.set(name,(counts.get(name)||0)+1);}return [...counts].map(([name,count])=>({name,count}));}
