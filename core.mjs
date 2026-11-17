@@ -1,6 +1,7 @@
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue,applySongAction} from './song-queue.mjs';
 import {rewardListening} from './listening.mjs';
+import {parseTicketGrant,resolveTarget} from './targets.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
@@ -225,8 +226,8 @@ export class Engine {
     if(ticketReset){
       if(!dj)fail('복권 초기화는 DJ 전용 명령어입니다.');
       const targets=cmd==='복권초기화'?bits:bits.slice(1);
-      if(targets.length!==1)fail('사용법: !복권 초기화 @고유ID 또는 !복권초기화 @고유ID');
-      const uid=this.target(r,targets[0]),user=r.users[uid],previous=user.tickets;
+      if(!targets.length||targets.slice(1).some(target=>target.startsWith('@')))fail('사용법: !복권 초기화 닉네임 또는 !복권초기화 @고유ID (한 명만 지정)');
+      const uid=this.target(r,targets.join(' ')),user=r.users[uid],previous=user.tickets;
       user.tickets=0;user.ticketRevision=(user.ticketRevision||0)+1;
       this.store.log(r.id,uid,'ticket-reset',{previous,balance:0,actor:e.user.id},now);
       return answer(`${user.name}님 복권 초기화 · ${n(previous)}장 → 0장 (EXP·PT 유지)`);
@@ -234,8 +235,8 @@ export class Engine {
     if(dj){
       if(cmd==='조용'){if(!['on','off'].includes(arg))fail('사용법: !조용 on/off');s.quiet=arg==='on';r.settingsRevision=(r.settingsRevision||0)+1;return answer(`조용 모드 ${arg.toUpperCase()}`);}
       if(cmd==='복권지급'){
-        if(bits.length<1||bits.length>2)fail('사용법: !복권지급 @고유ID 수량 (수량 생략 시 1장)');
-        const [target,countText='1']=bits;
+        let parsed;try{parsed=parseTicketGrant(arg);}catch(error){fail(error.message);}
+        const {target,countText}=parsed;
         if(!/^[+-]?\d+$/.test(countText))fail('복권 수량은 정수로 입력해주세요.');
         const count=Number(countText);if(!Number.isSafeInteger(count))fail('복권 수량이 정확히 처리 가능한 정수 범위를 초과합니다.');
         const uid=this.target(r,target),user=r.users[uid],next=user.tickets+count;
@@ -434,8 +435,7 @@ export class Engine {
     });
   }
   target(r,target){
-    const value=String(target||'').replace(/^@/,'');if(r.users[value])return value;
-    const hits=Object.values(r.users).filter(u=>u.name===value);if(hits.length!==1)fail('대상을 고유 ID로 지정해주세요. 닉네임은 중복될 수 있습니다.');return hits[0].id;
+    try{return resolveTarget(r.users,target);}catch(error){fail(error.message);}
   }
 }
 class RuleError extends Error {}
