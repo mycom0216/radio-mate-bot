@@ -1,0 +1,147 @@
+{
+  "commands": [
+    {
+      "command": "!게임 on",
+      "result": "게임 ON"
+    },
+    {
+      "command": "!낚시",
+      "result": "🎣 붕어 (일반) 12cm\n+60 EXP · +164 PT"
+    },
+    {
+      "command": "!주사위 4",
+      "result": "기능점검님의 주사위: 3 · 아쉽게 빗나갔어요."
+    },
+    {
+      "command": "!가위바위보 바위",
+      "result": "기능점검: 바위 / 봇: 가위 → 승리"
+    },
+    {
+      "command": "!숫자맞히기 50",
+      "result": "50보다 작은 숫자입니다. (1/7회)"
+    },
+    {
+      "command": "!퀴즈",
+      "result": "기능점검님 퀴즈! 12와 8을 더하면 얼마일까요?\n!정답 답안 으로 입력하세요. 정답 +50 EXP · 남은 시간 5분 · !퀴즈 포기"
+    },
+    {
+      "command": "!정답 기능점검",
+      "result": "기능점검님, 아쉬워요! 다시 생각해 보세요. !정답 답안 / !퀴즈 포기"
+    },
+    {
+      "command": "!퀴즈 포기",
+      "result": "정답은 20! !퀴즈로 다음 문제에 도전해 보세요."
+    },
+    {
+      "command": "!게임 off",
+      "result": "게임 OFF"
+    },
+    {
+      "command": "!아이템 구매 rare",
+      "result": "희귀 물고기 확률 UP 구매 완료"
+    },
+    {
+      "command": "!아이템 사용 rare",
+      "result": "관련 게임이 꺼져 있습니다."
+    },
+    {
+      "command": "!신청곡 기능점검 - 두 번째 노래",
+      "result": "신청 완료: 기능점검 - 두 번째 노래"
+    },
+    {
+      "command": "!낚시 on",
+      "result": "낚시 ON"
+    },
+    {
+      "command": "!아이템 사용 rare",
+      "result": "희귀 물고기 확률 UP 20분 적용! 같은 효과는 시간이 연장됩니다."
+    },
+    {
+      "command": "!버프",
+      "result": "희귀 물고기 확률 UP: 20분 남음"
+    },
+    {
+      "command": "!낚시 off",
+      "result": "낚시 OFF"
+    }
+  ],
+  "menus": [
+    {
+      "menu": "방송 대시보드",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "게임 설정",
+      "missingImages": 0,
+      "scrollWidth": 1030,
+      "width": 984
+    },
+    {
+      "menu": "아이템 상점",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "신청곡 관리",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "청취자 · 팬랭킹",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "공지 · 자동 안내",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "기록 · 보상 관리",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "자동채팅",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "음성메시지",
+      "missingImages": 0,
+      "scrollWidth": 999,
+      "width": 999
+    },
+    {
+      "menu": "운영 · 백업",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "명령어 테스트",
+      "missingImages": 0,
+      "scrollWidth": 984,
+      "width": 984
+    },
+    {
+      "menu": "명령어 안내",
+      "missingImages": 0,
+      "scrollWidth": 999,
+      "width": 999
+    }
+  ],
+  "notes": [
+    "Menu viewport observations are recorded at their actual DOM width, not assumed to be 390px.",
+    "Game field overflow at 984px was corrected and rechecked.",
+    "Actual Spoon DOM observed read-only; no chat was entered or sent."
+  ]
+}

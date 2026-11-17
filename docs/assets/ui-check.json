@@ -1,0 +1,170 @@
+{
+  "errors": [],
+  "checks": [
+    {
+      "name": "welcome-desktop",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "welcome-mobile",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "dashboard-mobile",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "dashboard-desktop",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "games-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "shop-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "songs-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "fans-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "notices-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "records-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "autoChat-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "voice-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "settings-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "test-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "help-1440",
+      "width": 1440,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "games-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "shop-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "songs-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "fans-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "notices-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "records-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "autoChat-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "voice-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "settings-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "test-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "help-390",
+      "width": 390,
+      "overflow": false,
+      "missingImages": []
+    },
+    {
+      "name": "profile-command",
+      "success": true
+    },
+    {
+      "name": "voice-public-390",
+      "overflow": false,
+      "missingImages": []
+    }
+  ]
+}

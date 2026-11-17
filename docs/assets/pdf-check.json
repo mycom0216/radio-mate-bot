@@ -1,0 +1,62 @@
+[
+  {
+    "name": "01-요구사항분석서",
+    "pages": 6,
+    "expected": 6,
+    "sizes": [
+      [
+        595,
+        842
+      ]
+    ],
+    "empty_text_pages": []
+  },
+  {
+    "name": "02-요구사항명세서",
+    "pages": 8,
+    "expected": 8,
+    "sizes": [
+      [
+        595,
+        842
+      ]
+    ],
+    "empty_text_pages": []
+  },
+  {
+    "name": "03-개발일정표",
+    "pages": 3,
+    "expected": 3,
+    "sizes": [
+      [
+        595,
+        842
+      ]
+    ],
+    "empty_text_pages": []
+  },
+  {
+    "name": "04-데이터정의서",
+    "pages": 7,
+    "expected": 7,
+    "sizes": [
+      [
+        595,
+        842
+      ]
+    ],
+    "empty_text_pages": []
+  },
+  {
+    "name": "05-포트폴리오",
+    "pages": 10,
+    "expected": 10,
+    "sizes": [
+      [
+        842,
+        595
+      ]
+    ],
+    "empty_text_pages": []
+  }
+]

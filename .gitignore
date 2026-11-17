@@ -11,3 +11,6 @@ node_modules/
 APP-REGISTRATION.md
 app-registration.png
 preview-checked.png
+
+tmp/
+output/

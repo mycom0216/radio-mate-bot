@@ -4,8 +4,6 @@ import {extraDefaults,normalizeExtras,validateExtras,keywordReply,playMiniGame} 
 import {parseSongRequest,songVideoId,groupKeeps} from './public/song-utils.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomInt, randomUUID } from 'node:crypto';
-import { mkdirSync, existsSync, rmSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
 
 export const LIMIT = { exp: 200000, fish: 200000, odd: 500000, total: 1000000 };
 export const RARITIES = ['일반', '고급', '희귀', '영웅', '전설'];
@@ -108,22 +106,6 @@ export class Store {
   log(room,user,type,data,now=Date.now()){this.db.prepare('INSERT INTO audit(room,time,user,type,data) VALUES(?,?,?,?,?)').run(room,now,user,type,JSON.stringify(data));}
   transaction(id,fn){this.db.exec('BEGIN IMMEDIATE');try{const room=this.load(id);if(!room)throw Error('방송을 찾을 수 없습니다.');const result=fn(room);this.save(room);this.db.exec('COMMIT');return result;}catch(e){this.db.exec('ROLLBACK');throw e;}}
   backup(id){const r=this.load(id);if(!r)throw Error('방송이 없습니다.');const key=randomUUID();this.db.prepare('INSERT INTO backups VALUES(?,?,?,?)').run(key,id,Date.now(),JSON.stringify(r.settings));return key;}
-  prune({eventsKeep=200000,auditDays=90,backupsKeep=50}={},now=Date.now()){
-    const cutoff=now-auditDays*86400000;
-    this.db.prepare('DELETE FROM audit WHERE time<?').run(cutoff);
-    this.db.exec(`DELETE FROM events WHERE rowid NOT IN (SELECT rowid FROM events ORDER BY rowid DESC LIMIT ${Number(eventsKeep)|0})`);
-    for(const {room} of this.db.prepare('SELECT DISTINCT room FROM backups').all())
-      this.db.prepare('DELETE FROM backups WHERE room=? AND id NOT IN (SELECT id FROM backups WHERE room=? ORDER BY time DESC LIMIT ?)').run(room,room,backupsKeep);
-  }
-  snapshot(dir,{keep=7,now=Date.now()}={}){
-    mkdirSync(dir,{recursive:true});
-    const stamp=new Date(now+9*3600000).toISOString().slice(0,10),file=join(dir,`studio-${stamp}.sqlite`);
-    if(existsSync(file))rmSync(file);
-    this.db.exec(`VACUUM INTO '${file.replaceAll("'","''")}'`);
-    const old=readdirSync(dir).filter(f=>/^studio-\d{4}-\d{2}-\d{2}\.sqlite$/.test(f)).sort().reverse().slice(keep);
-    for(const f of old)rmSync(join(dir,f),{force:true});
-    return file;
-  }
   logs(id){return this.db.prepare('SELECT * FROM audit WHERE room=? ORDER BY seq DESC LIMIT 200').all(id).map(r=>({...r,data:JSON.parse(r.data)}));}
 }
 export class Engine {
@@ -332,7 +314,7 @@ export class Engine {
     if(cmd==='아이템'){
       const [action,id]=bits,item=s.items.find(i=>i.id===id||String(s.items.indexOf(i)+1)===id);if(!item)fail('아이템 번호 또는 ID를 확인하세요. 예: !아이템 구매 exp');
       if(action==='구매'){
-        if(!item.enabled)fail('판매 중지 상품입니다.');if(item.stock===0)fail('품절 상품입니다.');if(u.pt<item.price)fail('포인트가 부족합니다.');u.pt-=item.price;if(item.stock!==null&&item.stock!==undefined)item.stock--;u.bag[item.id]=(u.bag[item.id]||0)+1;this.store.log(r.id,u.id,'purchase',{item:item.id,price:item.price},now);return answer(`${item.name} 구매 완료`);
+        if(!item.enabled)fail('판매 중지 상품입니다.');if(item.stock===0)fail('품절 상품입니다.');if(u.pt<item.price)fail('포인트가 부족합니다.');u.pt-=item.price;if(item.stock!==null&&item.stock!==undefined){item.stock--;r.settingsRevision=(r.settingsRevision||0)+1;}u.bag[item.id]=(u.bag[item.id]||0)+1;this.store.log(r.id,u.id,'purchase',{item:item.id,price:item.price},now);return answer(`${item.name} 구매 완료`);
       }
       if(action==='사용'){
         if(!(u.bag[item.id]>0))fail('보유 아이템이 없습니다.');if(item.id==='odd'?!s.odd:!s.fishing)fail('관련 게임이 꺼져 있습니다.');
@@ -378,3 +360,4 @@ export class Engine {
 class RuleError extends Error {}
 function fail(message){throw new RuleError(message);}
 function positive(text,max){if(!/^[1-9]\d*$/.test(String(text)))fail('양의 정수를 입력해주세요.');const v=Number(text);if(!Number.isSafeInteger(v)||v>max)fail(`최대 ${n(max)}까지 가능합니다.`);return v;}
+

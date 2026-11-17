@@ -1,0 +1,32 @@
+[
+  {
+    "name": "01-요구사항분석서",
+    "title": "요구사항 분석서",
+    "pages": 6,
+    "landscape": false
+  },
+  {
+    "name": "02-요구사항명세서",
+    "title": "요구사항 명세서",
+    "pages": 8,
+    "landscape": false
+  },
+  {
+    "name": "03-개발일정표",
+    "title": "개발일정표",
+    "pages": 3,
+    "landscape": false
+  },
+  {
+    "name": "04-데이터정의서",
+    "title": "데이터 정의서",
+    "pages": 7,
+    "landscape": false
+  },
+  {
+    "name": "05-포트폴리오",
+    "title": "프로젝트 포트폴리오",
+    "pages": 10,
+    "landscape": true
+  }
+]

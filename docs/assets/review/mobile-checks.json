@@ -1,0 +1,62 @@
+[
+  {
+    "menu": "방송 대시보드",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "게임 설정",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "아이템 상점",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "신청곡 관리",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "청취자 · 팬랭킹",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "공지 · 자동 안내",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "기록 · 보상 관리",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "자동채팅",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "음성메시지",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "운영 · 백업",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "명령어 테스트",
+    "scrollWidth": 375,
+    "width": 375
+  },
+  {
+    "menu": "명령어 안내",
+    "scrollWidth": 375,
+    "width": 375
+  }
+]

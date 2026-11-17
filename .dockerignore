@@ -6,4 +6,8 @@ node_modules
 *.sqlite*
 *.log
 *.png
+!public/radio-petal.png
+!extensions/listener-voice/icon.png
+tmp
+output
 APP-REGISTRATION.md

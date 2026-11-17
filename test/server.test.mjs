@@ -100,6 +100,22 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/test',{message:'!복권 초기화 @a',user:'a',name:'A',dj:false});assert.match((await res.json()).text,/DJ 전용/);
     res=await request('/api/test',{message:'!복권 초기화 @a',user:'dj',name:'DJ',dj:true});assert.match((await res.json()).text,/초기화/);
     res=await fetch(address+'/api/room',{headers});assert.equal((await res.json()).users.a.tickets,0);
+    // An old shop tab must not restock a limited item after a listener buys it.
+    res=await fetch(address+'/api/room',{headers});r=await res.json();
+    const limited=structuredClone(r.settings);limited.items[0].stock=1;
+    res=await request('/api/settings',{settings:limited,expectedRevision:r.settingsRevision||0});assert.equal(res.status,200);
+    const oldShop=await (await fetch(address+'/api/room',{headers})).json();
+    res=await request('/api/test',{message:'!아이템 구매 rare',user:'a',name:'A',dj:true});assert.match((await res.json()).text,/구매 완료/);
+    res=await request('/api/settings',{settings:oldShop.settings,expectedRevision:oldShop.settingsRevision});assert.equal(res.status,409);
+    assert.equal((await (await fetch(address+'/api/room',{headers})).json()).settings.items[0].stock,0);
+    for(const [path,mime]of [['/request-json.mjs','javascript'],['/diagnostics-ui.mjs','javascript'],['/listener/','text/html'],['/listener/panel.mjs','javascript'],['/listener/icon.png','image/png']]){
+      res=await fetch(address+path);assert.equal(res.status,200);assert.ok(res.headers.get('content-type').includes(mime));
+    }
+    const beforeDiagnosis=await (await fetch(address+'/api/room',{headers})).json();
+    res=await fetch(address+'/api/diagnostics');assert.equal(res.status,401);
+    res=await fetch(address+'/api/diagnostics',{headers});assert.equal(res.status,200);const diagnosis=await res.json();
+    assert.equal(diagnosis.checks.length,8);assert.deepEqual(Object.keys(diagnosis).sort(),['checkedAt','checks']);assert.doesNotMatch(JSON.stringify(diagnosis),new RegExp(csrf));
+    const afterDiagnosis=await (await fetch(address+'/api/room',{headers})).json();assert.equal(afterDiagnosis.settingsRevision,beforeDiagnosis.settingsRevision);assert.equal(afterDiagnosis.backups.length,beforeDiagnosis.backups.length);assert.deepEqual(afterDiagnosis.settings,beforeDiagnosis.settings);
     res=await request('/api/logout',{});assert.equal(res.status,200);
     res=await fetch(address+'/api/room',{headers});assert.equal(res.status,401);
   }finally{const exited=new Promise(resolve=>proc.once('exit',resolve));proc.kill();await exited;rmSync(data,{recursive:true,force:true});}

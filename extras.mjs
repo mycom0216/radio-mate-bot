@@ -45,6 +45,7 @@ export function playMiniGame(engine,r,u,cmd,arg,now,fail){
     const bot=choices[engine.int(0,2)],outcome=arg===bot?'무승부':({'가위':'보','바위':'가위','보':'바위'})[arg]===bot?'승리':'패배';
     text=`${u.name}: ${arg} / 봇: ${bot} → ${outcome}`;result={choice:arg,bot,outcome};
   }else if(key==='dice'){
+    if(arg==='자동')arg='';
     if(arg&&!/^[1-6]$/.test(arg))fail('사용법: !주사위 또는 !주사위 1~6');const rolled=engine.int(1,6);
     text=`${u.name}님의 주사위: ${rolled}${arg?Number(arg)===rolled?' · 맞혔습니다!':' · 아쉽게 빗나갔어요.':''}`;result={rolled,guess:arg?Number(arg):null};
   }else{

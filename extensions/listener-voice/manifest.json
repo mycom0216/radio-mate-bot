@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Radio Mate · 청취자 음성 입력",
+  "version": "0.1.0",
+  "description": "스푼 웹 청취자가 말한 내용을 자신의 방송 채팅 입력창에 넣는 도우미입니다. 전송은 사용자가 직접 합니다.",
+  "permissions": ["activeTab", "scripting"],
+  "background": {"service_worker": "background.mjs", "type": "module"},
+  "action": {"default_title": "청취자 음성 입력 열기"},
+  "icons": {"128": "icon.png"}
+}

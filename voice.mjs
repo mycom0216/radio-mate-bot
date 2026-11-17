@@ -38,7 +38,7 @@ export class VoiceInbox {
     if(!name||name.length>40||title.length>80||typeof requestId!=='string'||!/^[\w-]{16,64}$/.test(requestId))fail('닉네임·제목을 확인하고 다시 시도하세요.');
     const previous=this.db.prepare('SELECT id FROM voice_cards WHERE room=? AND request_id=?').get(room,requestId);if(previous){req.resume();return {id:previous.id,duplicate:true};}
     if(Number(req.headers['content-length'])>MAX_VOICE_BYTES){req.resume();fail('음성 파일은 8MB 이하여야 합니다.',413);}
-    const now=Date.now(),key=room+':'+(req.clientIp||req.socket.remoteAddress);
+    const now=Date.now(),key=room+':'+req.socket.remoteAddress;
     for(const [k,v]of this.attempts)if(now-v.time>=600000)this.attempts.delete(k);
     const rate=this.attempts.get(key)||{time:now,count:0};if(rate.count>=5)fail('이 접속에서는 10분에 최대 5개까지 보낼 수 있습니다.',429);rate.count++;this.attempts.set(key,rate);
     const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>MAX_VOICE_BYTES)fail('음성 파일은 8MB 이하여야 합니다.',413);chunks.push(chunk);}
