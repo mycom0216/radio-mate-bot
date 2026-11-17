@@ -116,6 +116,12 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await fetch(address+'/api/diagnostics',{headers});assert.equal(res.status,200);const diagnosis=await res.json();
     assert.equal(diagnosis.checks.length,8);assert.deepEqual(Object.keys(diagnosis).sort(),['checkedAt','checks']);assert.doesNotMatch(JSON.stringify(diagnosis),new RegExp(csrf));
     const afterDiagnosis=await (await fetch(address+'/api/room',{headers})).json();assert.equal(afterDiagnosis.settingsRevision,beforeDiagnosis.settingsRevision);assert.equal(afterDiagnosis.backups.length,beforeDiagnosis.backups.length);assert.deepEqual(afterDiagnosis.settings,beforeDiagnosis.settings);
+    res=await fetch(address+'/privacy');assert.equal(res.status,200);assert.doesNotMatch(await res.text(),/\{\{VOICE_DAYS\}\}/);
+    res=await fetch(address+'/api/export');assert.equal(res.status,401);
+    res=await fetch(address+'/api/export',{headers});assert.equal(res.status,200);const exported=await res.json();assert.equal(exported.room.id,'demo');assert.equal(exported.version,1);assert.equal(exported.tokens,undefined);assert.equal(exported.room.voiceInboxUrl,undefined);
+    res=await request('/api/listener-delete',{user:'a',confirm:'wrong'});assert.equal(res.status,400);
+    res=await request('/api/listener-delete',{user:'a',confirm:'청취자 삭제'});assert.equal(res.status,200);assert.equal((await (await fetch(address+'/api/room',{headers})).json()).users.a,undefined);
+    res=await request('/api/outbox-retry',{id:'missing',confirm:'wrong'});assert.equal(res.status,400);
     res=await request('/api/logout',{});assert.equal(res.status,200);
     res=await fetch(address+'/api/room',{headers});assert.equal(res.status,401);
   }finally{const exited=new Promise(resolve=>proc.once('exit',resolve));proc.kill();await exited;rmSync(data,{recursive:true,force:true});}

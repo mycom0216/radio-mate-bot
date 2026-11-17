@@ -1,3 +1,5 @@
+import {chatPage} from './pagination.mjs';
+import {Outbox} from './outbox.mjs';
 import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
 import {playQuiz} from './quiz.mjs';
 import {extraDefaults,normalizeExtras,validateExtras,keywordReply,playMiniGame} from './extras.mjs';
@@ -18,7 +20,7 @@ export const ITEMS = [
 export function defaults() {
   return {
     ...extraDefaults(),
-    cooldown:20, responseGap:3, quiet:false, fishing:false, odd:false,
+    pauseItems:false, cooldown:20, responseGap:3, quiet:false, fishing:false, odd:false,
     roulette:false, rouletteRewards:[{id:'miss',name:'꽝',weight:1,miss:true}],
     spoonNotice:'/스푼 <<<< 스푼 할인 충전 안내를 확인해 보세요! 할인 적용 여부와 최종 결제 금액은 충전 화면에서 확인해 주세요.',
     introEnabled:true,introText:'🤖 Spoon Studio는 신청곡·출석·게임·킵 관리를 돕는 방송 도우미입니다. 명령어는 !도움말로 확인하세요.',
@@ -44,7 +46,7 @@ export function dates(ms=Date.now()) {
   return {day,month:day.slice(0,7)};
 }
 export function validateSettings(s) {
-  validateExtras(s);
+  validateExtras(s);s.pauseItems??=false;if(typeof s.pauseItems!=='boolean')throw Error('아이템 일시정지 설정을 확인하세요.');
   s.spoonNotice??=defaults().spoonNotice;if(typeof s.spoonNotice!=='string'||!s.spoonNotice.trim()||s.spoonNotice.length>200)throw Error('스푼 충전 안내는 1~200자로 입력하세요.');
   s.introEnabled??=true;s.introText??=defaults().introText;if(typeof s.introEnabled!=='boolean'||typeof s.introText!=='string'||!s.introText.trim()||s.introText.length>200)throw Error('프로그램 소개 문구는 1~200자로 입력하세요.');
   s.roulette??=false;s.rouletteRewards??=defaults().rouletteRewards;s.likeGreetingEnabled??=true;s.likeGreeting??=defaults().likeGreeting;
@@ -92,6 +94,8 @@ export class Store {
   constructor(path=':memory:') {
     this.db=new DatabaseSync(path);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+      CREATE TABLE IF NOT EXISTS outbox(id TEXT PRIMARY KEY,room TEXT NOT NULL,event_key TEXT NOT NULL,text TEXT NOT NULL,created INTEGER NOT NULL,due INTEGER NOT NULL,attempts INTEGER NOT NULL,status TEXT NOT NULL,UNIQUE(room,event_key));
+      CREATE INDEX IF NOT EXISTS outbox_due ON outbox(room,status,due);
       CREATE TABLE IF NOT EXISTS rooms(id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS events(room TEXT,id TEXT,result TEXT,PRIMARY KEY(room,id));
       CREATE TABLE IF NOT EXISTS audit(seq INTEGER PRIMARY KEY AUTOINCREMENT,room TEXT,time INTEGER,user TEXT,type TEXT,data TEXT);
@@ -110,6 +114,8 @@ export class Store {
   backup(id){const r=this.load(id);if(!r)throw Error('방송이 없습니다.');const key=randomUUID();this.db.prepare('INSERT INTO backups VALUES(?,?,?,?)').run(key,id,Date.now(),JSON.stringify(r.settings));return key;}
   prune({eventsKeep=200000,auditDays=90,backupsKeep=50}={},now=Date.now()){
     for(const value of [eventsKeep,auditDays,backupsKeep])if(!Number.isSafeInteger(value)||value<1)throw Error('보관 한도는 양의 안전한 정수여야 합니다.');
+    this.db.prepare("UPDATE outbox SET status='expired' WHERE status='pending' AND created<?").run(now-600000);
+    this.db.prepare("DELETE FROM outbox WHERE status NOT IN ('pending','sending') AND created<?").run(now-7*86400000);
     const cutoff=now-auditDays*86400000;
     this.db.prepare('DELETE FROM audit WHERE time<?').run(cutoff);
     this.db.prepare('DELETE FROM events WHERE rowid NOT IN (SELECT rowid FROM events ORDER BY rowid DESC LIMIT ?)').run(eventsKeep);
@@ -133,7 +139,20 @@ export class Store {
 }
 export class Engine {
   constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1)}={}){this.store=store;this.now=now;this.int=int;}
+  syncBuffs(r,now=this.now()){
+    r.itemCheckedAt=now;
+    for(const u of Object.values(r.users)){
+      u.buffPaused??={};
+      for(const item of r.settings.items){
+        const paused=r.settings.pauseItems&&(r.id!=='demo'&&!r.live||r.settings.quiet||!(item.id==='odd'?r.settings.odd:r.settings.fishing));
+        const since=u.buffPaused[item.id];
+        if(since!==undefined){const elapsed=Math.max(0,now-since);if(u.buffs[item.id]>since)u.buffs[item.id]=Math.min(Number.MAX_SAFE_INTEGER,u.buffs[item.id]+elapsed);}
+        if(paused)u.buffPaused[item.id]=now;else delete u.buffPaused[item.id];
+      }
+    }
+  }
   reset(r){
+    this.syncBuffs(r);
     const {day,month}=dates(this.now());
     for(const u of Object.values(r.users)) {
       if(u.month!==month){u.pt=0;u.tickets=0;u.ticketRevision=(u.ticketRevision||0)+1;u.keeps=[];u.month=month;}
@@ -183,6 +202,8 @@ export class Engine {
         const original=r.users[event.user?.id];if(original&&commandTime===now){original.lastCommand=now;original.name=commandName;}
         result={text:e.message};
       }
+      this.syncBuffs(r,now);
+      if(event.delivery&&result.text)new Outbox(this.store).enqueue(roomId,event.id,result.text,now);
       this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(result));
       return result;
     });
@@ -254,16 +275,16 @@ export class Engine {
     if(cmd==='스푼')return answer(s.spoonNotice);
     if(cmd==='공지')return answer(s.notice);
     if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');
-    if(['랭킹','랭킹조회'].includes(cmd))return answer(Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).slice(0,8).map((v,i)=>`${i+1}. ${v.name} ${n(v.exp)} EXP`).join('\n')||'등록된 청취자가 없습니다.');
+    if(['랭킹','랭킹조회'].includes(cmd))return answer(chatPage('팬랭킹',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,'랭킹','등록된 청취자가 없습니다.'));
     if(cmd==='이전곡')return answer(r.previous?`이전곡: ${r.previous.title}`:'이전에 재생한 곡이 없습니다.');
     if(cmd==='현재곡')return answer(r.current?`현재곡: ${r.current.title}`:'현재곡이 없습니다.');
     if(cmd==='다음곡')return answer(r.songs[0]?`다음곡: ${r.songs[0].title}`:'다음 신청곡이 없습니다.');
-    if(cmd==='신청곡목록')return answer(r.songs.slice(0,8).map((v,i)=>`${i+1}. ${v.title} (${v.name})`).join('\n')||'대기 중인 신청곡이 없습니다.');
+    if(cmd==='신청곡목록')return answer(chatPage('신청곡',r.songs.map((v,i)=>`${i+1}. ${[...v.title].slice(0,70).join('')} (${[...v.name].slice(0,20).join('')})`),arg,cmd,'대기 중인 신청곡이 없습니다.'));
     if(cmd==='아이템'&&arg==='상점')return answer(s.items.filter(i=>i.enabled).map(i=>`${i.id}: ${i.name} ${n(i.price)} PT / 20분${i.stock===0?' (품절)':''}`).join('\n'));
     if(!u)fail('먼저 !내정보 생성 을 입력해주세요.');
     const quiz=playQuiz(this,r,u,cmd,arg,now,fail);if(quiz!==null)return answer(quiz);
     const mini=playMiniGame(this,r,u,cmd,arg,now,fail);if(mini!==null)return answer(mini);
-    const active=id=>(u.buffs[id]||0)>now;
+    const active=id=>u.buffPaused?.[id]===undefined&&(u.buffs[id]||0)>now;
     if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
     if(cmd==='출석'){
       if(!s.attendance)fail('출석 기능이 꺼져 있습니다.');if(u.attendance===dates(now).day)fail('오늘은 이미 출석했습니다.');
@@ -321,7 +342,7 @@ export class Engine {
       this.store.log(r.id,u.id,'odd-even',{stake,side,rolled,win},now);return answer(`${rolled}! ${win?`성공 · 원금 포함 ${n(stake*2)} PT 반환`:`실패 · ${n(stake)} PT 차감`} / 잔액 ${n(u.pt)} PT`);
     }
     if(cmd==='낚시정보')return answer(`오늘 낚시 ${n(u.daily.fishExp)}/200,000 EXP · ${n(u.daily.fishPt)}/200,000 PT\n전체 획득 ${n(u.daily.totalPt)}/1,000,000 PT`);
-    if(cmd==='도감')return answer(Object.values(u.book).map(b=>`${b.name} ×${b.count}`).join('\n')||'아직 잡은 물고기가 없습니다.');
+    if(cmd==='도감')return answer(chatPage('도감',Object.values(u.book).map(b=>`${b.name} ×${b.count}`),arg,cmd,'아직 잡은 물고기가 없습니다.'));
     if(cmd==='룰렛'){
       if(arg)fail('사용법: !룰렛');
       if(!s.roulette)fail('룰렛이 꺼져 있습니다. DJ가 보상과 확률을 설정한 뒤 켜 주세요.');
@@ -331,9 +352,9 @@ export class Engine {
       this.store.log(r.id,u.id,'roulette',{name,miss:reward.miss},now);
       return answer(reward.miss?`${u.name}님 룰렛 결과: ${name} · 보유 킵에는 추가되지 않으며 사용내역에 기록했습니다.`:`${u.name}님 룰렛 당첨: ${name} · 킵에 자동 등록했습니다.`);
     }
-    if(cmd==='킵')return answer(groupKeeps(u.keeps).map((k,i)=>`${i+1}. ${k.name} ×${k.count}`).join('\n')||'보관 중인 킵이 없습니다.');
+    if(cmd==='킵')return answer(chatPage('보유 킵',groupKeeps(u.keeps).map((k,i)=>`${i+1}. ${k.name} ×${k.count}`),arg,cmd,'보관 중인 킵이 없습니다.'));
     if(cmd==='가방')return answer(s.items.map(i=>`${i.id}: ${i.name} ×${u.bag[i.id]||0}`).join('\n'));
-    if(cmd==='버프')return answer(s.items.filter(i=>active(i.id)).map(i=>`${i.name}: ${Math.ceil((u.buffs[i.id]-now)/60000)}분 남음`).join('\n')||'적용 중인 효과가 없습니다.');
+    if(cmd==='버프')return answer(s.items.filter(i=>(u.buffs[i.id]||0)>now).map(i=>`${i.name}: ${Math.ceil((u.buffs[i.id]-now)/60000)}분 남음${u.buffPaused?.[i.id]!==undefined?' (일시정지)':''}`).join('\n')||'적용 중인 효과가 없습니다.');
     if(cmd==='아이템'){
       const [action,id]=bits,item=s.items.find(i=>i.id===id||String(s.items.indexOf(i)+1)===id);if(!item)fail('아이템 번호 또는 ID를 확인하세요. 예: !아이템 구매 exp');
       if(action==='구매'){

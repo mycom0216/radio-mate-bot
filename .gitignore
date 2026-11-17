@@ -21,3 +21,6 @@ deploy/*.log
 deploy/*.pid
 deploy/temporary.env
 data-public/
+
+*.rmbak
+deploy/tunnel-token.txt

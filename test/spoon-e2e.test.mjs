@@ -16,7 +16,7 @@ test('region selects the matching Spoon API host and rejects unknown regions', (
 });
 
 test('OAuth login, SSE chat event and chat reply work end to end against a mock Spoon API', { timeout: 45000 }, async () => {
-  const seen = { token: [], chat: [], me: 0, events: 0 };
+  const seen = { token: [], chat: [], me: 0, events: 0, revoked: [] };
   const mock = createServer((req, res) => {
     let body = '';
     req.on('data', c => body += c);
@@ -25,6 +25,7 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
         seen.token.push({ auth: req.headers.authorization, body });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ access_token: 'AT', token_type: 'Bearer', expires_in: 3600, refresh_token: 'RT', scope: 'me.read events.chat chat.send' }));
+      } else if(req.url==='/v1/oauth/revoke'){seen.revoked.push(body);res.writeHead(200);res.end('{}');
       } else if (req.url === '/v1/me') {
         seen.me++;
         assert.equal(req.headers.authorization, 'Bearer AT');
@@ -81,6 +82,10 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     // a replayed OAuth state must be refused
     res = await fetch(`${address}/oauth/callback?code=abc&state=${state}`, { redirect: 'manual', headers: { Cookie: oauthCookie } });
     assert.equal(res.status, 400);
+    const headers={Cookie:session,'Content-Type':'application/json','X-CSRF-Token':(await (await fetch(address+'/api/session',{headers:{Cookie:session}})).json()).csrf};
+    res=await fetch(address+'/api/account-delete',{method:'POST',headers,body:JSON.stringify({confirm:'wrong'})});assert.equal(res.status,400);
+    res=await fetch(address+'/api/account-delete',{method:'POST',headers,body:JSON.stringify({confirm:'방송 데이터 영구 삭제'})});assert.equal(res.status,200);assert.equal((await res.json()).revoked,true);assert.match(seen.revoked[0],/token=RT/);
+    res=await fetch(address+'/api/room',{headers:{Cookie:session}});assert.equal(res.status,401);
   } finally {
     const exited = new Promise(r => proc.once('exit', r));
     proc.kill();

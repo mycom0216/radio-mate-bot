@@ -1,0 +1,32 @@
+services:
+  studio:
+    build:
+      context: ..
+    restart: unless-stopped
+    env_file: ./https.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4310
+      TRUST_PROXY: '1'
+    expose: ['4310']
+    volumes:
+      - studio-data:/app/data
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4310/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token-file /run/secrets/tunnel-token
+    secrets: [tunnel-token]
+    depends_on:
+      studio:
+        condition: service_healthy
+volumes:
+  studio-data:
+secrets:
+  tunnel-token:
+    file: ./tunnel-token.txt

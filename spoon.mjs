@@ -1,5 +1,6 @@
+import {Outbox} from './outbox.mjs';
 import {autoChatCandidate} from './extras.mjs';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 const REGIONS={kr:'https://kr-openapi.spooncast.net',jp:'https://jp-openapi.spooncast.net'};
 export function spoonRegion(env={}){const region=String(env.SPOON_REGION||'kr').toLowerCase();if(!REGIONS[region])throw Error('SPOON_REGION은 kr 또는 jp여야 합니다.');return region;}
 // SPOON_API_BASE exists only so tests can point at a local mock; it is ignored in production.
@@ -12,34 +13,46 @@ export async function* frames(body){
   finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 export class Spoon {
-  constructor(store,engine,env){this.store=store;this.engine=engine;this.env=env;this.base=apiBase(env);this.running=new Map();this.status=new Map();this.refreshes=new Map();this.sendTimes=new Map();this.sendEpochs=new Map();this.greeted=new Set();this.timers=new Map();}
+  constructor(store,engine,env){this.store=store;this.engine=engine;this.env=env;this.base=apiBase(env);this.outbox=new Outbox(store);this.store.db.exec("UPDATE outbox SET status='uncertain' WHERE status='sending'");this.running=new Map();this.status=new Map();this.refreshes=new Map();this.authEpochs=new Map();this.sendTimes=new Map();this.sendEpochs=new Map();this.greeted=new Set();this.timers=new Map();}
   configured(){return !!(this.env.SPOON_CLIENT_ID&&this.env.SPOON_CLIENT_SECRET&&/^[a-fA-F0-9]{64}$/.test(this.env.TOKEN_KEY||''));}
   async tokenRequest(fields){const res=await fetch(`${this.base}/v1/oauth/token`,{method:'POST',headers:{Authorization:`Basic ${Buffer.from(`${this.env.SPOON_CLIENT_ID}:${this.env.SPOON_CLIENT_SECRET}`).toString('base64')}`,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields),signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error(`Spoon 인증 실패 (${res.status}). 새로 연결해주세요.`);return {...await res.json(),expiresAt:Date.now()+3600000};}
-  saveToken(room,t){t.expiresAt=Date.now()+(t.expires_in||3600)*1000;this.store.db.prepare('INSERT INTO tokens VALUES(?,?) ON CONFLICT(room) DO UPDATE SET data=excluded.data').run(room,seal(t,this.env.TOKEN_KEY));this.refreshes.delete(room);}
+  saveToken(room,t){t.region=spoonRegion(this.env);t.expiresAt=Date.now()+(t.expires_in||3600)*1000;this.store.db.prepare('INSERT INTO tokens VALUES(?,?) ON CONFLICT(room) DO UPDATE SET data=excluded.data').run(room,seal(t,this.env.TOKEN_KEY));this.refreshes.delete(room);}
   async access(room){
     if(this.refreshes.has(room))return this.refreshes.get(room);
-    const row=this.store.db.prepare('SELECT data FROM tokens WHERE room=?').get(room);if(!row)throw Error('스푼 연결이 필요합니다.');const t=unseal(row.data,this.env.TOKEN_KEY);
+    const row=this.store.db.prepare('SELECT data FROM tokens WHERE room=?').get(room);if(!row)throw Error('스푼 연결이 필요합니다.');const t=unseal(row.data,this.env.TOKEN_KEY);const authEpoch=this.authEpochs.get(room)||0;if((t.region||'kr')!==spoonRegion(this.env))throw Error('스푼 지역이 변경되었습니다. 계정을 다시 연결하세요.');
     if(Date.now()<t.expiresAt-300000)return t.access_token;
     const replacement=()=>{const current=this.store.db.prepare('SELECT data FROM tokens WHERE room=?').get(room);if(current&&current.data!==row.data){const newer=unseal(current.data,this.env.TOKEN_KEY);if(newer.expiresAt>Date.now())return newer.access_token;}return null;};
-    const p=(async()=>{let next;try{next=await this.tokenRequest({grant_type:'refresh_token',refresh_token:t.refresh_token});}catch(error){const newer=replacement();if(newer)return newer;throw error;}const newer=replacement();if(newer)return newer;this.saveToken(room,next);return next.access_token;})();this.refreshes.set(room,p);try{return await p;}finally{if(this.refreshes.get(room)===p)this.refreshes.delete(room);}
+    const p=(async()=>{let next;try{next=await this.tokenRequest({grant_type:'refresh_token',refresh_token:t.refresh_token});}catch(error){const newer=replacement();if(newer)return newer;throw error;}const newer=replacement();if(newer)return newer;if((this.authEpochs.get(room)||0)!==authEpoch||!this.store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(room))throw Error('스푼 연결이 해제되었습니다.');this.saveToken(room,next);return next.access_token;})();this.refreshes.set(room,p);try{return await p;}finally{if(this.refreshes.get(room)===p)this.refreshes.delete(room);}
+  }
+  async disconnect(room){
+    const row=this.store.db.prepare('SELECT data FROM tokens WHERE room=?').get(room);
+    this.authEpochs.set(room,(this.authEpochs.get(room)||0)+1);this.stop(room);this.refreshes.delete(room);
+    this.store.db.prepare('DELETE FROM tokens WHERE room=?').run(room);
+    this.store.db.prepare("DELETE FROM outbox WHERE room=?").run(room);
+    let revoked=!row;
+    if(row)try{const t=unseal(row.data,this.env.TOKEN_KEY);const res=await fetch(this.base+'/v1/oauth/revoke',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(this.env.SPOON_CLIENT_ID+':'+this.env.SPOON_CLIENT_SECRET).toString('base64'),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:t.refresh_token||t.access_token,token_type_hint:t.refresh_token?'refresh_token':'access_token'}),signal:AbortSignal.timeout(10000)});revoked=res.ok;}catch{}
+    for(const key of this.greeted)if(key.startsWith(room+':'))this.greeted.delete(key);
+    for(const key of this.timers.keys())if(key.startsWith(room+':'))this.timers.delete(key);
+    return {revoked};
   }
   async connect(code){const token=await this.tokenRequest({grant_type:'authorization_code',code,redirect_uri:`${this.env.PUBLIC_URL}/oauth/callback`});const res=await fetch(`${this.base}/v1/me`,{headers:{Authorization:`Bearer ${token.access_token}`},signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('DJ 정보를 확인할 수 없습니다. me.read 권한을 확인하세요.');const {userId}=await res.json();if(!userId)throw Error('DJ ID가 없습니다.');this.store.create(userId,`DJ ${userId.slice(0,6)}`);this.stop(userId);this.saveToken(userId,token);this.start(userId);return userId;}
-  async send(room,message){
-    if(!message)return false;
-    const now=Date.now(),r=this.store.load(room);if(!r?.live)return false;
-    if(now-(this.sendTimes.get(room)||0)<r.settings.responseGap*1000){this.store.log(room,'system','chat-suppressed',{reason:'response-gap'});return false;}
+  async send(room,message){return (await this.sendDetailed(room,message)).kind==='sent';}
+  async sendDetailed(room,message){
+    if(!message)return {kind:'failed'};
+    const now=Date.now(),r=this.store.load(room);if(!r?.live)return {kind:'deferred'};
+    if(now-(this.sendTimes.get(room)||0)<r.settings.responseGap*1000){this.store.log(room,'system','chat-suppressed',{reason:'response-gap'});return {kind:'deferred'};}
     this.sendTimes.set(room,now);
     const epoch=this.sendEpochs.get(room)||0;
     // A single concise message; never flood a room to paginate a long result.
     const clipped=message.length>200?message.slice(0,196)+'…':message;
     try{
       const token=await this.access(room);
-      if((this.sendEpochs.get(room)||0)!==epoch||!this.store.load(room)?.live)return false;
+      if((this.sendEpochs.get(room)||0)!==epoch||!this.store.load(room)?.live)return {kind:'deferred'};
       const res=await fetch(`${this.base}/v1/live/chat`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:clipped}),signal:AbortSignal.timeout(10000)});
-      if(!res.ok)this.store.log(room,'system','chat-send-failed',{status:res.status});return res.ok;
-    }catch{if((this.sendEpochs.get(room)||0)===epoch)this.store.log(room,'system','chat-send-failed',{reason:'connection-or-authentication'});return false;}
+      if(!res.ok)this.store.log(room,'system','chat-send-failed',{status:res.status});return {kind:res.ok?'sent':res.status===429?'retry':res.status>=500?'ambiguous':'failed'};
+    }catch{if((this.sendEpochs.get(room)||0)===epoch)this.store.log(room,'system','chat-send-failed',{reason:'connection-or-authentication'});return {kind:'ambiguous'};}
   }
-  stop(room){this.sendEpochs.set(room,(this.sendEpochs.get(room)||0)+1);this.running.get(room)?.abort();this.running.delete(room);this.setLive(room,false);this.status.set(room,'연결 중지');}
+  stop(room){this.sendEpochs.set(room,(this.sendEpochs.get(room)||0)+1);this.running.get(room)?.abort();this.running.delete(room);if(this.store.load(room))this.setLive(room,false);this.status.set(room,'연결 중지');}
   start(room){if(this.running.has(room)||!this.configured())return;const controller=new AbortController();this.running.set(room,controller);void this.loop(room,controller).catch(()=>{});}
   async loop(room,controller){let backoff=5000;const signal=controller.signal;
     try{while(!signal.aborted){
@@ -64,23 +77,23 @@ export class Spoon {
               const {data}=f;const cfg=this.store.load(room).settings;
               const banned=cfg.bannedWords.some(w=>String(data.message).includes(w));
               if(banned)this.store.log(room,data.user.id,'banned-word',{message:data.message});
-              if(!banned){const out=await this.engine.handleAsync(room,{...data,id:f.id||`${data.sentTime}:${data.user.id}:${data.message}`});if(out.text)await this.send(room,out.text);}
+              if(!banned){const out=await this.engine.handleAsync(room,{...data,id:createHash('sha256').update(f.id||`${data.sentTime}:${data.user.id}:${data.message}`).digest('hex'),delivery:true});if(out.text)await this.outbox.flush(room,text=>this.sendDetailed(room,text));}
             }else if(f.event==='presence'){
-              const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome)await this.send(room,s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));}
+              const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome){this.outbox.enqueue(room,'presence:'+createHash('sha256').update(f.id||`${f.data.time}:${f.data.user.id}`).digest('hex'),s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));}}
             }else if(f.event==='like'){
               const out=this.engine.likeGreeting(room,{...f.data,id:f.id||`${f.data.time}:${f.data.user.id}`},{commit:false});
               if(out.text&&await this.send(room,out.text))this.engine.recordLike(room,out.receipt);
             }else if(f.event==='donation'){
-              const s=this.store.load(room).settings;if(s.donation)await this.send(room,s.donation.replaceAll('{name}',f.data.user.nickname||'청취자').replaceAll('{amount}',String(f.data.amount)));
+              const s=this.store.load(room).settings;if(s.donation){this.outbox.enqueue(room,'donation:'+createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex'),s.donation.replaceAll('{name}',f.data.user.nickname||'청취자').replaceAll('{amount}',String(f.data.amount)));if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));}
             }
           }
           this.setLive(room,false);
         }
       }catch(e){if(signal.aborted)return;this.setLive(room,false);this.status.set(room,'연결 재시도 중');this.store.log(room,'system','connection-error',{message:e.message});}
       await new Promise(resolve=>{const timer=setTimeout(done,backoff);function done(){clearTimeout(timer);signal.removeEventListener('abort',done);resolve();}signal.addEventListener('abort',done,{once:true});});backoff=Math.min(60000,backoff*1.5);
-    }}finally{if(this.running.get(room)===controller){this.setLive(room,false);this.running.delete(room);}}
+    }}finally{if(this.running.get(room)===controller&&this.store.load(room)){this.setLive(room,false);this.running.delete(room);}}
   }
-  setLive(room,live){this.store.transaction(room,r=>{r.live=live;if(live&&!r.introDueAt)r.introDueAt=Date.now()+600000;});}
+  setLive(room,live){this.store.transaction(room,r=>{this.engine.syncBuffs(r);r.live=live;this.engine.syncBuffs(r);if(live&&!r.introDueAt)r.introDueAt=Date.now()+600000;});}
   async tick(){
     if(this.ticking)return;this.ticking=true;
     try{for(const id of this.store.ids()){
@@ -96,6 +109,7 @@ export class Spoon {
           if(a.enabled&&Date.now()-last>=a.minutes*60000){notice=a.text;announcement={key,id:a.id,text:a.text,minutes:a.minutes};break;}
         }
       });
+      const current=this.store.load(id);if(current?.live&&!current.settings.quiet)await this.outbox.flush(id,text=>this.sendDetailed(id,text));
       if(notice){const sent=await this.send(id,notice);if(announcement&&sent)this.store.transaction(id,r=>{const current=r.settings.announcements.find(a=>a.id===announcement.id);if(current?.enabled&&current.text===announcement.text&&current.minutes===announcement.minutes){this.timers.set(announcement.key,Date.now());r.lastResponse=Date.now();this.store.log(id,'system','announcement',{id:announcement.id});}});if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
     }}finally{this.ticking=false;}
   }

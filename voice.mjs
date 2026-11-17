@@ -29,7 +29,7 @@ export class VoiceInbox {
   file(room,id){if(!/^[a-f0-9-]{36}$/.test(id))fail('음성 메시지를 찾을 수 없습니다.',404);const row=this.db.prepare('SELECT * FROM voice_cards WHERE room=? AND id=?').get(room,id);if(!row)fail('음성 메시지를 찾을 수 없습니다.',404);return {row,data:readFileSync(join(this.dir,id))};}
   action(room,id,action){
     const row=this.db.prepare('SELECT id FROM voice_cards WHERE room=? AND id=?').get(room,id);if(!row)fail('음성 메시지를 찾을 수 없습니다.',404);
-    if(action==='delete'){unlinkSync(join(this.dir,row.id));this.db.prepare('DELETE FROM voice_cards WHERE room=? AND id=?').run(room,id);}
+    if(action==='delete'){try{unlinkSync(join(this.dir,row.id));}catch(e){if(e.code!=='ENOENT')throw e;}this.db.prepare('DELETE FROM voice_cards WHERE room=? AND id=?').run(room,id);}
     else if(['read','unread'].includes(action))this.db.prepare('UPDATE voice_cards SET is_read=? WHERE room=? AND id=?').run(action==='read'?1:0,room,id);
     else fail('메시지 처리 동작을 확인하세요.');
   }

@@ -18,6 +18,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate HTTPS deployment configurations
+        shell: bash
+        run: |
+          cat > deploy/https.env <<'ENV'
+          STUDIO_DOMAIN=radio.example.com
+          PUBLIC_URL=https://radio.example.com
+          TOKEN_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          ENV
+          touch deploy/tunnel-token.txt
+          docker compose --env-file deploy/https.env -f deploy/compose.https.yaml config --quiet
+          docker compose -f deploy/compose.tunnel.yaml config --quiet
       - run: docker build -t radio-mate:test .
       - name: Start and check production container
         shell: bash
@@ -32,4 +43,6 @@ jobs:
           curl -fsS http://127.0.0.1:4310/health
           curl -fsS http://127.0.0.1:4310/minimi.js > /dev/null
           curl -fsS http://127.0.0.1:4310/radio-mini.png > /dev/null
+          curl -fsS http://127.0.0.1:4310/privacy > /dev/null
+          curl -fsS http://127.0.0.1:4310/operations-ui.mjs > /dev/null
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:4310/api/demo)" != 200
