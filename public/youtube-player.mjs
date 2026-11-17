@@ -11,7 +11,7 @@ function loadApi(){
   }).catch(error=>{apiPromise=null;throw error;});return apiPromise;
 }
 export class YouTubePlayer {
-  constructor({onEnd,onError,onStatus,readyTimeoutMs=15000}){Object.assign(this,{onEnd,onError,onStatus,readyTimeoutMs});this.player=null;this.ready=null;this.guard=()=>false;this.playing=false;this.playerVersion=0;}
+  constructor({onEnd,onError,onStatus,checkpoint,readyTimeoutMs=15000}){Object.assign(this,{onEnd,onError,onStatus,checkpoint,readyTimeoutMs});this.player=null;this.ready=null;this.guard=()=>false;this.playing=false;this.playerVersion=0;}
   prepare(){
     if(this.ready)return this.ready;
     const host=document.getElementById('youtube-player');if(!host)throw Error('플레이어 영역을 찾을 수 없습니다. 화면을 새로고침해 주세요.');
@@ -25,8 +25,8 @@ export class YouTubePlayer {
         onStateChange:event=>{
           if(!active()||!this.guard()||this.player?.getVideoData()?.video_id!==this.videoId)return;
           if(event.data===YT.PlayerState.PLAYING){this.playing=true;this.onStatus('재생 중 · 영상이 끝나면 자동재생 설정에 따라 다음 곡으로 넘어갑니다.');}
-          if(event.data===YT.PlayerState.ENDED&&this.playing){this.playing=false;this.onEnd();}
-          if(event.data===YT.PlayerState.PAUSED)this.onStatus('영상이 일시정지되었습니다. 플레이어 또는 재생 시작 버튼으로 이어서 재생하세요.');
+          if(event.data===YT.PlayerState.ENDED&&this.playing){this.playing=false;this.completed=true;this.checkpoint?.clear();this.onEnd();}
+          if(event.data===YT.PlayerState.PAUSED){this.savePosition();this.playing=false;this.onStatus('영상이 일시정지되었습니다. 플레이어 또는 재생 시작 버튼으로 이어서 재생하세요.');}
         },
         onAutoplayBlocked:()=>{if(active()&&this.guard())this.onStatus('브라우저가 자동재생을 막았습니다. 영상의 재생 버튼을 눌러 주세요.');},
         onError:event=>{if(!active())return;const message=errorMessage(event.data);if(!prepared)reject(Error(message));else if(this.guard())this.onError(message);}
@@ -44,7 +44,8 @@ export class YouTubePlayer {
   async load(id,guard,songId){
     this.guard=guard;this.playing=false;await loadApi();if(!guard())return;
     await this.prepare();if(!guard())return;this.videoId=id;
-    if(this.songId===songId&&this.player.getVideoData()?.video_id===id)this.player.playVideo();else{this.songId=songId;this.player.loadVideoById(id);}
+    if(this.songId===songId&&this.player.getVideoData()?.video_id===id)this.player.playVideo();else{this.songId=songId;this.completed=false;const seconds=this.checkpoint?.read(songId,id)||0;this.player.loadVideoById(seconds?{videoId:id,startSeconds:seconds}:id);}
   }
-  pause(){this.playing=false;this.player?.pauseVideo?.();}
+  savePosition(){if(!this.completed&&this.player?.getVideoData()?.video_id===this.videoId)this.checkpoint?.write(this.songId,this.videoId,this.player.getCurrentTime?.());}
+  pause(){this.savePosition();this.playing=false;this.player?.pauseVideo?.();}
 }

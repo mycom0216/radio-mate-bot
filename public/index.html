@@ -1,6 +1,7 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#fff4fa"><title>Spoon Studio</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><link rel="stylesheet" href="/studio.css"><link rel="stylesheet" href="/petal.css"><link rel="stylesheet" href="/bloom.css"><script src="/app.js" type="module"></script></head>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/radio-petal.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="라디오메이트"><link rel="stylesheet" href="/pwa.css"><script src="/pwa.mjs" type="module"></script><meta name="theme-color" content="#fff4fa"><title>Spoon Studio</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/workspace.css"><link rel="stylesheet" href="/studio.css"><link rel="stylesheet" href="/petal.css"><link rel="stylesheet" href="/bloom.css"><script src="/app.js" type="module"></script></head>
 <body>
+<div class="app-tools"><span id="app-connection" class="app-connection" role="status" hidden></span><span id="app-install-status"></span><button id="app-install" hidden>웹앱 설치</button><details><summary>모바일 앱처럼 사용하기</summary><p>아이폰: Safari 공유 메뉴 → 홈 화면에 추가 → 웹 앱으로 열기.<br>안드로이드: Chrome 메뉴 → 앱 설치 또는 홈 화면에 추가.<br>설치 후 DJ 연결이 다시 필요할 수 있어요.</p><p>YouTube는 다른 앱으로 이동하거나 브라우저를 종료하면 멈춥니다. 돌아와 재생 시작을 누르면 같은 현재곡의 저장 위치부터 이어집니다. 서버 PC와 HTTPS 연결도 계속 켜두세요.</p></details></div>
 <div id="login" class="landing welcome-home" hidden>
   <div class="welcome-top"><div class="brand"><span class="brand-icon">s.</span> spoon<span class="muted">studio</span></div><span class="welcome-top-note">DJ와 청취자를 위한 방송 도우미</span></div>
   <div class="landing-copy"><span class="welcome-label"><span aria-hidden="true">♡</span> 신청곡 · 게임 · 청취자 관리</span><h1>마음이 머무는<br><span>작은 라디오방</span></h1><p class="welcome-description">좋아하는 노래와 다정한 목소리가 모이는 곳.<br>신청곡부터 게임, 음성 편지까지 함께 준비해요.</p><div class="welcome-actions"><button id="connect-login" class="primary" aria-describedby="login-note">스푼 계정 연결하기</button><button id="demo-login" class="secondary">테스트 화면 열기</button></div><p id="login-note" class="small muted"></p><div class="welcome-promise"><span aria-hidden="true">✧</span> 기능을 미리 확인하고 방송에 연결하세요.</div></div>
@@ -20,10 +21,11 @@
   <section id="playback-panel" class="card playback-panel" aria-label="YouTube 신청곡 플레이어" hidden>
     <div class="section-head"><h2>YouTube 신청곡 재생</h2><label class="switch"><input id="autoplay-enabled" type="checkbox" checked>끝나면 다음 곡 자동재생</label></div>
     <p id="playback-setup" class="note"></p>
+    <label class="switch"><input id="request-autoplay" type="checkbox" checked>접수 즉시 이 기기에서 자동재생 시도</label><p class="small">화면을 열어두면 새 대기곡을 확인해 약 4초 안에 재생을 시도합니다. 한 기기에서만 켜세요. 최초에는 영상의 재생 버튼을 눌러야 할 수 있습니다. 일시정지·!멈춤 후에는 재생 시작을 눌러 다시 켜세요.</p>
     <p id="playback-song" class="small"></p><div id="youtube-player"></div>
     <div class="actions"><button id="playback-start" class="primary">재생 시작 / 이어서 재생</button><button id="playback-pause">일시정지</button><a id="playback-watch" target="_blank" rel="noopener noreferrer" hidden>YouTube에서 직접 열기 ↗</a></div>
     <p id="playback-status" role="status">YouTube 링크 신청곡을 추가하고 재생을 시작하세요.</p>
-    <p class="small">이 브라우저에서만 재생됩니다. 한 기기에서 재생하고, 방송 송출에는 해당 소리를 오디오 입력으로 연결하세요. 브라우저를 닫으면 자동재생이 중지됩니다. 링크 없는 곡과 재생 오류에서는 자동으로 건너뛰지 않습니다.</p>
+    <p class="small">이 기기에서만 재생됩니다. 방송 송출에는 해당 소리를 오디오 입력으로 연결하세요. YouTube는 화면 밖 재생을 지원하지 않으므로 앱 전환·화면 잠금·브라우저 종료 시 멈춥니다. 돌아와 재생 버튼을 누르면 같은 현재곡의 저장 위치부터 이어집니다(이 기기에 최대 12시간 저장). PC 플레이어를 별도로 켜두면 휴대폰에서는 목록·선택·재생 명령을 원격으로 관리할 수 있습니다. 스푼 방송에 소리가 자동 전송되지는 않습니다.</p>
   </section>
   <div id="content" aria-live="polite"></div>
   <div id="save-bar" class="save-bar" hidden><div><strong>저장하지 않은 변경사항</strong><span>저장하면 방송에 적용됩니다.</span></div><div class="inline"><button data-action="discard">변경 취소</button><button class="primary" data-action="save">변경사항 저장</button></div></div>

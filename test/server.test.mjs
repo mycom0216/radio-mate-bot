@@ -12,6 +12,9 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     let res=await fetch(address+'/api/room');assert.equal(res.status,401);
     res=await fetch(address+'/');assert.equal(res.status,200);assert.match(await res.text(),/Spoon Studio/);
     assert.match(res.headers.get('content-security-policy'),/script-src 'self'/);
+    res=await fetch(address+'/manifest.webmanifest');assert.match(res.headers.get('content-type'),/application\/manifest\+json/);const manifest=await res.json();assert.equal(manifest.display,'standalone');assert.equal(manifest.scope,'/');
+    res=await fetch(address+manifest.icons[0].src);assert.equal(res.status,200);assert.match(res.headers.get('content-type'),/svg/);
+    res=await fetch(address+'/sw.js');assert.equal(res.status,200);assert.match(res.headers.get('content-type'),/javascript/);assert.equal(res.headers.get('cache-control'),'no-cache');
     res=await fetch(address+'/api/demo',{method:'POST'});assert.equal(res.status,200);const cookie=res.headers.get('set-cookie').split(';')[0],{csrf}=await res.json();
     const headers={'Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf};
     const request=(path,body,h=headers)=>fetch(address+path,{method:'POST',headers:h,body:JSON.stringify(body)});

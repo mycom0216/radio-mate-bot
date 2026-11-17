@@ -249,6 +249,20 @@ export class Engine {
     const dj=e.isDj===true;
     if(dj&&r.songDeletePrompt?.actor===e.user?.id&&!['삭제','이전곡','다음곡'].includes(cmd))delete r.songDeletePrompt;
     const answer=t=>{r.lastResponse=now;return {text:t};};
+    if(cmd==='자동퀴즈'){
+      if(!dj)fail('자동 퀴즈 설정은 DJ 전용 명령어입니다.');
+      if(arg==='상태')return answer('자동 퀴즈 '+(s.autoQuizEnabled?'ON':'OFF')+' · '+s.autoQuizMinutes+'분 간격 · '+(r.autoQuizRound?'문제 진행 중':'다음 출제 대기'));
+      if(!/^(on(?: \d+)?|off)$/.test(arg))fail('사용법: !자동퀴즈 on [간격 분] / !자동퀴즈 off / !자동퀴즈 상태');
+      const minutes=bits[1]===undefined?s.autoQuizMinutes:Number(bits[1]);
+      if(!Number.isInteger(minutes)||minutes<1||minutes>1440)fail('자동 퀴즈 간격은 1~1440분입니다.');
+      if(bits[0]==='on'&&!s.quizQuestions.length)fail('게임 설정에서 퀴즈 문제를 먼저 등록하세요.');
+      s.autoQuizEnabled=bits[0]==='on';s.autoQuizMinutes=minutes;
+      delete r.autoQuizPending;
+      if(s.autoQuizEnabled){s.quiz=true;if(!r.autoQuizRound)r.autoQuizDueAt=now;}else{delete r.autoQuizRound;delete r.autoQuizDueAt;}
+      r.settingsRevision=(r.settingsRevision||0)+1;
+      this.store.log(r.id,e.user.id,'auto-quiz-settings',{enabled:s.autoQuizEnabled,minutes},now);
+      return answer(s.autoQuizEnabled?'자동 퀴즈 ON · '+minutes+'분 간격 · 방송 중 다음 출제부터 자동으로 진행합니다.':'자동 퀴즈 OFF · 진행 중인 자동 문제도 종료했습니다.');
+    }
     const ticketReset=cmd==='복권초기화'||cmd==='복권'&&bits[0]==='초기화';
     if(ticketReset){
       if(!dj)fail('복권 초기화는 DJ 전용 명령어입니다.');
@@ -337,7 +351,7 @@ export class Engine {
       return this.deleteSong(r,e,arg,undefined,now);
     }
     if(cmd==='아이템'&&arg==='상점')return answer(s.items.filter(i=>i.enabled).map(i=>`${i.id}: ${i.name} ${n(i.price)} PT / 20분${i.stock===0?' (품절)':''}`).join('\n'));
-    if(!u&&(cmd==='내정보'||cmd==='애청지수'||dj)){
+    if(!u&&(cmd==='내정보'||cmd==='애청지수'||cmd==='정답'&&r.autoQuizRound||dj)){
       u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);u.lastCommand=now;
     }
     if(!u)fail('먼저 !내정보 를 입력하면 프로필이 자동으로 만들어집니다.');
@@ -445,7 +459,7 @@ export class Engine {
       if(r.songs.filter(x=>x.user===u.id).length>=s.requestMax)fail('1인당 대기열 한도에 도달했습니다.');
       if(!s.duplicateSongs&&[r.current,...r.songs].some(x=>x&&(x.title.toLowerCase()===song.title.toLowerCase()||song.videoId&&songVideoId(x)===song.videoId)))fail('이미 등록된 곡입니다.');
       if(song.videoId)rememberSongVideo(r,song,song.videoId);
-      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;touchQueue(r);r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title.slice(0,65)} · 대기 ${r.songs.length}번째. DJ 관리 화면에서 재생 시작 후 순서대로 재생됩니다.${song.videoId?' https://youtu.be/'+song.videoId:''}`);
+      r.streak=r.lastRequester===u.id?r.streak+1:1;r.lastRequester=u.id;touchQueue(r);r.songs.push({id:randomUUID(),user:u.id,name:u.name,...song});return answer(`신청 완료: ${song.title.slice(0,65)} · 대기 ${r.songs.length}번째. 열린 재생 기기의 자동재생 설정에 따라 순서대로 재생됩니다.${song.videoId?' https://youtu.be/'+song.videoId:''}`);
     }
     return {text:null};
   }

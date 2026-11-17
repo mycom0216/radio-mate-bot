@@ -23,8 +23,46 @@ export function quizHint(answer){
 }
 const clip=(text,length=200)=>[...String(text)].slice(0,length).join('');
 const meaning=round=>round.meaning||'이 문제의 뜻은 DJ가 아직 등록하지 않았습니다.';
+const autoDelay=r=>(r.settings.autoQuizMinutes||10)*60000;
+const autoSignature=r=>JSON.stringify([r.settings.autoQuizMinutes,r.settings.quizMinutes,r.settings.quizExp,r.settings.quizTickets,r.settings.quizExpChance,r.settings.quizQuestions]);
+function roundText(round,label='모두 함께 자동 퀴즈!'){
+ const prefix=`${label} 초성: ${clip(quizHint(round.answers[0]),30)} (힌트: ${clip(round.category||'단어',20)})\n`;
+ const suffix=`\n!정답 답안 · ${round.minutes||30}분 제한 · 선착순 1명 EXP 또는 복권!`;
+ return prefix+clip(round.question,Math.max(0,200-[...prefix+suffix].length))+suffix;
+}
+// Prepare before sending, activate only after Spoon confirms delivery.
+export function autoQuizCandidate(engine,r,now){
+ if(!r.live||!r.settings.quiz||!r.settings.autoQuizEnabled){delete r.autoQuizDueAt;delete r.autoQuizPending;delete r.autoQuizRound;return null;}
+ if(r.settings.quiet||r.autoQuizRound)return null;
+ const signature=autoSignature(r);
+ if(r.autoQuizSignature!==signature){r.autoQuizSignature=signature;delete r.autoQuizPending;r.autoQuizDueAt??=now+autoDelay(r);}
+ if(r.autoQuizPending)return now>=r.autoQuizPending.retryAt?r.autoQuizPending:null;
+ r.autoQuizDueAt??=now+autoDelay(r);
+ if(now<r.autoQuizDueAt||Object.values(r.users).some(u=>u.quizRound))return null;
+ const bank=r.settings.quizQuestions||[];if(!bank.length)return null;
+ r.autoQuizSeen=Array.isArray(r.autoQuizSeen)?r.autoQuizSeen:[];
+ let pool=bank.filter(q=>!r.autoQuizSeen.includes(q.id));if(!pool.length){r.autoQuizSeen=[];pool=bank;}
+ const selected=pool[engine.int(0,pool.length-1)];
+ const round={...selected,key:randomUUID(),reward:r.settings.quizExp,ticketReward:r.settings.quizTickets||1,expChance:r.settings.quizExpChance??50,minutes:r.settings.quizMinutes||30};
+ return r.autoQuizPending={key:round.key,round,text:roundText(round),signature,retryAt:now};
+}
+export function autoQuizDelivered(engine,r,candidate,kind,now){
+ if(r.autoQuizPending?.key!==candidate.key)return;
+ if(!r.live||r.settings.quiet||!r.settings.quiz||!r.settings.autoQuizEnabled||autoSignature(r)!==candidate.signature){delete r.autoQuizPending;return;}
+ if(kind==='sent'){
+  r.autoQuizRound={...candidate.round,expiresAt:now+candidate.round.minutes*60000};
+  (r.autoQuizSeen??=[]).push(candidate.round.id);delete r.autoQuizDueAt;delete r.autoQuizPending;
+  r.lastResponse=now;engine.store.log(r.id,'system','auto-quiz',{questionId:candidate.round.id},now);
+ }else if(kind==='retry'||kind==='deferred'){r.autoQuizPending.retryAt=now+15000;}
+ else{delete r.autoQuizPending;r.autoQuizDueAt=now+autoDelay(r);engine.store.log(r.id,'system','auto-quiz-send-failed',{kind},now);}
+}
 export function expireQuizRounds(engine,room,now){
  const expired=[];
+ if(room.autoQuizRound&&now>=room.autoQuizRound.expiresAt){
+  const round=room.autoQuizRound;delete room.autoQuizRound;room.autoQuizDueAt=now+autoDelay(room);
+  expired.push({key:`auto-quiz-timeout:${round.key}`,text:clip(`자동 퀴즈 시간이 지났습니다. 정답: ${round.answers[0]}\n뜻: ${meaning(round)}\n다음 문제는 ${room.settings.autoQuizMinutes||10}분 후에 나옵니다.`)});
+  engine.store.log(room.id,'system','quiz-timeout',{questionId:round.id,automatic:true},now);
+ }
  for(const user of Object.values(room.users)){
   const round=user.quizRound;if(!round||now<round.expiresAt)continue;
   delete user.quizRound;
@@ -37,7 +75,14 @@ export function playQuiz(engine,r,u,cmd,arg,now,fail){
   if(!['퀴즈','정답'].includes(cmd))return null;
   if(!r.settings.quiz)fail('퀴즈가 꺼져 있습니다. !게임 on으로 켜거나 게임 설정에서 활성화하세요.');
   if(cmd==='퀴즈'&&arg&&arg!=='포기')fail('사용법: !퀴즈 / !정답 답안 / !퀴즈 포기');
-  let round=u.quizRound;
+  if(cmd==='퀴즈'&&r.autoQuizPending&&!u.quizRound)return '자동 퀴즈를 전송 중입니다. 문제가 나오면 !정답 답안으로 참여하세요.';
+  const shared=r.autoQuizRound;
+  let round=u.quizRound||shared;
+  if(shared&&!u.quizRound&&now>=shared.expiresAt){
+    delete r.autoQuizRound;r.autoQuizDueAt=now+autoDelay(r);
+    return clip(`자동 퀴즈 시간이 지났습니다. 정답: ${shared.answers[0]}\n뜻: ${meaning(shared)}`);
+  }
+  if(shared&&!u.quizRound&&cmd==='퀴즈')return arg==='포기'?'함께 푸는 자동 퀴즈입니다. !정답 답안으로 참여하세요. 중지는 DJ가 !자동퀴즈 off를 입력하세요.':roundText(shared);
   if(round&&now>=round.expiresAt){delete u.quizRound;return clip(`${u.name}님 퀴즈 시간이 지났습니다. 정답: ${round.answers[0]}\n뜻: ${meaning(round)}\n!퀴즈로 새 문제를 받아주세요.`);}
   if(cmd==='퀴즈'&&arg==='포기'){
     if(!round)fail('진행 중인 문제가 없습니다. !퀴즈로 문제를 받아 주세요.');
@@ -65,7 +110,8 @@ export function playQuiz(engine,r,u,cmd,arg,now,fail){
   if(!Number.isSafeInteger(next))fail('경험치가 처리 가능한 범위를 초과해 지급하지 않았습니다.');
   if(!Number.isSafeInteger(u.tickets+tickets))fail('복권 보유량이 처리 가능한 범위를 초과합니다.');
   const previousLevel=Math.floor(u.exp/r.settings.levelStep)+1,level=Math.floor(next/r.settings.levelStep)+1;
-  u.exp=next;u.tickets+=tickets;if(tickets)u.ticketRevision=(u.ticketRevision||0)+1;delete u.quizRound;
+  u.exp=next;u.tickets+=tickets;if(tickets)u.ticketRevision=(u.ticketRevision||0)+1;
+  if(round===shared){delete r.autoQuizRound;r.autoQuizDueAt=now+autoDelay(r);}else delete u.quizRound;
   engine.store.log(r.id,u.id,'minigame-quiz',{questionId:round.id,exp:reward,tickets,totalExp:next,level},now);
   return clip(`${u.name}님 정답! ${round.answers[0]} · ${expReward?'+'+reward+' EXP':'복권 '+tickets+'장 지급'}\n뜻: ${meaning(round)}\n누적 ${next.toLocaleString('ko-KR')} EXP · ${level>previousLevel?`레벨업! Lv.${previousLevel} → Lv.${level}`:`Lv.${level} · 다음 레벨까지 ${(r.settings.levelStep-next%r.settings.levelStep).toLocaleString('ko-KR')} EXP`}`);
 }

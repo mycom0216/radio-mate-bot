@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "라디오메이트 · Spoon Studio",
+  "short_name": "라디오메이트",
+  "lang": "ko",
+  "description": "신청곡, 청취자와 음성메시지를 관리하는 나의 작은 방송 공간",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff4fa",
+  "theme_color": "#fff4fa",
+  "icons": [{"src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}],
+  "shortcuts": [{"name": "신청곡 플레이어", "url": "/player"}]
+}

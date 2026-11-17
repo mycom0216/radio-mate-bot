@@ -25,3 +25,17 @@ test('synchronous player creation failure is retryable and never leaves a reject
  const retry=f.player.load('M7lc1UVf-VE',()=>true,'one');await new Promise(resolve=>setImmediate(resolve));
  f.players[0].events.onReady();await retry;assert.equal(f.players[0].videoId,'M7lc1UVf-VE');
 });
+
+test('new player resumes only a saved matching request and clears checkpoint on completion',async t=>{
+ const f=environment(t),writes=[];let cleared=0;
+ f.player.checkpoint={read:(song,video)=>song==='saved'&&video==='M7lc1UVf-VE'?42:0,write:(...args)=>writes.push(args),clear:()=>cleared++};
+ const pending=f.player.load('M7lc1UVf-VE',()=>true,'saved');await new Promise(resolve=>setImmediate(resolve));
+ const native=f.players[0];let loaded;
+ native.loadVideoById=value=>{loaded=value;native.videoId=typeof value==='string'?value:value.videoId;};
+ native.getCurrentTime=()=>57;
+ native.events.onReady();await pending;
+ assert.deepEqual(loaded,{videoId:'M7lc1UVf-VE',startSeconds:42});
+ native.events.onStateChange({data:1});f.player.pause();assert.deepEqual(writes.at(-1),['saved','M7lc1UVf-VE',57]);
+ native.events.onStateChange({data:1});native.events.onStateChange({data:0});assert.equal(cleared,1);
+ const count=writes.length;f.player.pause();assert.equal(writes.length,count);
+});

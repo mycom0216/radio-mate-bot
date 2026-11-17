@@ -1,5 +1,5 @@
 import {Outbox} from './outbox.mjs';
-import {expireQuizRounds} from './quiz.mjs';
+import {expireQuizRounds,autoQuizCandidate,autoQuizDelivered} from './quiz.mjs';
 import {autoChatCandidate} from './extras.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 const REGIONS={kr:'https://kr-openapi.spooncast.net',jp:'https://jp-openapi.spooncast.net'};
@@ -114,12 +114,14 @@ export class Spoon {
     try{for(const id of this.store.ids()){
       const listeningRoom=this.store.load(id),pollKey='listeners:'+id;
       if(this.configured()&&listeningRoom.live&&listeningRoom.settings.listenRewards&&Date.now()-(this.timers.get(pollKey)||0)>=60000){this.timers.set(pollKey,Date.now());await this.pollListeners(id);}
-      let notice=null,isIntro=false,autoChat=null,announcement=null;
+      let notice=null,isIntro=false,autoChat=null,announcement=null,quiz=null;
       this.store.transaction(id,r=>{
         this.engine.reset(r);
         if(r.live&&!r.settings.quiet)for(const expired of expireQuizRounds(this.engine,r,Date.now()))this.outbox.enqueue(id,expired.key,expired.text);
+        if(!r.live||!r.settings.quiz||!r.settings.autoQuizEnabled)autoQuizCandidate(this.engine,r,Date.now());
         if(!r.live||r.settings.quiet||Date.now()-r.lastResponse<r.settings.responseGap*1000)return;
         if(r.settings.introEnabled){if(!r.introDueAt)r.introDueAt=Date.now()+600000;if(Date.now()>=r.introDueAt){notice=r.settings.introText;isIntro=true;return;}}
+        quiz=autoQuizCandidate(this.engine,r,Date.now());if(quiz)return;
         autoChat=autoChatCandidate(r,Date.now(),(min,max)=>this.engine.int(min,max));if(autoChat){notice=autoChat.text;return;}
         for(const a of r.settings.announcements){
           const key=`${id}:${a.id}`,last=this.timers.get(key);
@@ -128,6 +130,7 @@ export class Spoon {
         }
       });
       const current=this.store.load(id);if(current?.live&&!current.settings.quiet)await this.outbox.flush(id,text=>this.sendDetailed(id,text));
+      if(quiz){let result;try{result=await this.sendDetailed(id,quiz.text);}catch{result={kind:'ambiguous'};}this.store.transaction(id,r=>autoQuizDelivered(this.engine,r,quiz,result.kind,Date.now()));}
       if(notice){const sent=await this.send(id,notice);if(announcement&&sent)this.store.transaction(id,r=>{const current=r.settings.announcements.find(a=>a.id===announcement.id);if(current?.enabled&&current.text===announcement.text&&current.minutes===announcement.minutes){this.timers.set(announcement.key,Date.now());r.lastResponse=Date.now();this.store.log(id,'system','announcement',{id:announcement.id});}});if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
     }}finally{this.ticking=false;}
   }
