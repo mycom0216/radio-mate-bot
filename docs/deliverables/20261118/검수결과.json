@@ -1,0 +1,167 @@
+{
+  "date": "2026-11-18",
+  "codeBaseline": "c572bf8",
+  "wordPages": {
+    "01_요구사항분석서.pdf": 6,
+    "02_요구사항명세서.pdf": 12,
+    "03_데이터정의서.pdf": 13,
+    "04_개발일정표.pdf": 4,
+    "05_프로젝트포트폴리오.pdf": 7
+  },
+  "wordTotalPages": 42,
+  "pptxSlides": 24,
+  "flowchartPages": 9,
+  "requirements": 34,
+  "nonfunctionalRequirements": 9,
+  "validation": "Word rendered and inspected; PPTX rendered and validated; XLSX formula mutation 1->2->1",
+  "files": {
+    "00_자료안내.md": {
+      "bytes": 2589,
+      "sha256": "f22c3463cb55d13b33f88434c91da3e7a83ac2aa0bb90038620ed57dafb9d7ba"
+    },
+    "01_요구사항분석서.docx": {
+      "bytes": 272251,
+      "sha256": "de52f4a3da1296370f57fbfec4848e55a205cc2095af22e225686304c27d2b49"
+    },
+    "02_요구사항명세서.docx": {
+      "bytes": 48369,
+      "sha256": "09c6e4cd5bf1c68848104229b5c586d3ee0b49b0e9476d5db47fec17facb804f"
+    },
+    "03_데이터정의서.docx": {
+      "bytes": 344537,
+      "sha256": "743bdef5be1dd01e34cd504c436b00369fad414078f7ffa70b5f564e280e599e"
+    },
+    "04_개발일정표.docx": {
+      "bytes": 41478,
+      "sha256": "36aefe8272b1c6c698894c4fc0c30188397f488e84c94f1c38770d145cd88d54"
+    },
+    "04_개발일정표.xlsx": {
+      "bytes": 15224,
+      "sha256": "40c71919a6f3edc9498df38cfa490066dd18fa9c45d673f6ecc6d91ca4535931"
+    },
+    "05_프로젝트포트폴리오.docx": {
+      "bytes": 344056,
+      "sha256": "e3768965748978ff44afdfc8145f9fb3d3892c1f4bd1f9a7e6a21eda73e57b14"
+    },
+    "06_라디오메이트_발표자료.pptx": {
+      "bytes": 2582235,
+      "sha256": "85f3bb26a8b698f1d678f75aa83884dcb2bdf8f71acd08c7429508ca90955c07"
+    },
+    "07_기능순서도.pdf": {
+      "bytes": 114888,
+      "sha256": "a825aad93450c23f7fcd385998ae7b4cc10b94984350f49b9a2366f64e1c0d2b"
+    },
+    "ERD_JSON논리구조.png": {
+      "bytes": 163420,
+      "sha256": "d2579f9a38ee1bda767f699b877e7f99b88facf48aa4ca81e337eb01d522e897"
+    },
+    "ERD_JSON논리구조.svg": {
+      "bytes": 4751,
+      "sha256": "58ff829b69f9a140e81fa7c1d975fbaa269951a299ab10e783747a665434117a"
+    },
+    "ERD_물리구조.png": {
+      "bytes": 172476,
+      "sha256": "a0d1d69c00c7620e1bad40394fda9a1d178669c5123a6e2869b3bc6ce9bd187c"
+    },
+    "ERD_물리구조.svg": {
+      "bytes": 7225,
+      "sha256": "99b0ae5dda5069ab409ca88d56b548413500644fc4d6ca0a7239bf3cfaebc2a6"
+    },
+    "PDF/01_요구사항분석서.pdf": {
+      "bytes": 628923,
+      "sha256": "1d683f15323981fb6a4adcc2a1003fe3d80be65221eea6562b18f7cc3562b774"
+    },
+    "PDF/02_요구사항명세서.pdf": {
+      "bytes": 477360,
+      "sha256": "f536c9f495f957789d9d915e8411710a5df7dfeb69e35c824f10b433b2e5b454"
+    },
+    "PDF/03_데이터정의서.pdf": {
+      "bytes": 822663,
+      "sha256": "5b04223202e452cec9bc49a3cb4bb1604ae18a5c256b27ab5c635ceec7bbea23"
+    },
+    "PDF/04_개발일정표.pdf": {
+      "bytes": 248922,
+      "sha256": "7ec74d1e21b7af63bf0691c9cddf390d500e442619e3c15a0cc7c0ba2bfa22c8"
+    },
+    "PDF/05_프로젝트포트폴리오.pdf": {
+      "bytes": 745821,
+      "sha256": "cc365ee7b098efa515ff0ddae457a53e3328d890813360ac3c33279938263777"
+    },
+    "순서도/01_전체_방송_이벤트_처리.png": {
+      "bytes": 199682,
+      "sha256": "d575e8aabd38cdca877326c64df7dabb423111788c7e1a755dafe46ed7c7b8ed"
+    },
+    "순서도/01_전체_방송_이벤트_처리.svg": {
+      "bytes": 6382,
+      "sha256": "a38e248c7e287fa0fbf8b9d7a891308e11a0ebd4c9c20688256db2b80ffd2a48"
+    },
+    "순서도/02_신청곡_접수와_재생.png": {
+      "bytes": 223896,
+      "sha256": "a4f8d44ae69fb129ff3b698625c8ca540cda8b281b07ac1d4017a0ada6512e27"
+    },
+    "순서도/02_신청곡_접수와_재생.svg": {
+      "bytes": 7357,
+      "sha256": "09ec86e79f32a502bca65542bd24aa88aed181c0fe3bdeaa9e4613ed69d0454e"
+    },
+    "순서도/03_킵_사용___취소___월말_만료.png": {
+      "bytes": 218367,
+      "sha256": "e13770b470490525d154e9054f693efe5bc458ec59ca6e14bfa0efed3d6f48c9"
+    },
+    "순서도/03_킵_사용___취소___월말_만료.svg": {
+      "bytes": 7337,
+      "sha256": "b61211b71c0b05d5c6426df3323da45d8f92ce1513c794fad9010e75491ac109"
+    },
+    "순서도/04_아이템_구매와_사용.png": {
+      "bytes": 204375,
+      "sha256": "0dfc8fabb39f99b73f3ee2fae9c47b0937bcff48baf96b8e649869d063836d7c"
+    },
+    "순서도/04_아이템_구매와_사용.svg": {
+      "bytes": 6627,
+      "sha256": "e131d6731d20861bed6455baa133bf95b426fc2ba331b116afcb5c84c19671ee"
+    },
+    "순서도/05_청취_보상과_애청지수.png": {
+      "bytes": 244110,
+      "sha256": "450ae4af76648d1b7cbd59675213f75f690a65306411017badb2ea163f70f135"
+    },
+    "순서도/05_청취_보상과_애청지수.svg": {
+      "bytes": 7955,
+      "sha256": "9aa37302061325fc568dba269a5d288a7bbad7669ff8ba3017fbe6c77c298c21"
+    },
+    "순서도/06_자동_퀴즈_출제와_보상.png": {
+      "bytes": 214482,
+      "sha256": "f613d64d768b244a908d6d3f51a3a73fc4bd7a9bdc82f233f532c41ddbd6ee01"
+    },
+    "순서도/06_자동_퀴즈_출제와_보상.svg": {
+      "bytes": 6952,
+      "sha256": "e7e2155dcbc0193e30c96f91438b4acf844a9ae12d8fe2e7f27ee977a519acc7"
+    },
+    "순서도/07_보이스카드_접수와_DJ_확인.png": {
+      "bytes": 212102,
+      "sha256": "95d1e2094ea16c79e194b993a34b794af985a102a239daed9864c9b73f75ccdc"
+    },
+    "순서도/07_보이스카드_접수와_DJ_확인.svg": {
+      "bytes": 6755,
+      "sha256": "0efcc04388e2f390fdd6149d33596ae3ef4d7cbd07efb376a938f68dc0f79c83"
+    },
+    "순서도/08_Android_외부_로그인과_세션_교환.png": {
+      "bytes": 207237,
+      "sha256": "51a88c98b6404d2253397e5a837899681254eebb084eb47699728bd012c457a4"
+    },
+    "순서도/08_Android_외부_로그인과_세션_교환.svg": {
+      "bytes": 6075,
+      "sha256": "26815a472a480d34964f38143751de1503967ba53220e2020be41a5adca29243"
+    },
+    "순서도/09_Android_빌드와_직접_배포.png": {
+      "bytes": 202775,
+      "sha256": "1e1681658192c67d531026b13505f37441f5c10912611eddf359b56aff126ab8"
+    },
+    "순서도/09_Android_빌드와_직접_배포.svg": {
+      "bytes": 6365,
+      "sha256": "8632f8538184058da49b5e4c376ef42701cb534fe952d48923ebc935df56f284"
+    },
+    "순서도/원본_흐름정의.json": {
+      "bytes": 12782,
+      "sha256": "e3b31ee8ebb0f2a72e2bc306183a1a954628bf30b0f3877a9b337c94d6c5c470"
+    }
+  }
+}
