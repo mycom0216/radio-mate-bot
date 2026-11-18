@@ -1,0 +1,5 @@
+# Copy to signing.properties; never commit the real file or keystore.
+storeFile=release-upload.jks
+storePassword=CHANGE_ME
+keyAlias=radiomate-upload
+keyPassword=CHANGE_ME

@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { apiBase, spoonRegion } from '../spoon.mjs';
+import {AndroidAuth} from '../android-auth.mjs';
 
 test('region selects the matching Spoon API host and rejects unknown regions', () => {
   assert.equal(apiBase({}), 'https://kr-openapi.spooncast.net');
@@ -82,6 +83,22 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     // a replayed OAuth state must be refused
     res = await fetch(`${address}/oauth/callback?code=abc&state=${state}`, { redirect: 'manual', headers: { Cookie: oauthCookie } });
     assert.equal(res.status, 400);
+    // Native app login: external-browser OAuth -> short-lived code -> WebView cookie.
+    const verifier='v'.repeat(43),challenge=AndroidAuth.challenge(verifier);
+    res=await fetch(address+'/oauth/start?app_challenge=bad',{redirect:'manual'});assert.equal(res.status,400);
+    res=await fetch(address+'/oauth/start?app_challenge='+challenge,{redirect:'manual'});
+    const appLocation=new URL(res.headers.get('location')),appState=appLocation.searchParams.get('state'),appCookie=res.headers.get('set-cookie').split(';')[0];
+    res=await fetch(`${address}/oauth/callback?code=app-code&state=${appState}`,{redirect:'manual',headers:{Cookie:appCookie}});
+    assert.equal(res.status,200);assert.equal(res.headers.get('referrer-policy'),'no-referrer');
+    assert.equal(res.headers.get('set-cookie'),null,'browser must not receive the native session');
+    const appCode=(await res.text()).match(/radiomate:\/\/auth\?code=([A-Za-z0-9_-]{43})/)[1];
+    const exchange=(v,extra={})=>fetch(address+'/api/android/exchange',{method:'POST',headers:{'Content-Type':'application/json',...extra},body:JSON.stringify({code:appCode,verifier:v})});
+    assert.equal((await exchange(verifier,{Origin:'https://untrusted.example'})).status,403);
+    assert.equal((await exchange('x'.repeat(43))).status,400);
+    res=await exchange(verifier);assert.equal(res.status,200);
+    const appSession=res.headers.get('set-cookie');assert.match(appSession,/HttpOnly/);assert.match(appSession,/SameSite=Lax/);
+    res=await fetch(address+'/api/room',{headers:{Cookie:appSession.split(';')[0]}});assert.equal(res.status,200);assert.equal((await res.json()).id,room.id);
+    assert.equal((await exchange(verifier)).status,400,'one-time code cannot be replayed');
     const headers={Cookie:session,'Content-Type':'application/json','X-CSRF-Token':(await (await fetch(address+'/api/session',{headers:{Cookie:session}})).json()).csrf};
     res=await fetch(address+'/api/account-delete',{method:'POST',headers,body:JSON.stringify({confirm:'wrong'})});assert.equal(res.status,400);
     res=await fetch(address+'/api/account-delete',{method:'POST',headers,body:JSON.stringify({confirm:'방송 데이터 영구 삭제'})});assert.equal(res.status,200);assert.equal((await res.json()).revoked,true);assert.match(seen.revoked[0],/token=RT/);

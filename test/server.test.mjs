@@ -12,6 +12,9 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     let res=await fetch(address+'/api/room');assert.equal(res.status,401);
     res=await fetch(address+'/');assert.equal(res.status,200);assert.match(await res.text(),/Spoon Studio/);
     assert.match(res.headers.get('content-security-policy'),/script-src 'self'/);
+    res=await fetch(address+'/android');assert.equal(res.status,200);assert.match(await res.text(),/Android APK/);
+    res=await fetch(address+'/android/signing.properties');assert.equal(res.status,404);
+    res=await fetch(address+'/api/android/exchange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'bad',verifier:'bad'})});assert.equal(res.status,400);
     res=await fetch(address+'/manifest.webmanifest');assert.match(res.headers.get('content-type'),/application\/manifest\+json/);const manifest=await res.json();assert.equal(manifest.display,'standalone');assert.equal(manifest.scope,'/');
     res=await fetch(address+manifest.icons[0].src);assert.equal(res.status,200);assert.match(res.headers.get('content-type'),/svg/);
     res=await fetch(address+'/sw.js');assert.equal(res.status,200);assert.match(res.headers.get('content-type'),/javascript/);assert.equal(res.headers.get('cache-control'),'no-cache');

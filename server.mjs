@@ -1,4 +1,5 @@
 import {applySongAction} from './song-queue.mjs';
+import {AndroidAuth} from './android-auth.mjs';
 import {Sessions} from './sessions.mjs';
 import {updateRequestedRules,RULES_VERSION} from './rules-update.mjs';
 import {emailAlias,nicknameKey} from './targets.mjs';
@@ -49,6 +50,7 @@ const servicesFor=room=>sandbox?.has(room)?sandbox.services:liveServices;
 const isDemo=room=>room==='demo'||!!sandbox?.has(room);
 const demoId='demo';if(!production)store.create(demoId,'나의 첫 라디오');
 const sessions=new Sessions(store.db,{key:env.TOKEN_KEY,volatile:isDemo}),oauth=new Map(),attempts=new Map();
+const androidAuth=new AndroidAuth();
 const digest=x=>createHash('sha256').update(x).digest('hex');
 function sessionKey(req){const cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('studio='))?.slice(7);return digest(cookie||'');}
 function session(req){const s=sessions.get(sessionKey(req));return s&&s.expires>Date.now()&&servicesFor(s.room).store.load(s.room)?s:null;}
@@ -83,6 +85,21 @@ const server=createServer(async(req,res)=>{
     }
     if(path==='/privacy'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(readFileSync(join(ROOT,'public','privacy.html'),'utf8').replaceAll('{{VOICE_DAYS}}',voiceRetention?String(voiceRetention)+'일':'DJ가 삭제할 때까지'));return;}
     if(path==='/health'){reply(res,200,{ok:true});return;}
+    if(path==='/android'&&req.method==='GET'){
+      res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(readFileSync(join(ROOT,'public','android.html')));return;
+    }
+    if(path==='/android/RadioMate.apk'&&(req.method==='GET'||req.method==='HEAD')){
+      const apk=join(ROOT,'output','android','RadioMate-1.0.0.apk');
+      if(!existsSync(apk)){reply(res,404,{error:'앱 배포 파일이 준비되지 않았습니다. 운영자에게 문의해주세요.'});return;}
+      const data=readFileSync(apk);res.writeHead(200,{'Content-Type':'application/vnd.android.package-archive','Content-Disposition':'attachment; filename="RadioMate-1.0.0.apk"','Content-Length':data.length,'Cache-Control':'no-store'});res.end(req.method==='HEAD'?undefined:data);return;
+    }
+    if(path==='/api/android/exchange'&&req.method==='POST'){
+      if(req.headers.origin&&req.headers.origin!==env.PUBLIC_URL)throw Object.assign(Error('허용되지 않은 출처입니다.'),{status:403});
+      const key='android:'+req.clientIp,now=Date.now(),rate=attempts.get(key)||{time:now,count:0};
+      if(now-rate.time>60000){rate.time=now;rate.count=0;}if(++rate.count>20)throw Object.assign(Error('연결 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.'),{status:429});
+      if(attempts.size>2000&&!attempts.has(key))throw Object.assign(Error('잠시 후 다시 시도해주세요.'),{status:429});attempts.set(key,rate);
+      const b=await body(req),room=androidAuth.redeem(b.code,b.verifier);newSession(res,room);reply(res,200,{ok:true});return;
+    }
     const listenerFiles={'/listener/':'panel.html','/listener/panel.css':'panel.css','/listener/panel.mjs':'panel.mjs','/listener/speech.mjs':'speech.mjs','/listener/shared.mjs':'shared.mjs','/listener/icon.png':'icon.png','/listener/guide.html':'guide.html'};
     if(req.method==='GET'&&Object.hasOwn(listenerFiles,path)){
       const name=listenerFiles[path];res.writeHead(200,{'Content-Type':name.endsWith('.mjs')?'text/javascript; charset=utf-8':name.endsWith('.css')?'text/css; charset=utf-8':name.endsWith('.png')?'image/png':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'extensions','listener-voice',name)));return;
@@ -100,14 +117,24 @@ const server=createServer(async(req,res)=>{
     }
     if(path==='/oauth/start'&&req.method==='GET'){
       if(!spoon.configured())throw Error('서버의 SPOON_CLIENT_ID와 SPOON_CLIENT_SECRET을 설정해주세요.');
-      const state=randomBytes(32).toString('hex');oauth.set(digest(state),Date.now()+10*60000);res.setHeader('Set-Cookie',`oauth=${state}; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=600${production?'; Secure':''}`);
+      const appChallenge=url.searchParams.get('app_challenge')||'';
+      if(appChallenge&&!AndroidAuth.validChallenge(appChallenge))throw Error('올바르지 않은 앱 연결 요청입니다.');
+      if(oauth.size>=2000)throw Object.assign(Error('연결 요청이 많습니다. 잠시 후 다시 시도해주세요.'),{status:429});
+      const state=randomBytes(32).toString('hex');oauth.set(digest(state),{expires:Date.now()+10*60000,appChallenge});res.setHeader('Set-Cookie',`oauth=${state}; HttpOnly; SameSite=Lax; Path=/oauth; Max-Age=600${production?'; Secure':''}`);
       const q=new URLSearchParams({response_type:'code',client_id:env.SPOON_CLIENT_ID,redirect_uri:`${env.PUBLIC_URL}/oauth/callback`,scope:'me.read listeners.read events.chat chat.send events.presence events.like events.donation',state});res.writeHead(302,{Location:`https://developers.spooncast.net/${spoonRegion(env)}/oauth/authorize?${q}`});res.end();return;
     }
     if(path==='/oauth/callback'&&req.method==='GET'){
       const state=url.searchParams.get('state')||'',cookie=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('oauth='))?.slice(6);
-      if(!state||state!==cookie||(oauth.get(digest(state))||0)<Date.now())throw Error('로그인 요청이 만료되었습니다. 다시 연결해주세요.');oauth.delete(digest(state));
+      const pending=oauth.get(digest(state));
+      if(!state||state!==cookie||!pending||pending.expires<Date.now())throw Error('로그인 요청이 만료되었습니다. 다시 연결해주세요.');oauth.delete(digest(state));
       const code=url.searchParams.get('code');if(!code)throw Error('스푼 연결이 취소되었습니다.');
-      const room=await spoon.connect(code);newSession(res,room);res.writeHead(302,{Location:'/'});res.end();return;
+      const room=await spoon.connect(code);
+      if(pending.appChallenge){
+        const appCode=androidAuth.issue(room,pending.appChallenge);
+        res.setHeader('Referrer-Policy','no-referrer');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});
+        res.end(`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>라디오메이트 앱 연결</title><body style="font-family:sans-serif;background:#fff4fa;padding:40px;text-align:center"><h1>DJ 계정 연결 완료</h1><p>2분 안에 아래 버튼으로 앱에 돌아가세요.</p><p><a style="display:inline-block;padding:20px;background:#a94778;color:white;border-radius:18px" href="radiomate://auth?code=${appCode}">라디오메이트 앱으로 돌아가기</a></p><p>앱이 열리지 않으면 설치 여부를 확인하고 앱에서 다시 연결해주세요.</p></body></html>`);return;
+      }
+      newSession(res,room);res.writeHead(302,{Location:'/'});res.end();return;
     }
     if(path.startsWith('/api/')){
       const s=requireSession(req),roomId=s.room;
@@ -252,7 +279,7 @@ const server=createServer(async(req,res)=>{
 server.headersTimeout=15000;server.requestTimeout=120000;server.keepAliveTimeout=5000;
 for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{if((r.rulesVersion||0)<RULES_VERSION){store.backup(id);updateRequestedRules(r);}r.voiceInboxUrl=voice.url(id,env.PUBLIC_URL);if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;r.listenerSnapshot={};engine.syncBuffs(r);});spoon.start(id);}
 const timer=setInterval(()=>spoon.tick().catch(e=>console.error('scheduler:',e.message)),5000);
-const cleanup=setInterval(()=>{sandbox?.expire();sandbox?.services.store.prune({eventsKeep:2000,backupsKeep:5,auditDays:1});const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
+const cleanup=setInterval(()=>{sandbox?.expire();sandbox?.services.store.prune({eventsKeep:2000,backupsKeep:5,auditDays:1});androidAuth.prune();const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t.expires<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
 server.listen(Number(env.PORT||4310),env.HOST||'127.0.0.1',()=>console.log(`Spoon Studio: http://${env.HOST||'127.0.0.1'}:${server.address().port} (${production?'production':'local demo'})`));
 const maintenance=setInterval(runMaintenance,6*3600000);
 function runMaintenance(){try{expireVoice(store,voice,voiceRetention);store.db.prepare("DELETE FROM outbox WHERE created<? AND status!='pending'").run(Date.now()-7*86400000);store.prune();store.snapshot(join(DATA,'backups'));
