@@ -38,3 +38,18 @@ test('weather service can use the authenticated edge bridge without transmitting
  const service=new Lifestyle({now:()=>now,weatherProxyURL:'https://fixed.example/__radiomate/weather',weatherProxyKey:'test-router-key',clientSecret:'private-naver-key',fetcher:async(url,options)=>{assert.equal(url,'https://fixed.example/__radiomate/weather');assert.equal(options.method,'POST');assert.match(options.headers['x-radiomate-signature'],/^[a-f0-9]{64}$/);assert.ok(!JSON.stringify(options).includes('private-naver-key'));assert.ok(!JSON.stringify(options.headers).includes('test-router-key'));const {period}=JSON.parse(options.body),range=weatherRange(period,now);return {ok:true,json:async()=>fixture(range.start,range.end)};}});
  const result=await service.weather({period:'nextWeek'});assert.equal(result.items.length,17);assert.equal(result.end,'2026-11-29');
 });
+test('weather falls back after proxy and upstream failure and retries the primary later',async()=>{
+ let time=now;const hosts=[];
+ const service=new Lifestyle({now:()=>time,weatherProxyURL:'https://fixed.example/__radiomate/weather',weatherProxyKey:'test-router-key',fetcher:async(input,options)=>{
+  const url=new URL(input);hosts.push(url.hostname);
+  if(url.hostname==='fixed.example')return {ok:false,status:503};
+  if(url.hostname==='api.open-meteo.com')return {ok:true,json:async()=>({unexpected:true})};
+  assert.equal(url.hostname,'historical-forecast-api.open-meteo.com');
+  assert.equal(options.headers,undefined);
+  return {ok:true,json:async()=>fixture(url.searchParams.get('start_date'),url.searchParams.get('end_date'))};
+ }});
+ assert.equal((await service.weather({period:'tomorrow'})).items.length,17);
+ assert.equal((await service.weather({period:'nextWeek'})).items[0].days.length,7);
+ assert.deepEqual(hosts,['fixed.example','api.open-meteo.com','historical-forecast-api.open-meteo.com','historical-forecast-api.open-meteo.com']);
+ time+=300001;await service.weather({period:'thisWeek'});assert.deepEqual(hosts.slice(-3),hosts.slice(0,3));
+});

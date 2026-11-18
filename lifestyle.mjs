@@ -19,7 +19,7 @@ export function assistantRequest(message){
  return {kind,arg};
 }
 export class Lifestyle {
- constructor({clientId='',clientSecret='',provider='hub',weatherProxyURL='',weatherProxyKey='',fetcher=fetch,now=Date.now}={}){Object.assign(this,{clientId,clientSecret,provider,weatherProxyURL,weatherProxyKey,fetcher,now});this.cache=new Map();this.pending=new Map();}
+ constructor({clientId='',clientSecret='',provider='hub',weatherProxyURL='',weatherProxyKey='',fetcher=fetch,now=Date.now}={}){Object.assign(this,{clientId,clientSecret,provider,weatherProxyURL,weatherProxyKey,fetcher,now});this.cache=new Map();this.pending=new Map();this.weatherRetryAt=new Map();}
  get configured(){return !!(this.clientId&&this.clientSecret);}
  async cached(key,ttl,fn){const old=this.cache.get(key);if(old&&old.until>this.now())return old.value;if(this.pending.has(key))return this.pending.get(key);const task=fn().then(value=>{if(this.cache.size>=200)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,{value,until:this.now()+ttl});return value;}).finally(()=>this.pending.delete(key));this.pending.set(key,task);return task;}
  async json(url,headers={}){
@@ -32,10 +32,29 @@ export class Lifestyle {
  }
 
  async weatherJSON(url,period){
-  if(!this.weatherProxyURL||!this.weatherProxyKey)return this.json(url);
-  const timestamp=Date.now(),body=JSON.stringify({period}),signature=createHmac('sha256',this.weatherProxyKey).update(timestamp+'\n'+body).digest('hex');
-  let response;try{response=await this.fetcher(this.weatherProxyURL,{method:'POST',headers:{'Content-Type':'application/json','x-radiomate-time':String(timestamp),'x-radiomate-signature':signature},body,signal:AbortSignal.timeout(25000)});}catch{throw Error('날씨 연결이 지연되고 있습니다. 잠시 후 다시 조회해주세요.');}
-  if(!response.ok)throw Error('날씨 제공 서버에 일시적인 지연이 있습니다. 잠시 후 다시 조회해주세요.');return response.json();
+  const reserve=new URL(url);
+  reserve.hostname='historical-forecast-api.open-meteo.com';
+  const providers=[{id:'direct',url,timeout:4000},{id:'archive',url:reserve,timeout:7000}];
+  if(this.weatherProxyURL&&this.weatherProxyKey){
+   const timestamp=Date.now(),body=JSON.stringify({period}),signature=createHmac('sha256',this.weatherProxyKey).update(timestamp+'\n'+body).digest('hex');
+   providers.unshift({id:'proxy',url:this.weatherProxyURL,timeout:5000,options:{method:'POST',headers:{'Content-Type':'application/json','x-radiomate-time':String(timestamp),'x-radiomate-signature':signature},body}});
+  }
+  for(const provider of providers){
+   if(provider.id!=='archive'&&this.weatherRetryAt.get(provider.id)>this.now())continue;
+   let failure='날씨 서버에 연결하지 못했습니다. 잠시 후 다시 조회해주세요.';
+   try{
+    const response=await this.fetcher(provider.url,{...provider.options,signal:AbortSignal.timeout(provider.timeout)});
+    if(!response.ok)throw Error('Unavailable forecast');
+    failure='날씨 서버의 응답 형식을 확인하지 못했습니다. 잠시 후 다시 조회해주세요.';
+    const data=await response.json();
+    if(!Array.isArray(data)||data.length!==regions.length||data.some(item=>!(period==='current'?item?.current:Array.isArray(item?.daily?.time))))throw Error('Invalid forecast');
+    this.weatherRetryAt.delete(provider.id);
+    return data;
+   }catch(error){
+    if(provider.id==='archive')throw Error(failure,{cause:error});
+    this.weatherRetryAt.set(provider.id,this.now()+300000);
+   }
+  }
  }
 
  async weather(options={}){if(options.period&&options.period!=='current')return this.forecast(options.period);return this.cached('weather:'+koreaDate(this.now()),600000,async()=>{
