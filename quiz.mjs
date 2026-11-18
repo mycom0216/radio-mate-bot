@@ -24,7 +24,18 @@ export function quizHint(answer){
 const clip=(text,length=200)=>[...String(text)].slice(0,length).join('');
 const meaning=round=>round.meaning||'이 문제의 뜻은 DJ가 아직 등록하지 않았습니다.';
 const autoDelay=r=>(r.settings.autoQuizMinutes||10)*60000;
-const autoSignature=r=>JSON.stringify([r.settings.autoQuizMinutes,r.settings.quizMinutes,r.settings.quizExp,r.settings.quizTickets,r.settings.quizExpChance,r.settings.quizQuestions]);
+const autoMinutes=r=>Math.min(5,r.settings.quizMinutes||30);
+const autoSignature=r=>JSON.stringify([r.settings.autoQuizMinutes,autoMinutes(r),r.settings.quizExp,r.settings.quizTickets,r.settings.quizExpChance,r.settings.quizQuestions]);
+function finishAutoQuiz(engine,room,now){
+ const round=room.autoQuizRound;
+ delete room.autoQuizRound;
+ room.autoQuizDueAt=now+autoDelay(room);
+ const answer=round.answers[0];
+ const hint=clip(quizHint(answer),30);
+ const category=clip(round.category||'단어',20);
+ engine.store.log(room.id,'system','quiz-timeout',{questionId:round.id,automatic:true},now);
+ return {key:`auto-quiz-timeout:${round.key}`,text:clip(`⏰ 자동 퀴즈 종료! 정답자가 없어요.\n힌트: ${hint} (${category})\n정답: ${answer}\n뜻: ${meaning(round)}`)};
+}
 function roundText(round,label='모두 함께 자동 퀴즈!'){
  const prefix=`${label} 초성: ${clip(quizHint(round.answers[0]),30)} (힌트: ${clip(round.category||'단어',20)})\n`;
  const suffix=`\n!정답 답안 · ${round.minutes||30}분 제한 · 선착순 1명 EXP 또는 복권!`;
@@ -43,7 +54,7 @@ export function autoQuizCandidate(engine,r,now){
  r.autoQuizSeen=Array.isArray(r.autoQuizSeen)?r.autoQuizSeen:[];
  let pool=bank.filter(q=>!r.autoQuizSeen.includes(q.id));if(!pool.length){r.autoQuizSeen=[];pool=bank;}
  const selected=pool[engine.int(0,pool.length-1)];
- const round={...selected,key:randomUUID(),reward:r.settings.quizExp,ticketReward:r.settings.quizTickets||1,expChance:r.settings.quizExpChance??50,minutes:r.settings.quizMinutes||30};
+ const round={...selected,key:randomUUID(),reward:r.settings.quizExp,ticketReward:r.settings.quizTickets||1,expChance:r.settings.quizExpChance??50,minutes:autoMinutes(r)};
  return r.autoQuizPending={key:round.key,round,text:roundText(round),signature,retryAt:now};
 }
 export function autoQuizDelivered(engine,r,candidate,kind,now){
@@ -59,9 +70,7 @@ export function autoQuizDelivered(engine,r,candidate,kind,now){
 export function expireQuizRounds(engine,room,now){
  const expired=[];
  if(room.autoQuizRound&&now>=room.autoQuizRound.expiresAt){
-  const round=room.autoQuizRound;delete room.autoQuizRound;room.autoQuizDueAt=now+autoDelay(room);
-  expired.push({key:`auto-quiz-timeout:${round.key}`,text:clip(`자동 퀴즈 시간이 지났습니다. 정답: ${round.answers[0]}\n뜻: ${meaning(round)}\n다음 문제는 ${room.settings.autoQuizMinutes||10}분 후에 나옵니다.`)});
-  engine.store.log(room.id,'system','quiz-timeout',{questionId:round.id,automatic:true},now);
+  expired.push(finishAutoQuiz(engine,room,now));
  }
  for(const user of Object.values(room.users)){
   const round=user.quizRound;if(!round||now<round.expiresAt)continue;
@@ -79,8 +88,7 @@ export function playQuiz(engine,r,u,cmd,arg,now,fail){
   const shared=r.autoQuizRound;
   let round=u.quizRound||shared;
   if(shared&&!u.quizRound&&now>=shared.expiresAt){
-    delete r.autoQuizRound;r.autoQuizDueAt=now+autoDelay(r);
-    return clip(`자동 퀴즈 시간이 지났습니다. 정답: ${shared.answers[0]}\n뜻: ${meaning(shared)}`);
+    return finishAutoQuiz(engine,r,now).text;
   }
   if(shared&&!u.quizRound&&cmd==='퀴즈')return arg==='포기'?'함께 푸는 자동 퀴즈입니다. !정답 답안으로 참여하세요. 중지는 DJ가 !자동퀴즈 off를 입력하세요.':roundText(shared);
   if(round&&now>=round.expiresAt){delete u.quizRound;return clip(`${u.name}님 퀴즈 시간이 지났습니다. 정답: ${round.answers[0]}\n뜻: ${meaning(round)}\n!퀴즈로 새 문제를 받아주세요.`);}

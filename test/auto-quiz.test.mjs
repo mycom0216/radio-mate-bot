@@ -25,13 +25,25 @@ test('automatic quiz waits for its interval, first answer wins once and next rou
  }finally{f.close();}
 });
 
-test('automatic quiz timeout reveals answer and meaning once without granting reward',()=>{
+test('automatic quiz reveals hint, answer and meaning once at five minutes',()=>{
  const f=fixture();try{
-  f.say('!자동퀴즈 on 1');const q=f.prepare();f.deliver(q);f.advance(30*60000);
+  f.say('!자동퀴즈 on 1');const q=f.prepare();assert.match(q.text,/5분 제한/);f.deliver(q);f.advance(5*60000-1);
   let expired;f.store.transaction('r',r=>expired=expireQuizRounds(f.engine,r,f.now));
-  assert.equal(expired.length,1);assert.match(expired[0].text,/정답: 학교/);assert.match(expired[0].text,/뜻:.*교육 기관/);
+  assert.equal(expired.length,0);f.advance(1);
+  f.store.transaction('r',r=>expired=expireQuizRounds(f.engine,r,f.now));
+  assert.equal(expired.length,1);assert.match(expired[0].text,/힌트: ㅎㄱ \(건물\)\n정답: 학교\n뜻:.*교육 기관/);
   f.store.transaction('r',r=>expired=expireQuizRounds(f.engine,r,f.now));assert.equal(expired.length,0);
   assert.equal(f.load().autoQuizRound,undefined);assert.equal(f.prepare(),null);
+ }finally{f.close();}
+});
+
+test('a late automatic quiz answer reveals the result without paying or announcing twice',()=>{
+ const f=fixture();try{
+  f.store.transaction('r',r=>r.settings.quizMinutes=2);
+  f.say('!자동퀴즈 on 1');const q=f.prepare();assert.match(q.text,/2분 제한/);f.deliver(q);f.advance(2*60000);
+  assert.match(f.say('!정답 학교','late-listener',false).text,/힌트: ㅎㄱ \(건물\)\n정답: 학교/);
+  assert.equal(f.load().users['late-listener'].exp,0);
+  f.store.transaction('r',r=>assert.deepEqual(expireQuizRounds(f.engine,r,f.now),[]));
  }finally{f.close();}
 });
 
@@ -63,6 +75,9 @@ test('actual Spoon scheduler sends one automatic question and persists the activ
   spoon.sendDetailed=async(room,text)=>{messages.push(text);return {kind:'sent'};};
   await spoon.tick();await spoon.tick();assert.equal(messages.length,1);assert.match(messages[0],/모두 함께 자동 퀴즈/);
   assert.ok(f.load().autoQuizRound);assert.equal(f.load().autoQuizPending,undefined);
+  f.store.transaction('r',r=>r.autoQuizRound.expiresAt=Date.now()-1);
+  await spoon.tick();await spoon.tick();assert.equal(messages.length,2);
+  assert.match(messages[1],/힌트: ㅎㄱ \(건물\)\n정답: 학교/);
  }finally{f.close();}
 });
 
