@@ -1,6 +1,6 @@
 plugins { id 'com.android.application' }
 
-def serverUrl = providers.gradleProperty('serverUrl').getOrElse('https://code-occupation-deutsche-background.trycloudflare.com')
+def serverUrl = providers.gradleProperty('serverUrl').getOrElse('https://radiomate-mycom0216.gallanttamarind4.chatgpt.site')
 def endpoint = new URI(serverUrl)
 if (endpoint.scheme != 'https' || !endpoint.host || endpoint.rawUserInfo || endpoint.rawQuery || endpoint.rawFragment || !(endpoint.path in ['', '/'])) {
     throw new GradleException('serverUrl must be an HTTPS origin, without path, credentials, query or fragment')
