@@ -46,6 +46,11 @@ export class YouTubePlayer {
     await this.prepare();if(!guard())return;this.videoId=id;
     if(this.songId===songId&&this.player.getVideoData()?.video_id===id)this.player.playVideo();else{this.songId=songId;this.completed=false;const seconds=this.checkpoint?.read(songId,id)||0;this.player.loadVideoById(seconds?{videoId:id,startSeconds:seconds}:id);}
   }
-  savePosition(){if(!this.completed&&this.player?.getVideoData()?.video_id===this.videoId)this.checkpoint?.write(this.songId,this.videoId,this.player.getCurrentTime?.());}
+  savePosition(){
+    const player=this.player;
+    if(this.completed||!player||!this.videoId||!this.songId)return;
+    // Checkpoints are best effort: a missing or destroyed iframe must not block logout.
+    try{if(player.getVideoData?.()?.video_id===this.videoId)this.checkpoint?.write(this.songId,this.videoId,player.getCurrentTime?.());}catch{}
+  }
   pause(){this.savePosition();this.playing=false;this.player?.pauseVideo?.();}
 }

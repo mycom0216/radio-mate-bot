@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeout:30000},async()=>{
   const data=mkdtempSync(join(tmpdir(),'spoon-studio-test-'));
-  const proc=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,HOST:'127.0.0.1',PORT:'0',DATA_DIR:data,NODE_ENV:'development',SPOON_CLIENT_ID:'',SPOON_CLIENT_SECRET:''},stdio:['ignore','pipe','pipe']});
+  const proc=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,HOST:'127.0.0.1',PORT:'0',DATA_DIR:data,NODE_ENV:'development',SPOON_CLIENT_ID:'',SPOON_CLIENT_SECRET:'',OPENAI_API_KEY:'',NAVER_CLIENT_ID:'',NAVER_CLIENT_SECRET:''},stdio:['ignore','pipe','pipe']});
   try{
     const address=await new Promise((resolve,reject)=>{let text='';const timer=setTimeout(()=>reject(Error('server start timeout')),10000);proc.stdout.on('data',chunk=>{text+=chunk;const m=text.match(/http:\/\/127\.0\.0\.1:\d+/);if(m){clearTimeout(timer);resolve(m[0]);}});proc.on('exit',c=>{clearTimeout(timer);reject(Error(`server exited ${c}`));});});
     let res=await fetch(address+'/api/room');assert.equal(res.status,401);
@@ -21,6 +21,16 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await fetch(address+'/api/demo',{method:'POST'});assert.equal(res.status,200);const cookie=res.headers.get('set-cookie').split(';')[0],{csrf}=await res.json();
     const headers={'Content-Type':'application/json',Cookie:cookie,'X-CSRF-Token':csrf};
     const request=(path,body,h=headers)=>fetch(address+path,{method:'POST',headers:h,body:JSON.stringify(body)});
+    res=await fetch(address+'/api/ai',{headers});assert.equal(res.status,200);assert.equal((await res.json()).configured,false);
+    res=await request('/api/ai-talk',{text:'안녕'});assert.equal(res.status,400);assert.match((await res.json()).error,/API 키/);
+    res=await request('/api/ai-reset',{});assert.equal(res.status,200);
+    res=await fetch(address+'/api/chat',{headers});assert.equal(res.status,200);assert.deepEqual((await res.json()).messages,[]);
+    const chatMessageId='12345678-1234-1234-1234-123456789abc';res=await request('/api/chat-send',{text:'방송 채팅 테스트',id:chatMessageId});assert.equal(res.status,200);
+    res=await fetch(address+'/api/chat',{headers});const chatData=await res.json();assert.equal(chatData.messages[0].role,'dj');assert.equal(chatData.messages[0].actor,undefined);
+    res=await request('/api/chat-delete',{id:chatMessageId});assert.equal(res.status,200);
+    res=await request('/api/chat-link',{action:'enable'});assert.equal(res.status,400);
+    res=await request('/api/lifestyle',{kind:'places',kindPlace:'카페',region:'서울'});assert.equal(res.status,200);assert.equal((await res.json()).configured,false);
+    res=await fetch(address+'/api/chat-public/'+'x'.repeat(43));assert.equal(res.status,404);
     res=await fetch(address+'/api/test',{method:'POST',headers,body:'null'});assert.equal(res.status,400);
     res=await fetch(address+'/api/test',{method:'POST',headers,body:JSON.stringify({message:'x'.repeat(256001)})});assert.equal(res.status,413);
     res=await request('/api/test',{message:'!내정보 생성',user:'a',name:'A'});assert.equal(res.status,200);

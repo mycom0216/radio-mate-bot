@@ -20,5 +20,5 @@ test('production opt-in exposes isolated test button/session and never writes de
  r=await fetch(address+'/api/voice-link',{method:'POST',headers:headers(a),body:JSON.stringify({action:'enable'})});assert.equal(r.status,400);
  r=await fetch(address+'/api/logout',{method:'POST',headers:headers(a),body:'{}'});assert.equal(r.status,200);r=await fetch(address+'/api/room',{headers:headers(a)});assert.equal(r.status,401);
  assert.equal(Object.keys((await room(b)).users).length,0);
- }finally{const done=new Promise(r=>proc.once('exit',r));proc.kill();await done;const store=new Store(join(dir,'studio.sqlite'));try{assert.equal(store.ids().length,0);}finally{store.db.close();}rmSync(dir,{recursive:true,force:true});}
+ }finally{const done=proc.exitCode===null?new Promise(r=>proc.once('exit',r)):Promise.resolve();proc.kill();await done;const store=new Store(join(dir,'studio.sqlite'));try{assert.equal(store.ids().length,0);}finally{store.db.close();}rmSync(dir,{recursive:true,force:true});}
 });

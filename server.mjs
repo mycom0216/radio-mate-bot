@@ -1,3 +1,6 @@
+import {AIChat} from './ai-chat.mjs';
+import {Lifestyle} from './lifestyle.mjs';
+import {RoomChat} from './chat-room.mjs';
 import {applySongAction} from './song-queue.mjs';
 import {AndroidAuth} from './android-auth.mjs';
 import {Sessions} from './sessions.mjs';
@@ -44,6 +47,10 @@ const store=new Store(join(DATA,'studio.sqlite')),engine=new Engine(store,{regio
 const voice=new VoiceInbox(store.db,join(DATA,'voice'));
 const publicDemo=env.PUBLIC_DEMO==='1'||env.PUBLIC_DEMO==='true';
 const sandbox=publicDemo?new PublicSandbox(join(DATA,'preview-voice'),{region:spoonRegion(env)}):null;
+const ai=new AIChat({key:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});
+const lifestyle=new Lifestyle({clientId:env.NAVER_CLIENT_ID,clientSecret:env.NAVER_CLIENT_SECRET,provider:env.NAVER_SEARCH_PROVIDER||'hub'});
+lifestyle.ai=ai;engine.lifestyle=lifestyle;if(sandbox)sandbox.services.engine.lifestyle=lifestyle;
+const chats=new WeakMap();function chatFor(store){if(!chats.has(store))chats.set(store,new RoomChat(store));return chats.get(store);}
 const liveServices={store,engine,spoon,voice};
 const youtubeSearch=new YouTubeSearch({key:env.YOUTUBE_API_KEY||''});engine.searchSong=title=>youtubeSearch.find(title);engine.publicUrl=env.PUBLIC_URL;if(sandbox){sandbox.services.engine.searchSong=engine.searchSong;sandbox.services.engine.publicUrl=env.PUBLIC_URL;}
 const servicesFor=room=>sandbox?.has(room)?sandbox.services:liveServices;
@@ -71,6 +78,18 @@ const server=createServer(async(req,res)=>{
   try{
     req.clientIp=clientIp(req);
     const url=new URL(req.url,env.PUBLIC_URL),path=url.pathname;
+    const publicChat=/^\/api\/chat-public\/([A-Za-z0-9_-]{43})$/.exec(path);
+    if(publicChat){
+      res.setHeader('Referrer-Policy','no-referrer');const chat=chatFor(store),roomId=chat.resolve(publicChat[1]);
+      if(req.method==='GET'){reply(res,200,chat.publicList(roomId));return;}
+      if(req.method==='POST'){
+        if(req.headers.origin!==env.PUBLIC_URL)throw Object.assign(Error('허용되지 않은 출처입니다.'),{status:403});
+        const b=await body(req);reply(res,200,chat.send(roomId,b,req.clientIp));return;
+      }throw Object.assign(Error('지원하지 않는 요청입니다.'),{status:405});
+    }
+    if(/^\/chat\/[A-Za-z0-9_-]{43}$/.test(path)&&req.method==='GET'){
+      res.setHeader('Referrer-Policy','no-referrer');res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(readFileSync(join(ROOT,'public','chat.html')));return;
+    }
     const voicePublic=/^\/api\/voice-public\/([a-f0-9]{64}|[A-Za-z0-9_-]{43})$/.exec(path);
     if(voicePublic){
       res.setHeader('Referrer-Policy','no-referrer');
@@ -139,12 +158,18 @@ const server=createServer(async(req,res)=>{
     if(path.startsWith('/api/')){
       const s=requireSession(req),roomId=s.room;
       const {store,engine,spoon,voice}=servicesFor(roomId);
+      if(req.method==='GET'&&path==='/api/ai'){
+        const context={store,room:roomId,user:'dj',channel:'app'};reply(res,200,{configured:ai.configured&&!sandbox?.has(roomId),model:ai.model,history:ai.history(context),dailyLimit:ai.dailyLimit,used:store.load(roomId).aiUsage?.day===dates().day?store.load(roomId).aiUsage.count:0});return;
+      }
+      if(req.method==='GET'&&path==='/api/chat'){
+        const chat=chatFor(store),state=chat.state(store.load(roomId));reply(res,200,{...chat.publicList(roomId),url:state.enabled?env.PUBLIC_URL+'/chat/'+state.token:'',preview:isDemo(roomId)});return;
+      }
       if(req.method==='GET'&&path==='/api/diagnostics'){
         reply(res,200,buildDiagnostics({demo:isDemo(roomId),configured:spoon.configured(),hasToken:!!store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(roomId),room:store.load(roomId),backups:store.db.prepare('SELECT COUNT(*) AS n FROM backups WHERE room=?').get(roomId).n,logs:store.logs(roomId),publicUrl:env.PUBLIC_URL,voiceEnabled:voice.link(roomId).enabled,youtubeConfigured:!!env.YOUTUBE_API_KEY}));return;
       }
       if(req.method==='GET'&&path==='/api/export'){
         const data={version:1,exportedAt:Date.now(),room:store.load(roomId),logs:store.logs(roomId),voice:voice.list(roomId).map(card=>({...card,data:voice.file(roomId,card.id).data.toString('base64')}))};
-        delete data.room.voiceInboxUrl;
+        delete data.room.voiceInboxUrl;if(data.room.chat)delete data.room.chat.token;
         res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Disposition':'attachment; filename="radiomate-room.json"'});res.end(JSON.stringify(data));return;
       }
       if(req.method==='GET'&&path==='/api/room'){store.transaction(roomId,r=>engine.reset(r));reply(res,200,safeRoom(roomId));return;}
@@ -161,6 +186,17 @@ const server=createServer(async(req,res)=>{
       if(req.method!=='POST')throw Object.assign(Error('지원하지 않는 요청입니다.'),{status:404});
       const key=digest(req.headers.cookie||'');const a=attempts.get(key)||{time:Date.now(),count:0};if(Date.now()-a.time>60000){a.time=Date.now();a.count=0;}if(++a.count>(sandbox?.has(roomId)?60:180))throw Object.assign(Error('요청이 너무 많습니다.'),{status:429});attempts.set(key,a);
       const b=await body(req);
+      if(path==='/api/ai-reset'){ai.reset({room:roomId,user:'dj',channel:'app'});reply(res,200,{ok:true});return;}
+      if(path==='/api/ai-talk'){reply(res,200,{text:await ai.answer(b.text,{store,room:roomId,user:'dj',channel:'app'})});return;}
+      if(path==='/api/lifestyle'){
+        const kind=b.kind;if(kind==='weather'){reply(res,200,await lifestyle.weather());return;}
+        if(kind==='places'){reply(res,200,await lifestyle.places({...b,kind:b.kindPlace}));return;}
+        if(kind==='talk'){const {assistantRequest}=await import('./lifestyle.mjs');reply(res,200,{text:await lifestyle.answer(assistantRequest('!채팅 '+String(b.text||'').slice(0,200)))});return;}
+        throw Error('지원하지 않는 검색입니다.');
+      }
+      if(path==='/api/chat-send'){reply(res,200,chatFor(store).send(roomId,{...b,name:'DJ'},'dj'));return;}
+      if(path==='/api/chat-link'){if(isDemo(roomId))throw Error('테스트에서는 외부 채팅 링크를 만들지 않습니다.');chatFor(store).link(roomId,b.action);reply(res,200,{ok:true});return;}
+      if(path==='/api/chat-delete'){chatFor(store).remove(roomId,b.id);reply(res,200,{ok:true});return;}
       if(path==='/api/voice-link'){if(sandbox?.has(roomId))throw Error('공개 테스트에서는 실제 음성을 접수하지 않습니다. DJ 연결 후 사용하세요.');store.transaction(roomId,r=>{voice.setLink(roomId,b.action);r.voiceInboxUrl=voice.url(roomId,env.PUBLIC_URL);store.log(roomId,'dj','voice-link',{action:b.action});});reply(res,200,{ok:true});return;}
       if(path==='/api/voice-action'){voice.action(roomId,b.id,b.action);store.log(roomId,'dj','voice-action',{id:b.id,action:b.action});reply(res,200,{ok:true});return;}
       if(path==='/api/outbox-retry'){if(b.confirm!=='중복 가능성 확인')throw Error('재전송 전 확인이 필요합니다.');spoon.outbox.retry(roomId,b.id);reply(res,200,{ok:true});return;}
@@ -271,7 +307,7 @@ const server=createServer(async(req,res)=>{
       if(path==='/api/reconnect'){if(!isDemo(roomId)){spoon.stop(roomId);spoon.start(roomId);}reply(res,200,{ok:true});return;}
       throw Object.assign(Error('기능을 찾을 수 없습니다.'),{status:404});
     }
-    const files={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/offline.html':'offline.html','/app-icon.svg':'app-icon.svg','/pwa.css':'pwa.css','/pwa.mjs':'pwa.mjs','/playback-position.mjs':'playback-position.mjs','/affinity.mjs':'affinity.mjs','/spoon-charge.mjs':'spoon-charge.mjs','/bloom.css':'bloom.css','/radio-bloom.webp':'radio-bloom.webp','/radio-bloom-mini.webp':'radio-bloom-mini.webp','/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/player':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
+    const files={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/offline.html':'offline.html','/app-icon.svg':'app-icon.svg','/pwa.css':'pwa.css','/pwa.mjs':'pwa.mjs','/playback-position.mjs':'playback-position.mjs','/affinity.mjs':'affinity.mjs','/spoon-charge.mjs':'spoon-charge.mjs','/community.mjs':'community.mjs','/community.css':'community.css','/sugar.css':'sugar.css','/bloom.css':'bloom.css','/radio-bloom.webp':'radio-bloom.webp','/radio-bloom-mini.webp':'radio-bloom-mini.webp','/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/player':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
     res.writeHead(200,{'Content-Type':path.endsWith('.webmanifest')?'application/manifest+json; charset=utf-8':path.endsWith('.webp')?'image/webp':path.endsWith('.png')?'image/png':path.endsWith('.svg')?'image/svg+xml':(/\.m?js$/).test(path)?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'public',files[path])));
   }catch(e){if(e.status===413)res.setHeader('Connection','close');reply(res,e.status||400,{error:e.message});}
 });

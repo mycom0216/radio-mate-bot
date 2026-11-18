@@ -1,3 +1,4 @@
+import {mountCommunity} from './community.mjs';
 import {spoonChargeUrl} from './spoon-charge.mjs';
 import {affinityScore,affinityRank} from './affinity.mjs';
 import {operationsPanel} from './operations-ui.mjs';
@@ -17,9 +18,9 @@ function persistHistory(){if(historyRoom)try{sessionStorage.setItem('studio-test
 function restoreHistory(id){if(historyRoom===id)return;historyRoom=id;try{const data=parseTestHistory(sessionStorage.getItem('studio-test:'+id));chats=data?.chats||[];if(data?.identity)testIdentity=data.identity;}catch{chats=[];}}
 const filters={fans:'',records:'',help:''};
 let testIdentity={user:'listener-1',name:'청취자1',dj:false};
-const titles={dashboard:'방송 대시보드',games:'게임 설정',shop:'아이템 상점',songs:'신청곡 관리',fans:'청취자 · 팬랭킹',notices:'공지 · 자동 안내',records:'기록 · 보상 관리',settings:'운영 · 백업',autoChat:'자동채팅',voice:'음성메시지 수신함',test:'명령어 테스트',help:'명령어 안내'};
+const titles={ai:'AI와 다정한 대화',chat:'방송 채팅방',lifestyle:'날씨 · 맛집 · 카페',dashboard:'방송 대시보드',games:'게임 설정',shop:'아이템 상점',songs:'신청곡 관리',fans:'청취자 · 팬랭킹',notices:'공지 · 자동 안내',records:'기록 · 보상 관리',settings:'운영 · 백업',autoChat:'자동채팅',voice:'음성메시지 수신함',test:'명령어 테스트',help:'명령어 안내'};
 const rarities=['일반','고급','희귀','영웅','전설'];
-async function api(path,data){return requestJSON(path,data,{csrf:session?.csrf||'',timeoutMs:path.startsWith('/api/test')?30000:15000,onUnauthorized:()=>{if($('#session-alert'))$('#session-alert').hidden=false;}});}
+async function api(path,data){return requestJSON(path,data,{csrf:session?.csrf||'',timeoutMs:(path.startsWith('/api/test')||path.startsWith('/api/ai-talk'))?30000:15000,onUnauthorized:()=>{if($('#session-alert'))$('#session-alert').hidden=false;}});}
 function toast(text){$('#toast').textContent=text;$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,5000);}
 function card(title,body,extra=''){return `<section class="card"><div class="section-head"><h2>${title}</h2>${extra}</div>${body}</section>`;}
 function toggle(key,label,value=room.settings[key]){return `<label class="switch"><input type="checkbox" data-setting="${key}" ${value?'checked':''}>${label}</label>`;}
@@ -67,7 +68,8 @@ function render(){
  if(page==='voice')html=extraUI.voice(voiceInbox);
  if(page==='test')html=testWorkspace();
  if(page==='help')html=helpWorkspace();
- $('#content').innerHTML=html;decorateStats(page);
+ if(page==='chat'||page==='lifestyle'||page==='ai')html='<section id="community-panel"></section>';
+ $('#content').innerHTML=html;decorateStats(page);if(page==='chat'||page==='lifestyle'||page==='ai')mountCommunity($('#community-panel'),{page,api});
  $('#page-description').textContent=descriptions[page]||'';
  document.querySelector('nav [data-page="test"]').hidden=room.id!=='demo';
  document.querySelectorAll('nav button').forEach(b=>{if(b.dataset.page===page)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
@@ -162,8 +164,9 @@ $('#logout').onclick=()=>mayLeave()&&void run(async()=>{playback.stop();checkpoi
 async function init(){session=await api('/api/session');$('#login').hidden=session.loggedIn;$('#shell').hidden=!session.loggedIn;$('#demo-login').hidden=!session.demo;$('#connect-login').disabled=!session.configured;$('#demo-login').classList.toggle('primary',!session.configured);$('#demo-login').classList.toggle('secondary',session.configured);$('#connect-login').classList.toggle('primary',session.configured);$('#connect-login').classList.toggle('secondary',!session.configured);$('#login').classList.toggle('demo-first',!session.configured);$('#login-note').textContent=session.publicDemo?'테스트는 방문자별 독립 공간에서 진행돼요. 1시간 후 또는 서버 재시작 시 초기화됩니다. 실제 방송에는 연결되지 않아요.':session.configured?'DJ 계정으로 연결하면 자신의 방송만 관리할 수 있어요.':'방송 연결 설정이 아직 완료되지 않았습니다. 테스트 화면은 바로 사용할 수 있어요.';if(session.loggedIn)await reload();}
 
 
-const descriptions={autoChat:'키워드 자동응답과 순차·무작위 주기 채팅을 설정하세요.',voice:'팬 관계 없이 접수한 음성메시지를 듣고 관리하세요. 스푼 앱 보이스카드와 별개입니다.',dashboard:'방송 상태를 확인하고 자주 쓰는 기능을 빠르게 조작하세요.',games:'게임 사용 여부와 보상 규칙을 설정하세요. 변경 후 저장이 필요합니다.',shop:'상품 가격, 재고, 판매 여부를 관리하세요.',songs:'접수 설정과 현재곡, 다음 곡을 한곳에서 관리하세요.',fans:'청취자를 찾고 포인트·복권과 킵을 관리하세요.',notices:'방송 안내 문구를 작성하고 자동 안내 간격을 설정하세요.',records:'보상 대기 목록과 최근 200건의 활동 기록을 확인하세요.',settings:'방송 연결과 기본 설정, 설정 백업을 관리하세요.',test:'실제 방송에 전송하지 않고 청취자 명령을 확인하세요.',help:'명령을 확인한 뒤 테스트 공간에서 직접 사용해 보세요.'};
+const descriptions={ai:'OpenAI와 자유롭게 대화하고 앞선 이야기를 이어가세요.',chat:'우리 방송의 별도 채팅방을 열고 메시지를 관리하세요.',lifestyle:'전국 날씨와 아침·점심·저녁 맛집, 카페를 찾아보세요.',autoChat:'키워드 자동응답과 순차·무작위 주기 채팅을 설정하세요.',voice:'팬 관계 없이 접수한 음성메시지를 듣고 관리하세요. 스푼 앱 보이스카드와 별개입니다.',dashboard:'방송 상태를 확인하고 자주 쓰는 기능을 빠르게 조작하세요.',games:'게임 사용 여부와 보상 규칙을 설정하세요. 변경 후 저장이 필요합니다.',shop:'상품 가격, 재고, 판매 여부를 관리하세요.',songs:'접수 설정과 현재곡, 다음 곡을 한곳에서 관리하세요.',fans:'청취자를 찾고 포인트·복권과 킵을 관리하세요.',notices:'방송 안내 문구를 작성하고 자동 안내 간격을 설정하세요.',records:'보상 대기 목록과 최근 200건의 활동 기록을 확인하세요.',settings:'방송 연결과 기본 설정, 설정 백업을 관리하세요.',test:'실제 방송에 전송하지 않고 청취자 명령을 확인하세요.',help:'명령을 확인한 뒤 테스트 공간에서 직접 사용해 보세요.'};
 const commandGroups=[
+ ['AI · 채팅 · 오늘의 추천', [['!채팅 질문','AI와 자유로운 대화 (질문·최근 대화를 OpenAI에 전송, 서버 키 설정 필요)'],['!채팅 초기화','내 스푼 AI 대화 문맥 삭제'],['!채팅방','DJ가 열어둔 별도 앱 채팅방 주소'],['!전국날씨 1','17개 시·도 대표 지점 · 1~3페이지'],['!날씨 서울','지역의 현재 날씨'],['!맛집 광주 점심','지역과 아침·점심·저녁으로 네이버 검색'],['!카페 동명동','지역 카페 검색']]],
  ['시작과 프로필',[['!내정보 생성','처음 이용하는 청취자 프로필 생성'],['!내정보','내 EXP·PT·복권 확인'],['!출석','하루 한 번 출석하고 복권 받기'],['!랭킹 [페이지]','누적 EXP 팬랭킹 확인']]],
  ['게임',[['!게임 상태','청취자도 게임 상태 확인 가능'],['!게임 on','청취자도 낚시·홀짝·미니게임 켜기 가능'],['!낚시 on','청취자도 낚시 켜기 가능'],['!홀짝 on','청취자도 홀짝 켜기 가능'],['!낚시','낚시 실행 · 게임 ON 필요'],['!복권 자동','보유 복권 전부 자동 추첨 · 총 EXP와 남은 수량 표시'],['!복권 3 6 9','복권 1장 사용 · 서로 다른 숫자 3개'],['!홀 100','홀에 100 PT 베팅 · 게임 ON 필요'],['!가위바위보 바위','가위바위보 한 판 · PT·EXP 변동 없음'],['!주사위','1~6 주사위 한 번 굴리기'],['!주사위 자동','주사위 한 번 굴리기 · !주사위와 같은 동작'],['!주사위 4','1~6 주사위 숫자 맞히기'],['!숫자맞히기 50','1~100 숫자를 7번 안에 맞히기'],['!퀴즈','초성·분류 힌트 · 30분 이내 정답 시 EXP/복권 확률 보상'],['!정답 서울','현재 퀴즈의 답 입력 · 보상은 회차당 한 번'],['!퀴즈 포기','개인 문제 정답 확인 후 종료'],['!자동퀴즈 on 10','DJ: 자동 퀴즈 시작 · 10분 간격'],['!자동퀴즈 off','DJ: 자동 출제와 진행 중인 공용 문제 종료'],['!자동퀴즈 상태','DJ: 자동 출제 상태 확인'],['!도감 [페이지]','잡은 물고기 확인'],['!룰렛','DJ 설정 확률로 추첨 · 당첨은 킵, 꽝은 사용내역에 기록']]],
  ['아이템과 보유 정보',[['!아이템 상점','판매 상품 확인'],['!아이템 구매 exp','PT로 EXP 2배 아이템 구매'],['!구매 rare','ID·번호·아이템 이름으로 구매 가능'],['!아이템 사용 exp','보유 아이템 사용'],['!가방','보유 아이템 확인'],['!버프','남은 효과 시간 확인'],['!킵','DJ·청취자 모두 내 보유 보상 조회 · 프로필 자동 생성'],['!킵 사용 1','내 1번 보상 1개 사용 · 보유 목록에서 제거하고 완료 내역 저장'],['!킵 완료','내 킵 사용 완료 내역 조회'],['!킵 취소','가장 최근 사용 취소 · 보유 목록으로 복원'],['!킵 취소 1','완료 목록의 1번 사용 취소 · 번호·보상명 지정 가능']]],

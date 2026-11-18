@@ -1,3 +1,4 @@
+import {assistantRequest} from './lifestyle.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue,applySongAction} from './song-queue.mjs';
 import {rewardListening} from './listening.mjs';
@@ -126,6 +127,9 @@ export class Store {
     const cutoff=now-auditDays*86400000;
     this.db.prepare('DELETE FROM audit WHERE time<?').run(cutoff);
     this.db.prepare('DELETE FROM events WHERE rowid NOT IN (SELECT rowid FROM events ORDER BY rowid DESC LIMIT ?)').run(eventsKeep);
+    for(const id of this.ids()){
+      const room=this.load(id);if(room.chat?.messages.some(m=>m.time<now-7*86400000)){room.chat.messages=room.chat.messages.filter(m=>m.time>=now-7*86400000);this.save(room);}
+    }
     for(const {room} of this.db.prepare('SELECT DISTINCT room FROM backups').all())
       this.db.prepare('DELETE FROM backups WHERE room=? AND id NOT IN (SELECT id FROM backups WHERE room=? ORDER BY time DESC LIMIT ?)').run(room,room,backupsKeep);
   }
@@ -201,6 +205,13 @@ export class Engine {
         this.store.transaction(roomId,current=>{const song=[current.current,current.previous,...current.songs].find(song=>song?.id===target.id);if(song&&song.title===target.title&&!songVideoId(song)){song.videoId=videoId;rememberSongVideo(current,song,videoId);touchQueue(current);}});
       }catch{/* The request still works when search is unavailable; the player can retry. */}
     }
+    const request=assistantRequest(event.message);
+    if(request){
+      if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
+      const blocked=r.settings.quiet||(!event.isDj&&(now-r.lastResponse<r.settings.responseGap*1000||user&&now-user.lastCommand<r.settings.cooldown*1000));
+      const assistantText=blocked?'':this.lifestyle?await this.lifestyle.answer(request,{store:this.store,room:roomId,user:event.user?.id,channel:'spoon'}):'대화 도우미가 준비 중입니다.';
+      return this.handle(roomId,event,{assistantText});
+    }
     const automatic=/^!\s*복권\s+자동\s*$/.test(String(event.message||'').trim());
     if(automatic&&user?.tickets>LOTTERY_CHUNK&&user.month===dates(now).month&&(event.isDj||now-r.lastResponse>=r.settings.responseGap*1000&&now-user.lastCommand>=r.settings.cooldown*1000)){
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
@@ -235,7 +246,7 @@ export class Engine {
       }
       this.syncBuffs(r,now);
       if(event.delivery&&result.text)new Outbox(this.store).enqueue(roomId,event.id,result.text,now);
-      this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(result));
+      this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(assistantRequest(event.message)?{text:null,assistant:true}:result));
       return result;
     });
   }
@@ -313,7 +324,7 @@ export class Engine {
     if(s.quiet&&['낚시','홀','짝','홀짝','복권','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답'].includes(cmd))return {text:null,suppressed:'quiet'};
     if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
     if(!dj&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
-    const known=['내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+    const known=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
     if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
@@ -325,7 +336,9 @@ export class Engine {
       u.lastCommand=now;return answer(`${u.name}님 프로필이 준비되었습니다. !출석으로 복권을 받으세요.`);
     }
     if(u){u.name=e.user.nickname||u.name;if(interactionKey)u[interactionKey]=now;else u.lastCommand=now;}
+    if(assistantRequest(text)){if(s.quiet)return {text:null,suppressed:'quiet'};return answer(String(preparedLottery?.assistantText||'대화 도우미를 다시 요청해주세요.').slice(0,200));}
     if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
+    if(cmd==='채팅방')return answer(r.chat?.enabled&&r.chat.token?`우리 방송 대화방 ♡ ${this.publicUrl}/chat/${r.chat.token} (스푼과 별도 채팅방)`:'DJ가 아직 앱 채팅방을 열지 않았습니다.');
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
     if(cmd==='공지')return answer(s.notice);

@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {YouTubePlayer} from '../public/youtube-player.mjs';
+test('pause before a video exists and stale iframe checkpoints cannot block logout',()=>{
+ const writes=[],p=new YouTubePlayer({checkpoint:{write:(...args)=>writes.push(args)}});
+ assert.doesNotThrow(()=>p.pause());assert.deepEqual(writes,[]);
+ p.player={getVideoData:()=>({}),pauseVideo:()=>{}};
+ assert.doesNotThrow(()=>p.pause());assert.deepEqual(writes,[]);
+ p.songId='song';p.videoId='video';p.player={getVideoData:()=>{throw Error('iframe is gone');}};
+ assert.doesNotThrow(()=>p.savePosition());
+ p.player={getVideoData:()=>({video_id:'video'}),getCurrentTime:()=>19};p.savePosition();
+ assert.deepEqual(writes,[['song','video',19]]);
+});
 function environment(t){
  const original={YT:globalThis.YT,document:globalThis.document,location:globalThis.location};
  class Node{constructor(tag='DIV'){this.tagName=tag;this.id='';this.parentNode=null;this.children=[];}get nextSibling(){const i=this.parentNode?.children.indexOf(this);return this.parentNode?.children[i+1]||null;}append(n){n.parentNode=this;this.children.push(n);}insertBefore(n,next){n.parentNode=this;this.children.splice(this.children.indexOf(next),0,n);}remove(){if(this.parentNode){const i=this.parentNode.children.indexOf(this);this.parentNode.children.splice(i,1);this.parentNode=null;}}}

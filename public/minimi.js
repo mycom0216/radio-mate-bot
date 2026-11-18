@@ -10,10 +10,13 @@
     layer.appendChild(img);
   }
   function makeLayer() {
-    const width=document.documentElement.clientWidth,height=Math.max(document.body.scrollHeight,innerHeight),key=width+':'+height+':'+document.querySelector('#shell')?.dataset.page+':'+document.querySelector('#login')?.hidden;
     let layer=document.querySelector('.minimi-layer');
     if(!layer){layer=document.createElement('div');layer.className='minimi-layer';layer.setAttribute('aria-hidden','true');document.body.prepend(layer);}
-    if(key===wallpaperSize)return;wallpaperSize=key;layer.replaceChildren();layer.style.height=height+'px';seed=7;
+    // Exclude the previous wallpaper from page measurement so shorter menus shrink again.
+    layer.style.height='0px';
+    const width=document.documentElement.clientWidth,height=Math.max(document.body.scrollHeight,innerHeight),key=width+':'+height+':'+document.querySelector('#shell')?.dataset.page+':'+document.querySelector('#login')?.hidden;
+    layer.style.height=height+'px';
+    if(key===wallpaperSize)return;wallpaperSize=key;layer.replaceChildren();seed=7;
     const blocked=[...document.querySelectorAll('#page-title,.header-actions,.page-description,.banner,.welcome-top,.landing-copy,.welcome-footer,footer,body>p')].map(el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top+scrollY,bottom:r.bottom+scrollY,width:r.width,height:r.height};}).filter(r=>r.width&&r.height);
     const mobile=width<800,stepX=mobile?105:170,stepY=mobile?155:180;
     let index=0;
