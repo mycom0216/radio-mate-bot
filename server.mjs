@@ -1,3 +1,4 @@
+import {setAutomation} from './automation.mjs';
 import {AIChat} from './ai-chat.mjs';
 import {Lifestyle} from './lifestyle.mjs';
 import {RoomChat} from './chat-room.mjs';
@@ -48,7 +49,7 @@ const voice=new VoiceInbox(store.db,join(DATA,'voice'));
 const publicDemo=env.PUBLIC_DEMO==='1'||env.PUBLIC_DEMO==='true';
 const sandbox=publicDemo?new PublicSandbox(join(DATA,'preview-voice'),{region:spoonRegion(env)}):null;
 const ai=new AIChat({key:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});
-const lifestyle=new Lifestyle({clientId:env.NAVER_CLIENT_ID,clientSecret:env.NAVER_CLIENT_SECRET,provider:env.NAVER_SEARCH_PROVIDER||'hub'});
+const lifestyle=new Lifestyle({clientId:env.NAVER_CLIENT_ID,clientSecret:env.NAVER_CLIENT_SECRET,provider:env.NAVER_SEARCH_PROVIDER||'hub',weatherProxyURL:env.WEATHER_PROXY_URL||'',weatherProxyKey:env.WEATHER_PROXY_URL&&existsSync(join(ROOT,'deploy','gateway-router.key'))?readFileSync(join(ROOT,'deploy','gateway-router.key'),'utf8').trim():''});
 lifestyle.ai=ai;engine.lifestyle=lifestyle;if(sandbox)sandbox.services.engine.lifestyle=lifestyle;
 const chats=new WeakMap();function chatFor(store){if(!chats.has(store))chats.set(store,new RoomChat(store));return chats.get(store);}
 const liveServices={store,engine,spoon,voice};
@@ -71,7 +72,8 @@ function requireSession(req){const s=session(req);if(!s)throw Object.assign(Erro
 function checkSettingsRevision(room,expected){
   if(!Number.isSafeInteger(expected)||expected!==(room.settingsRevision||0))throw Object.assign(Error('다른 탭이나 채팅에서 설정이 변경되었습니다. 입력 내용을 확인하고 새로고침한 뒤 다시 수정해 주세요.'),{status:409});
 }
-function safeRoom(room){const {store,spoon}=servicesFor(room);const r=store.load(room);return {...r,id:isDemo(room)?'demo':r.id,connection:isDemo(room)?'테스트 모드 · 실제 방송 미연결':spoon.status.get(room)||'미연결',logs:store.logs(room),outbox:spoon.outbox.list(room),backups:store.db.prepare('SELECT id,time FROM backups WHERE room=? ORDER BY time DESC LIMIT 20').all(room)};}
+function automationRuntime(){try{const data=JSON.parse(readFileSync(join(ROOT,'deploy','automation-status.json'),'utf8'));return {enabled:data.enabled===true,localHealthy:data.localHealthy===true,tunnelHealthy:data.tunnelHealthy===true,gatewayHealthy:data.gatewayHealthy===true,checkedAt:Number(data.checkedAt)||0,lastError:data.lastError?'복구 또는 연결 확인 중':null};}catch{return {enabled:false};}}
+function safeRoom(room){const {store,spoon}=servicesFor(room);const r=store.load(room);return {...r,systemAutomation:isDemo(room)?{enabled:false}:automationRuntime(),id:isDemo(room)?'demo':r.id,connection:isDemo(room)?'테스트 모드 · 실제 방송 미연결':spoon.status.get(room)||'미연결',logs:store.logs(room),outbox:spoon.outbox.list(room),backups:store.db.prepare('SELECT id,time FROM backups WHERE room=? ORDER BY time DESC LIMIT 20').all(room)};}
 const server=createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -186,10 +188,11 @@ const server=createServer(async(req,res)=>{
       if(req.method!=='POST')throw Object.assign(Error('지원하지 않는 요청입니다.'),{status:404});
       const key=digest(req.headers.cookie||'');const a=attempts.get(key)||{time:Date.now(),count:0};if(Date.now()-a.time>60000){a.time=Date.now();a.count=0;}if(++a.count>(sandbox?.has(roomId)?60:180))throw Object.assign(Error('요청이 너무 많습니다.'),{status:429});attempts.set(key,a);
       const b=await body(req);
+      if(path==='/api/automation'){store.transaction(roomId,r=>{checkSettingsRevision(r,b.expectedRevision);store.backup(roomId);setAutomation(r,b.enabled);store.log(roomId,'dj','automation-settings',{enabled:b.enabled});});reply(res,200,{ok:true});return;}
       if(path==='/api/ai-reset'){ai.reset({room:roomId,user:'dj',channel:'app'});reply(res,200,{ok:true});return;}
       if(path==='/api/ai-talk'){reply(res,200,{text:await ai.answer(b.text,{store,room:roomId,user:'dj',channel:'app'})});return;}
       if(path==='/api/lifestyle'){
-        const kind=b.kind;if(kind==='weather'){reply(res,200,await lifestyle.weather());return;}
+        const kind=b.kind;if(kind==='weather'){reply(res,200,await lifestyle.weather({period:b.period||'current'}));return;}
         if(kind==='places'){reply(res,200,await lifestyle.places({...b,kind:b.kindPlace}));return;}
         if(kind==='talk'){const {assistantRequest}=await import('./lifestyle.mjs');reply(res,200,{text:await lifestyle.answer(assistantRequest('!채팅 '+String(b.text||'').slice(0,200)))});return;}
         throw Error('지원하지 않는 검색입니다.');
@@ -307,13 +310,13 @@ const server=createServer(async(req,res)=>{
       if(path==='/api/reconnect'){if(!isDemo(roomId)){spoon.stop(roomId);spoon.start(roomId);}reply(res,200,{ok:true});return;}
       throw Object.assign(Error('기능을 찾을 수 없습니다.'),{status:404});
     }
-    const files={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/offline.html':'offline.html','/app-icon.svg':'app-icon.svg','/pwa.css':'pwa.css','/pwa.mjs':'pwa.mjs','/playback-position.mjs':'playback-position.mjs','/affinity.mjs':'affinity.mjs','/spoon-charge.mjs':'spoon-charge.mjs','/community.mjs':'community.mjs','/community.css':'community.css','/sugar.css':'sugar.css','/bloom.css':'bloom.css','/radio-bloom.webp':'radio-bloom.webp','/radio-bloom-mini.webp':'radio-bloom-mini.webp','/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/player':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
+    const files={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/offline.html':'offline.html','/app-icon.svg':'app-icon.svg','/pwa.css':'pwa.css','/pwa.mjs':'pwa.mjs','/playback-position.mjs':'playback-position.mjs','/affinity.mjs':'affinity.mjs','/spoon-charge.mjs':'spoon-charge.mjs','/weather-ui.mjs':'weather-ui.mjs','/community.mjs':'community.mjs','/community.css':'community.css','/sugar.css':'sugar.css','/bloom.css':'bloom.css','/radio-bloom.webp':'radio-bloom.webp','/radio-bloom-mini.webp':'radio-bloom-mini.webp','/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/player':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}
     res.writeHead(200,{'Content-Type':path.endsWith('.webmanifest')?'application/manifest+json; charset=utf-8':path.endsWith('.webp')?'image/webp':path.endsWith('.png')?'image/png':path.endsWith('.svg')?'image/svg+xml':(/\.m?js$/).test(path)?'text/javascript; charset=utf-8':path.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8','Cache-Control':'no-cache'});res.end(readFileSync(join(ROOT,'public',files[path])));
   }catch(e){if(e.status===413)res.setHeader('Connection','close');reply(res,e.status||400,{error:e.message});}
 });
 // Bound slow headers/uploads and idle keep-alive sockets on the public server.
 server.headersTimeout=15000;server.requestTimeout=120000;server.keepAliveTimeout=5000;
-for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{if((r.rulesVersion||0)<RULES_VERSION){store.backup(id);updateRequestedRules(r);}r.voiceInboxUrl=voice.url(id,env.PUBLIC_URL);if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;r.listenerSnapshot={};engine.syncBuffs(r);});spoon.start(id);}
+for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{if(env.AUTO_OPERATIONS==='1'&&r.automation===undefined&&store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(id)){store.backup(id);setAutomation(r,true);}if((r.rulesVersion||0)<RULES_VERSION){store.backup(id);updateRequestedRules(r);}r.voiceInboxUrl=voice.url(id,env.PUBLIC_URL);if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;r.listenerSnapshot={};engine.syncBuffs(r);});spoon.start(id);}
 const timer=setInterval(()=>spoon.tick().catch(e=>console.error('scheduler:',e.message)),5000);
 const cleanup=setInterval(()=>{sandbox?.expire();sandbox?.services.store.prune({eventsKeep:2000,backupsKeep:5,auditDays:1});androidAuth.prune();const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t.expires<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
 server.listen(Number(env.PORT||4310),env.HOST||'127.0.0.1',()=>console.log(`Spoon Studio: http://${env.HOST||'127.0.0.1'}:${server.address().port} (${production?'production':'local demo'})`));

@@ -1,3 +1,4 @@
+import {setAutomation} from './automation.mjs';
 import {Outbox} from './outbox.mjs';
 import {expireQuizRounds,autoQuizCandidate,autoQuizDelivered} from './quiz.mjs';
 import {autoChatCandidate} from './extras.mjs';
@@ -36,7 +37,7 @@ export class Spoon {
     for(const key of this.timers.keys())if(key.startsWith(room+':'))this.timers.delete(key);
     return {revoked};
   }
-  async connect(code){const token=await this.tokenRequest({grant_type:'authorization_code',code,redirect_uri:`${this.env.PUBLIC_URL}/oauth/callback`});const res=await fetch(`${this.base}/v1/me`,{headers:{Authorization:`Bearer ${token.access_token}`},signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('DJ 정보를 확인할 수 없습니다. me.read 권한을 확인하세요.');const {userId}=await res.json();if(!userId)throw Error('DJ ID가 없습니다.');this.store.create(userId,`DJ ${userId.slice(0,6)}`);this.stop(userId);this.saveToken(userId,token);this.start(userId);return userId;}
+  async connect(code){const token=await this.tokenRequest({grant_type:'authorization_code',code,redirect_uri:`${this.env.PUBLIC_URL}/oauth/callback`});const res=await fetch(`${this.base}/v1/me`,{headers:{Authorization:`Bearer ${token.access_token}`},signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error('DJ 정보를 확인할 수 없습니다. me.read 권한을 확인하세요.');const {userId}=await res.json();if(!userId)throw Error('DJ ID가 없습니다.');this.store.create(userId,`DJ ${userId.slice(0,6)}`);if(this.env.AUTO_OPERATIONS==='1'&&this.store.load(userId).automation===undefined)this.store.transaction(userId,r=>setAutomation(r,true));this.stop(userId);this.saveToken(userId,token);this.start(userId);return userId;}
   async send(room,message){return (await this.sendDetailed(room,message)).kind==='sent';}
   async sendDetailed(room,message){
     if(!message)return {kind:'failed'};
@@ -54,7 +55,7 @@ export class Spoon {
     }catch{if((this.sendEpochs.get(room)||0)===epoch)this.store.log(room,'system','chat-send-failed',{reason:'connection-or-authentication'});return {kind:'ambiguous'};}
   }
   stop(room){this.sendEpochs.set(room,(this.sendEpochs.get(room)||0)+1);this.running.get(room)?.abort();this.running.delete(room);if(this.store.load(room))this.setLive(room,false);this.status.set(room,'연결 중지');}
-  start(room){if(this.running.has(room)||!this.configured())return;const controller=new AbortController();this.running.set(room,controller);void this.loop(room,controller).catch(()=>{});}
+  start(room){if(this.running.has(room)||!this.configured()||!this.store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(room))return;const controller=new AbortController();this.running.set(room,controller);void this.loop(room,controller).catch(()=>{});}
   async loop(room,controller){let backoff=5000;const signal=controller.signal;
     try{while(!signal.aborted){
       try{

@@ -1,3 +1,4 @@
+import {setAutomation} from './automation.mjs';
 import {assistantRequest} from './lifestyle.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue,applySongAction} from './song-queue.mjs';
@@ -260,11 +261,17 @@ export class Engine {
       const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;
     }
     const bits=text.slice(1).trim().split(/\s+/);let cmd=bits.shift()||'';
+    const weatherAlias=assistantRequest(text);if(weatherAlias&&['날씨','전국날씨'].includes(weatherAlias.kind))cmd=weatherAlias.kind;
     if(cmd==='구매'){cmd='아이템';bits.unshift('구매');}
     const arg=bits.join(' ');
     const dj=e.isDj===true;
     if(dj&&r.songDeletePrompt?.actor===e.user?.id&&!['삭제','이전곡','다음곡'].includes(cmd))delete r.songDeletePrompt;
     const answer=t=>{r.lastResponse=now;return {text:t};};
+    if(cmd==='자동운영'){
+      if(!dj)fail('자동 운영 설정은 DJ 전용입니다.');
+      if(arg==='상태')return answer('자동 운영 '+(r.automation?.enabled?'ON':'OFF')+' · 퀴즈 '+(s.autoQuizEnabled?s.autoQuizMinutes+'분':'OFF')+' · 청취 복권 '+(s.listenRewards?s.listenMinutes+'분마다 '+s.listenTickets+'장':'OFF'));
+      if(!['on','off'].includes(arg))fail('사용법: !자동운영 on / off / 상태');this.store.backup(r.id);setAutomation(r,arg==='on',now);return answer(arg==='on'?'자동 운영 ON · 퀴즈 10분 · 청취 복권 5분마다 1장 · 출석·인사·신청곡 접수':'자동 운영 OFF · 프로필 적용 전 설정을 복원했습니다.');
+    }
     if(cmd==='자동퀴즈'){
       if(!dj)fail('자동 퀴즈 설정은 DJ 전용 명령어입니다.');
       if(arg==='상태')return answer('자동 퀴즈 '+(s.autoQuizEnabled?'ON':'OFF')+' · '+s.autoQuizMinutes+'분 간격 · '+(r.autoQuizRound?'문제 진행 중':'다음 출제 대기'));

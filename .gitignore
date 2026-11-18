@@ -32,3 +32,9 @@ deploy/youtube-setup-result.json
 deploy/naver-setup-result.json
 deploy/ai-setup-result.json
 deploy/*.tmp
+
+deploy/automation*.json
+deploy/automation*.tmp
+*.previous
+
+deploy/automation.lock
