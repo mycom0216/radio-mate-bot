@@ -16,7 +16,7 @@ function hourlyRows({startHour=10,days=4,offset=0,rainDay=1,rainHours=[10,11,12,
  const rows=[];
  for(let day=0;day<days;day++)for(let hour=day===0?startHour:1;hour<=24;hour++){
   const shift=offset+2*day,wet=day===rainDay&&rainHours.includes(hour);
-  rows.push({day,hour,temp:shift+(hour<7?-3:hour<16?3:0),tmx:shift+3,tmn:day===0&&startHour>6?null:shift-3,pop:wet?60:day===3?30:0,pty:wet?1:0,wf:wet?'비':hour<12?'구름 많음':'맑음'});
+  rows.push({day,hour,temp:shift+(hour<7?-3:hour<16?3:0),tmx:day===0&&startHour>15?null:shift+3,tmn:day===0&&startHour>6?null:shift-3,pop:wet?60:day===3?30:0,pty:wet?1:0,wf:wet?'비':hour<12?'구름 많음':'맑음'});
  }
  return rows;
 }
@@ -153,7 +153,7 @@ test('kma weekly forecast uses KMA for Thu-Sun and marks Open-Meteo for the past
  assert.deepEqual([seoul[4].min,seoul[4].max,seoul[4].rainChance,seoul[4].condition],[-1,5,60,'비']);
  assert.equal(seoul[0].past,true);assert.equal(seoul[0].stored,undefined);
  const text=await service.answer({kind:'날씨',arg:'서울 이번주'});
- assert.ok(text.length<=200,text);assert.match(text,/기상청\+Open-Meteo\(\*\) · KST · 과거=모델자료/);assert.match(text,/11-16 .*℃ 흐림 40%\*/);
+ assert.ok(text.length<=200,text);assert.match(text,/기상청\+Open-Meteo\(\*\) · KST · 오늘은 남은 시간 기준 · 과거=모델자료/);assert.match(text,/11-16 .*℃ 흐림 40%\*/);
  const national=await service.answer({kind:'전국날씨',arg:'이번주'});assert.ok(national.length<=200,national);
  const html=weatherHTML(week);assert.match(html,/weather\.go\.kr/);assert.match(html,/open-meteo\.com/);assert.match(html,/과거 모델자료/);assert.doesNotMatch(html,/null℃/);
  const down=await lifestyle(world({fail:ZONES.keys().toArray(),modelFails:true})).forecast('tomorrow');
@@ -165,7 +165,7 @@ test('past days of the week come from stored KMA records without calling Open-Me
  const week=await service.forecast('thisWeek'),seoul=week.items.find(i=>i.region==='서울').days;
  assert.deepEqual(seoul.slice(0,3).map(d=>[d.source,d.stored,d.min,d.max,d.rainChance]),[['기상청',true,-4,4,20],['기상청',true,-3,5,20],['기상청',true,-2,6,20]]);
  assert.equal(week.source,'기상청');assert.equal(w.model().length,0);
- const text=await service.answer({kind:'날씨',arg:'서울 이번주'});assert.match(text,/기상청 · KST · 과거=저장예보/);assert.doesNotMatch(text,/\*/);
+ const text=await service.answer({kind:'날씨',arg:'서울 이번주'});assert.match(text,/기상청 · KST · 오늘은 남은 시간 기준 · 과거=저장예보/);assert.doesNotMatch(text,/\*/);
  assert.match(weatherHTML(week),/저장된 예보값/);
 });
 test("today's minimum keeps the exact early-morning value after later partial forecasts",async()=>{
@@ -199,6 +199,60 @@ test('a rejected mid-term key falls back to Open-Meteo and pauses retries',async
  const service=new Lifestyle({weatherSource:'kma',now:()=>time,fetcher,kmaKey:'bad-key'}),next=await service.forecast('nextWeek');
  assert.equal(next.source,'Open-Meteo');assert.ok(next.items.every(item=>item.days.every(d=>d.available)));
  const attempts=w.hosts('apis.data.go.kr').length;await service.kma.mid(probe.get('서울'));assert.equal(w.hosts('apis.data.go.kr').length,attempts); // 10분 동안 재시도 안 함
+});
+test('KMA failures are logged once, listed in status(), and recovery is announced',()=>{
+ let time=NOW;const logs=[],kma=new KmaWeather({db:memoryDb(),now:()=>time,log:message=>logs.push(message)});
+ assert.deepEqual(kma.status().hourly,{ok:true,lastOk:null,failing:[],lastError:null});assert.equal(kma.status().mid.enabled,false);
+ kma.note('hourly','서울');assert.equal(kma.status().hourly.lastOk,NOW);assert.equal(logs.length,0);
+ kma.note('hourly','서울',Error('기상청 서버가 응답하지 않습니다(HTTP 503).'));kma.note('hourly','부산',Error('시간 초과'));
+ assert.equal(logs.length,1);assert.match(logs[0],/동네예보 요청 실패\(서울\): .*HTTP 503/); // 이미 실패 중이면 다른 지역이 더 실패해도 다시 쓰지 않음
+ assert.deepEqual([kma.status().hourly.ok,kma.status().hourly.failing,kma.status().hourly.lastError],[false,['서울','부산'],'시간 초과']);
+ kma.note('hourly','서울');assert.equal(logs.length,1); // 부산이 아직 실패 중이라 회복 알림은 아직
+ time+=6*3600000;kma.note('hourly','부산',Error('시간 초과'));assert.equal(logs.length,2);assert.match(logs[1],/\(부산\)/); // 계속 실패하면 6시간마다 한 번
+ kma.note('hourly','부산');assert.equal(logs.length,3);assert.match(logs[2],/동네예보 요청이 다시 정상/);assert.deepEqual(kma.status().hourly.failing,[]);
+ kma.note('hourly','서울',Error('또 실패'));assert.equal(logs.length,4); // 회복 뒤의 새 장애는 바로 기록
+ for(const id of ['b','c','d','e'])kma.note('hourly',id,Error('x'));assert.equal(logs.length,4);
+ time+=6*3600000;kma.note('hourly','f',Error('x'));assert.equal(logs.length,5);assert.match(logs[4],/\(서울·b·c 외 3곳\): x/);
+});
+test('a rejected or broken mid-term response is logged with its reason, never prints the service key and recovers',async()=>{
+ const good=world().fetcher,logs=[],seoul=probe.get('서울');let time=NOW,mode='rejected';
+ const fetcher=async input=>mode==='good'?good(input):mode==='http'?{ok:false,status:500}:{ok:true,json:async()=>({response:{header:{resultCode:'30',resultMsg:'SERVICE_KEY_IS_NOT_REGISTERED_ERROR'}}})};
+ const kma=new KmaWeather({db:memoryDb(),now:()=>time,key:'secret-key-123',fetcher,log:message=>logs.push(message)});
+ assert.equal(await kma.mid(seoul),null);
+ assert.equal(logs.length,1);assert.match(logs[0],/중기예보 요청 실패\(서울\): 중기예보 요청이 거절되었습니다\(30 SERVICE_KEY_IS_NOT_REGISTERED_ERROR\)/);
+ assert.deepEqual([kma.status().mid.enabled,kma.status().mid.ok,kma.status().mid.failing],[true,false,['서울']]);assert.equal(kma.status().hourly.ok,true);
+ time+=11*60000;mode='http';assert.equal(await kma.mid(seoul),null);assert.match(kma.status().mid.lastError,/HTTP 500/);assert.equal(logs.length,1); // 같은 장애는 반복해서 쓰지 않음
+ time+=11*60000;mode='good';assert.ok((await kma.mid(seoul)).size>0);
+ assert.equal(logs.length,2);assert.match(logs[1],/중기예보 요청이 다시 정상/);assert.equal(kma.status().mid.ok,true);assert.doesNotMatch(logs.join('\n'),/secret-key-123/);
+});
+test('collectWeather warms every national region and weatherStatus feeds the diagnostics page',async()=>{
+ const gwangju=probe.get('광주').zone,w=world({fail:[gwangju]}),logs=[],service=lifestyle(w,{log:message=>logs.push(message)});
+ assert.equal(service.weatherStatus().collectedAt,null);
+ await service.collectWeather();
+ const status=service.weatherStatus();
+ assert.deepEqual([status.source,status.collectedAt,status.hourly.ok,status.hourly.failing,status.mid.enabled],['kma',NOW,false,['광주'],false]);
+ assert.equal(w.hosts('www.weather.go.kr').length,17);assert.equal(logs.length,1);assert.match(logs[0],/동네예보 요청 실패\(광주\).*HTTP 503/);
+ const plain=new Lifestyle({now:()=>NOW});assert.deepEqual(plain.weatherStatus(),{source:'openmeteo'});assert.equal(await plain.collectWeather(),undefined); // Open-Meteo 모드에서는 수집하지 않음
+});
+test("today's range is flagged as partial in chat, UI and API until a full-day forecast confirms it",async()=>{
+ const w=world(),service=lifestyle(w),week=await service.forecast('thisWeek'),seoul=week.items.find(i=>i.region==='서울').days;
+ assert.deepEqual(seoul.map(d=>!!d.partial),[false,false,false,true,false,false,false]); // 오늘(목)만 남은 시간 기준
+ assert.match(week.note,/"남은 시간 기준"/);
+ const text=await service.answer({kind:'날씨',arg:'서울 이번주'});assert.ok(text.length<=200,text);assert.match(text,/오늘은 남은 시간 기준/);
+ const html=weatherHTML(week);assert.equal(html.match(/<small>[^<]*남은 시간 기준/g).length,17);
+ const tomorrow=await service.forecast('tomorrow');assert.ok(tomorrow.items.every(item=>!item.days[0].partial));assert.doesNotMatch(tomorrow.note,/남은 시간/);
+ assert.doesNotMatch(await service.answer({kind:'날씨',arg:'서울 내일'}),/남은 시간/);
+});
+test("today's range is confirmed by an early-morning or afternoon record and stays partial otherwise",async()=>{
+ const early=Date.parse('2026-11-18T17:30:00Z'),late=Date.parse('2026-11-19T07:30:00Z'); // 02:30 · 16:30 KST
+ const today=async(db,w,when)=>(await new Lifestyle({weatherSource:'kma',weatherDb:db,now:()=>when,fetcher:w.fetcher}).forecast('thisWeek')).items.find(i=>i.region==='서울').days[3];
+ const night=world({startHour:4,issued:'202611190200'}),morning=world(),evening=world({startHour:17,issued:'202611191500'});
+ const full=memoryDb();await new Lifestyle({weatherSource:'kma',weatherDb:full,now:()=>early,fetcher:night.fetcher}).collectWeather();
+ let day=await today(full,morning,NOW);assert.deepEqual([day.min,day.max,!!day.partial],[-3,3,false]); // 새벽 기록이 오늘 최저를 확정
+ day=await today(full,evening,late);assert.deepEqual([day.min,day.max,!!day.partial],[-3,3,false]); // 15시가 지나 기상청 최고가 사라져도 저장값을 사용
+ day=await today(memoryDb(),evening,late);assert.deepEqual([day.min,day.max,day.partial],[0,0,true]); // 저녁에 처음 받으면 확정할 근거가 없음
+ const noon=memoryDb();await today(noon,morning,NOW);
+ day=await today(noon,evening,late);assert.deepEqual([day.min,day.max,day.partial],[0,3,true]); // 낮에 처음 받으면 최고만 확정되고 최저는 알 수 없음
 });
 test('weather source is validated and Open-Meteo stays the library default',()=>{
  assert.throws(()=>new Lifestyle({weatherSource:'naver'}),/WEATHER_SOURCE/);

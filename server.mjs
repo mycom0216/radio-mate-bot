@@ -52,7 +52,7 @@ const sandbox=publicDemo?new PublicSandbox(join(DATA,'preview-voice'),{region:sp
 const ai=new AIChat({key:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});
 const weatherSource=env.WEATHER_SOURCE||'kma';
 const lifestyle=new Lifestyle({clientId:env.NAVER_CLIENT_ID,clientSecret:env.NAVER_CLIENT_SECRET,provider:env.NAVER_SEARCH_PROVIDER||'hub',weatherSource,weatherDb:weatherSource==='kma'?new WeatherDb(store.db):null,kmaKey:env.KMA_SERVICE_KEY||'',kmaBase:env.KMA_API_BASE||'',kmaKeyParam:env.KMA_API_KEY_PARAM||'',weatherProxyURL:env.WEATHER_PROXY_URL||'',weatherProxyKey:env.WEATHER_PROXY_URL&&existsSync(join(ROOT,'deploy','gateway-router.key'))?readFileSync(join(ROOT,'deploy','gateway-router.key'),'utf8').trim():''});
-lifestyle.ai=ai;engine.lifestyle=lifestyle;if(sandbox)sandbox.services.engine.lifestyle=lifestyle;
+lifestyle.ai=ai;lifestyle.log=message=>console.warn(new Date().toISOString()+' [weather] '+message);engine.lifestyle=lifestyle;if(sandbox)sandbox.services.engine.lifestyle=lifestyle;
 // 기상청 동네예보를 1시간마다 수집해 DB에 스냅샷·일별 기록을 쌓습니다(질문이 없어도 새벽 발표분의 오늘 최저기온을 놓치지 않기 위함).
 if(weatherSource==='kma'){const collect=()=>lifestyle.collectWeather().catch(()=>{});setTimeout(collect,15000).unref();setInterval(collect,3600000).unref();}
 const chats=new WeakMap();function chatFor(store){if(!chats.has(store))chats.set(store,new RoomChat(store));return chats.get(store);}
@@ -171,7 +171,7 @@ const server=createServer(async(req,res)=>{
         const chat=chatFor(store),state=chat.state(store.load(roomId));reply(res,200,{...chat.publicList(roomId),url:state.enabled?env.PUBLIC_URL+'/chat/'+state.token:'',preview:isDemo(roomId)});return;
       }
       if(req.method==='GET'&&path==='/api/diagnostics'){
-        reply(res,200,buildDiagnostics({demo:isDemo(roomId),configured:spoon.configured(),hasToken:!!store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(roomId),room:store.load(roomId),backups:store.db.prepare('SELECT COUNT(*) AS n FROM backups WHERE room=?').get(roomId).n,logs:store.logs(roomId),publicUrl:env.PUBLIC_URL,voiceEnabled:voice.link(roomId).enabled,youtubeConfigured:!!env.YOUTUBE_API_KEY}));return;
+        reply(res,200,buildDiagnostics({demo:isDemo(roomId),configured:spoon.configured(),hasToken:!!store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(roomId),room:store.load(roomId),backups:store.db.prepare('SELECT COUNT(*) AS n FROM backups WHERE room=?').get(roomId).n,logs:store.logs(roomId),publicUrl:env.PUBLIC_URL,voiceEnabled:voice.link(roomId).enabled,youtubeConfigured:!!env.YOUTUBE_API_KEY,weather:lifestyle.weatherStatus()}));return;
       }
       if(req.method==='GET'&&path==='/api/export'){
         const data={version:1,exportedAt:Date.now(),room:store.load(roomId),logs:store.logs(roomId),voice:voice.list(roomId).map(card=>({...card,data:voice.file(roomId,card.id).data.toString('base64')}))};

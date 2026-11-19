@@ -161,7 +161,7 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     const beforeDiagnosis=await (await fetch(address+'/api/room',{headers})).json();
     res=await fetch(address+'/api/diagnostics');assert.equal(res.status,401);
     res=await fetch(address+'/api/diagnostics',{headers});assert.equal(res.status,200);const diagnosis=await res.json();
-    assert.equal(diagnosis.checks.length,10);assert.deepEqual(Object.keys(diagnosis).sort(),['checkedAt','checks']);assert.doesNotMatch(JSON.stringify(diagnosis),new RegExp(csrf));
+    assert.equal(diagnosis.checks.length,11);assert.ok(diagnosis.checks.some(c=>c.id==='weather')); // 기본 날씨 출처(기상청) 점검이 포함됨assert.deepEqual(Object.keys(diagnosis).sort(),['checkedAt','checks']);assert.doesNotMatch(JSON.stringify(diagnosis),new RegExp(csrf));
     const afterDiagnosis=await (await fetch(address+'/api/room',{headers})).json();assert.equal(afterDiagnosis.settingsRevision,beforeDiagnosis.settingsRevision);assert.equal(afterDiagnosis.backups.length,beforeDiagnosis.backups.length);assert.deepEqual(afterDiagnosis.settings,beforeDiagnosis.settings);
     const queueSettingsRoom=await(await fetch(address+'/api/room',{headers})).json();
     res=await request('/api/settings',{settings:{...queueSettingsRoom.settings,cooldown:1,responseGap:1},expectedRevision:queueSettingsRoom.settingsRevision||0});assert.equal(res.status,200);

@@ -1,4 +1,4 @@
-export function buildDiagnostics({demo,configured,hasToken,room,backups=0,logs=[],now=Date.now(),publicUrl='',voiceEnabled=false,youtubeConfigured=false}){
+export function buildDiagnostics({demo,configured,hasToken,room,backups=0,logs=[],now=Date.now(),publicUrl='',voiceEnabled=false,youtubeConfigured=false,weather=null}){
  let publicHttps=false;try{const url=new URL(publicUrl);publicHttps=url.protocol==='https:'&&!['localhost','127.0.0.1','[::1]'].includes(url.hostname);}catch{}
  const checks=[
   {id:'mode',status:demo?'info':'pass',title:demo?'지금은 로컬 연습 공간이에요':'DJ 방송 관리 공간이에요',detail:demo?'여기서 실행한 테스트 명령은 실제 스푼 채팅에 전송되지 않습니다.':'연결 동의한 방송의 상태를 확인합니다.'},
@@ -13,5 +13,10 @@ export function buildDiagnostics({demo,configured,hasToken,room,backups=0,logs=[
  checks.push({id:'delivery',status:failures?'warn':'info',title:failures?`최근 기록에서 전송 실패 ${failures}건을 확인했어요`:'최근 기록에서 채팅 전송 실패를 찾지 못했어요',detail:'최근 200개 활동 기록 중 24시간 이내 건을 확인합니다. 실패가 없다는 사실만으로 실방송 검증 완료를 뜻하지는 않습니다.'});
  checks.push({id:'voice',status:voiceEnabled?'pass':'info',title:voiceEnabled?'음성메시지 접수가 열려 있어요':'음성메시지 접수가 닫혀 있어요',detail:voiceEnabled?'청취자는 !보이스카드로 접수 링크를 받을 수 있습니다. 마이크 녹음과 실제 청취는 기기에서 확인해 주세요.':'음성메시지 메뉴에서 접수 시작을 누르세요. 스푼 앱 내부 보이스카드와는 별도 수신함입니다.'});
  checks.push({id:'youtube',status:youtubeConfigured?'pass':'info',title:youtubeConfigured?'YouTube 제목 검색 키가 설정되어 있어요':'YouTube 제목 자동 검색 키가 없어요',detail:youtubeConfigured?'설정 여부만 확인했습니다. 키의 권한과 검색 한도는 실제 검색 시 확인합니다.':'YouTube 링크 신청은 재생할 수 있습니다. 제목만 신청한 곡은 검색 후 영상 연결을 하거나 서버에 검색 키를 설정하세요.'});
+ if(weather?.source==='kma'){
+  const kst=ms=>ms?new Date(ms+9*3600000).toISOString().slice(5,16).replace('T',' ')+' KST':'아직 없음';
+  const bad=!weather.hourly.ok,midBad=weather.mid.enabled&&!weather.mid.ok;
+  checks.push({id:'weather',status:bad||midBad?'warn':'pass',title:bad?'기상청 날씨 자료를 받지 못하고 있어요':midBad?'기상청 중기예보를 받지 못하고 있어요':'날씨는 기상청 자료로 안내하고 있어요',detail:bad?`최근 오류(${weather.hourly.failing.slice(0,3).join('·')}): ${weather.hourly.lastError}. 저장된 자료나 Open-Meteo로 보충하며 채팅에 출처가 표시됩니다.`:midBad?`최근 오류: ${weather.mid.lastError}. 다음 주 이후 날짜는 Open-Meteo로 보충합니다.`:`동네예보 마지막 수집 ${kst(weather.collectedAt||weather.hourly.lastOk)} · 중기예보 ${weather.mid.enabled?'정상':'서비스키가 없어 다음 주 이후는 Open-Meteo로 보충'}.`});
+ }else if(weather?.source==='openmeteo')checks.push({id:'weather',status:'info',title:'날씨는 Open-Meteo 모델 자료예요',detail:'WEATHER_SOURCE를 kma로 바꾸면 기상청 자료를 사용합니다.'});
  return {checkedAt:now,checks};
 }

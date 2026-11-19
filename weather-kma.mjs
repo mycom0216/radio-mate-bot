@@ -76,10 +76,23 @@ export function normalizeKey(key){
  try{return /%[0-9a-f]{2}/i.test(text)?decodeURIComponent(text):text;}catch{return text;}
 }
 export class KmaWeather{
- constructor({db,fetcher=fetch,now=Date.now,key='',base='https://apis.data.go.kr/1360000',keyParam='serviceKey'}){
+ constructor({db,fetcher=fetch,now=Date.now,key='',base='https://apis.data.go.kr/1360000',keyParam='serviceKey',log=()=>{}}){
   Object.assign(this,{db,fetcher,now,base:String(base).replace(/\/$/,''),keyParam,key:normalizeKey(key)});
-  this.memo=new Map();this.inflight=new Map();this.midRetryAt=new Map();
+  this.memo=new Map();this.inflight=new Map();this.midRetryAt=new Map();this.log=log;
+  this.health={hourly:{failed:new Set(),lastOk:0,lastError:'',lastLogged:0},mid:{failed:new Set(),lastOk:0,lastError:'',lastLogged:0}};
  }
+ // 실패를 조용히 묻지 않고 로그로 남깁니다: 처음 실패했을 때 한 번, 계속 실패하면 6시간마다 한 번, 모두 회복되면 한 번.
+ note(kind,id,error){
+  const h=this.health[kind],label=kind==='mid'?'중기예보':'동네예보';
+  if(error){
+   const first=!h.failed.size;h.failed.add(id);h.lastError=String(error?.message||error).slice(0,120);
+   if(first||this.now()-h.lastLogged>=6*3600000){h.lastLogged=this.now();const names=[...h.failed];this.log(`기상청 ${label} 요청 실패(${names.slice(0,3).join('·')}${names.length>3?` 외 ${names.length-3}곳`:''}): ${h.lastError}`);}
+  }else{
+   h.lastOk=this.now();
+   if(h.failed.delete(id)&&!h.failed.size){h.lastLogged=0;this.log(`기상청 ${label} 요청이 다시 정상입니다.`);}
+  }
+ }
+ status(){const view=h=>({ok:!h.failed.size,lastOk:h.lastOk||null,failing:[...h.failed],lastError:h.failed.size?h.lastError:null});return {hourly:view(this.health.hourly),mid:{...view(this.health.mid),enabled:!!this.key}};}
  once(key,ttl,task){
   const hit=this.memo.get(key);if(hit&&hit.until>this.now())return Promise.resolve(hit.value);
   if(this.inflight.has(key))return this.inflight.get(key);
@@ -96,12 +109,14 @@ export class KmaWeather{
    try{
     const url=new URL(KMA_HOURLY_URL);url.search=new URLSearchParams({zone:loc.zone});
     const response=await this.fetcher(url,{signal:AbortSignal.timeout(6000)});
-    if(!response.ok)throw Error('기상청 서버가 응답하지 않습니다.');
+    if(!response.ok)throw Error('기상청 서버가 응답하지 않습니다(HTTP '+response.status+').');
     const data=parseHourlyRss(await response.text(),loc.kmaName);
     this.db.saveSnapshot('kma-hourly',loc.id,data.issued,JSON.stringify(data),this.now());
     this.db.saveDaily(loc.id,dailyFromRows(data.rows),this.now());
+    this.note('hourly',loc.id);
     return data;
    }catch(error){
+    this.note('hourly',loc.id,error);
     if(saved&&this.now()-snap.fetched<STALE_MAX)return {...saved,stale:true};
     throw error;
    }
@@ -112,9 +127,9 @@ export class KmaWeather{
    const url=new URL(`${this.base}/MidFcstInfoService/${service}`);
    url.search=new URLSearchParams({[this.keyParam]:this.key,pageNo:'1',numOfRows:'10',dataType:'JSON',regId:reg,tmFc});
    const response=await this.fetcher(url,{signal:AbortSignal.timeout(6000)});
-   if(!response.ok)throw Error('중기예보 서버가 응답하지 않습니다.');
+   if(!response.ok)throw Error('중기예보 서버가 응답하지 않습니다(HTTP '+response.status+').');
    let json;try{json=await response.json();}catch{throw Error('중기예보 응답 형식을 확인하지 못했습니다.');}
-   if(json?.response?.header?.resultCode!=='00')throw Error('중기예보 요청이 거절되었습니다.');
+   if(json?.response?.header?.resultCode!=='00'){const header=json?.response?.header||{};throw Error('중기예보 요청이 거절되었습니다('+(header.resultCode||'?')+' '+String(header.resultMsg||'').slice(0,60)+').');}
    const item=json.response.body?.items?.item;return Array.isArray(item)?item[0]:item;
   });
  }
@@ -124,10 +139,11 @@ export class KmaWeather{
   const tmFc=latestTmFc(this.now());
   try{
    const [land,temp]=await Promise.all([this.midItem('getMidLandFcst',loc.midLand,tmFc),this.midItem('getMidTa',loc.midTemp,tmFc)]);
-   if(!land||!temp)throw Error('empty');
-   this.midRetryAt.delete(loc.id);
-   return parseMid(land,temp,`${tmFc.slice(0,4)}-${tmFc.slice(4,6)}-${tmFc.slice(6,8)}`);
-  }catch{this.midRetryAt.set(loc.id,this.now()+MID_RETRY);return null;}
+   if(!land||!temp)throw Error('중기예보 응답이 비어 있습니다.');
+   const days=parseMid(land,temp,`${tmFc.slice(0,4)}-${tmFc.slice(4,6)}-${tmFc.slice(6,8)}`);
+   this.midRetryAt.delete(loc.id);this.note('mid',loc.id);
+   return days;
+  }catch(error){this.note('mid',loc.id,error);this.midRetryAt.set(loc.id,this.now()+MID_RETRY);return null;}
  }
  async current(locations){
   const items=[],failed=[];
@@ -144,8 +160,9 @@ export class KmaWeather{
    try{
     const hourly=await this.hourly(loc),stored=new Map(this.db.storedDays(loc.id,[range.today]).map(day=>[day.date,day]));
     for(const [date,day] of dailyFromRows(hourly.rows)){
-     const old=stored.get(date);
-     days.set(date,{...day,min:!day.exactMin&&old?Math.min(day.min,old.min):day.min,max:!day.exactMax&&old?Math.max(day.max,old.max):day.max,source:KMA_LABEL,stale:!!hourly.stale});
+     // 오늘은 이미 지난 시간이 빠져 최저(06시)·최고(15시)가 부분값일 수 있습니다. 저장된 기록의 수집 시간 수가 19 이상이면 06시를, 10 이상이면 15시를 포함한 발표분이라 확정값으로 봅니다.
+     const old=stored.get(date),minOk=day.exactMin||(!!old&&old.hours>=19),maxOk=day.exactMax||(!!old&&old.hours>=10);
+     days.set(date,{...day,min:!day.exactMin&&old?Math.min(day.min,old.min):day.min,max:!day.exactMax&&old?Math.max(day.max,old.max):day.max,partial:!(minOk&&maxOk),source:KMA_LABEL,stale:!!hourly.stale});
     }
    }catch{}
    if(range.dates.some(date=>date>=range.today&&!days.has(date))){const mid=await this.mid(loc);if(mid)for(const [date,day] of mid)if(!days.has(date))days.set(date,{...day,source:KMA_LABEL});}

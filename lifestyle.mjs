@@ -24,12 +24,12 @@ export function assistantRequest(message){
  return {kind,arg};
 }
 export class Lifestyle {
- constructor({clientId='',clientSecret='',provider='hub',weatherProxyURL='',weatherProxyKey='',weatherSource='openmeteo',weatherDb=null,kmaKey='',kmaBase='',kmaKeyParam='',fetcher=fetch,now=Date.now}={}){
-  Object.assign(this,{clientId,clientSecret,provider,weatherProxyURL,weatherProxyKey,fetcher,now});this.cache=new Map();this.pending=new Map();this.weatherRetryAt=new Map();
+ constructor({clientId='',clientSecret='',provider='hub',weatherProxyURL='',weatherProxyKey='',weatherSource='openmeteo',weatherDb=null,kmaKey='',kmaBase='',kmaKeyParam='',log=()=>{},fetcher=fetch,now=Date.now}={}){
+  Object.assign(this,{clientId,clientSecret,provider,weatherProxyURL,weatherProxyKey,fetcher,now,log});this.cache=new Map();this.pending=new Map();this.weatherRetryAt=new Map();
   // weatherSource: 'kma'(기상청 동네예보·중기예보, 운영 기본값) 또는 'openmeteo'(Open-Meteo 모델 자료). 기상청이 실패하거나 범위를 벗어난 날짜는 Open-Meteo로 보충합니다.
   if(!['kma','openmeteo'].includes(weatherSource))throw Error('WEATHER_SOURCE는 kma 또는 openmeteo여야 합니다.');
   this.weatherSource=weatherSource;
-  if(weatherSource==='kma'){this.weatherDb=weatherDb||new WeatherDb(new DatabaseSync(':memory:'));this.kma=new KmaWeather({db:this.weatherDb,fetcher:(...args)=>this.fetcher(...args),now:()=>this.now(),key:kmaKey,...(kmaBase?{base:kmaBase}:{}),...(kmaKeyParam?{keyParam:kmaKeyParam}:{})});}
+  if(weatherSource==='kma'){this.weatherDb=weatherDb||new WeatherDb(new DatabaseSync(':memory:'));this.kma=new KmaWeather({db:this.weatherDb,fetcher:(...args)=>this.fetcher(...args),now:()=>this.now(),log:message=>this.log(message),key:kmaKey,...(kmaBase?{base:kmaBase}:{}),...(kmaKeyParam?{keyParam:kmaKeyParam}:{})});}
  }
  regionNames(){return this.weatherDb?this.weatherDb.names():regions.map(r=>r[0]);}
  resolveRegion(text){
@@ -39,7 +39,9 @@ export class Lifestyle {
  // 전국 목록(17개)에 없는 추가 지역(예: 목포)은 그 지역만 따로 조회합니다.
  onlyRegion(region){const loc=region&&this.weatherDb?.get(region);return loc&&!loc.national?loc.id:null;}
  // 운영 서버가 주기적으로 호출해 동네예보 스냅샷과 일별 기록을 DB에 쌓습니다(오늘 최저기온은 새벽 발표분에만 들어 있음).
- async collectWeather(){if(this.weatherSource==='kma')await this.kma.each(this.weatherDb.national(),loc=>this.kma.hourly(loc).catch(()=>{}));}
+ async collectWeather(){if(this.weatherSource!=='kma')return;await this.kma.each(this.weatherDb.national(),loc=>this.kma.hourly(loc).catch(()=>{}));this.lastCollect=this.now();}
+ // 운영 점검 화면용 요약(비밀 값 없음). 기상청 호출이 실패하면 hourly.ok / mid.ok가 false가 됩니다.
+ weatherStatus(){return this.weatherSource==='kma'?{source:'kma',...this.kma.status(),collectedAt:this.lastCollect||null}:{source:'openmeteo'};}
  get configured(){return !!(this.clientId&&this.clientSecret);}
  async cached(key,ttl,fn){const old=this.cache.get(key);if(old&&old.until>this.now())return old.value;if(this.pending.has(key))return this.pending.get(key);const task=fn().then(value=>{if(this.cache.size>=200)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,{value,until:this.now()+ttl});return value;}).finally(()=>this.pending.delete(key));this.pending.set(key,task);return task;}
  async json(url,headers={}){
@@ -108,12 +110,12 @@ export class Lifestyle {
   if(locations.some(loc=>range.dates.some(date=>!kma.get(loc.id)?.has(date))))try{model=new Map((await this.openMeteoForecast(range)).items.map(item=>[item.region,new Map(item.days.filter(day=>day.available).map(day=>[day.date,day]))]));}catch{}
   const items=locations.map(loc=>({region:loc.id,days:range.dates.map(date=>{
    const past=date<range.today,day=kma.get(loc.id)?.get(date);
-   if(day&&Number.isFinite(day.min)&&Number.isFinite(day.max)&&day.min<=day.max)return {date,past,available:true,min:day.min,max:day.max,condition:day.condition,rainChance:Number.isFinite(day.rain)?day.rain:null,source:KMA_LABEL,...(past?{stored:true}:{})};
+   if(day&&Number.isFinite(day.min)&&Number.isFinite(day.max)&&day.min<=day.max)return {date,past,available:true,min:day.min,max:day.max,condition:day.condition,rainChance:Number.isFinite(day.rain)?day.rain:null,source:KMA_LABEL,...(day.partial?{partial:true}:{}),...(past?{stored:true}:{})};
    const alt=model.get(loc.id)?.get(date);
    return alt?{...alt,source:'Open-Meteo'}:{date,past,available:false,min:null,max:null,condition:'예보 미제공',rainChance:null,source:null};
   })}));
   const sources=orderSources(items.flatMap(item=>item.days).filter(day=>day.available).map(day=>day.source));
-  return {...range,source:sources.join('+')||KMA_LABEL,sources,updatedAt:this.now(),note:'기상청 동네예보(오늘~글피)'+(this.kma.key?'·중기예보':'')+' 기준입니다.'+(sources.includes('Open-Meteo')?' 제공 범위 밖이거나 저장값이 없는 날짜는 Open-Meteo 모델로 보충했고 날짜마다 출처를 표시합니다.':'')+' 주간 기준은 월요일~일요일이며 지난 날짜는 저장해 둔 예보값으로 관측값이 아닙니다.',items};
+  return {...range,source:sources.join('+')||KMA_LABEL,sources,updatedAt:this.now(),note:'기상청 동네예보(오늘~글피)'+(this.kma.key?'·중기예보':'')+' 기준입니다.'+(sources.includes('Open-Meteo')?' 제공 범위 밖이거나 저장값이 없는 날짜는 Open-Meteo 모델로 보충했고 날짜마다 출처를 표시합니다.':'')+' 주간 기준은 월요일~일요일이며 지난 날짜는 저장해 둔 예보값으로 관측값이 아닙니다.'+(items.some(item=>item.days.some(day=>day.partial))?' 오늘 최저·최고는 이미 지난 시간이 빠진 값일 수 있어 "남은 시간 기준"으로 표시합니다.':''),items};
  }
  async openMeteoForecast(range){
   return this.cached('forecast:'+range.today+':'+range.start+':'+range.end,600000,async()=>{

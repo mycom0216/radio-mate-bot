@@ -36,7 +36,7 @@ export function forecastReply(data,selection){
  else {scope='17지역 전체 기온범위·최대강수확률';lines=data.dates.map(day=>{const days=items.map(item=>item.days.find(d=>d.date===day)).filter(d=>d?.available);if(!days.length)return day.slice(5)+' 예보 미제공';const chances=days.map(d=>d.rainChance).filter(Number.isFinite);return `${day.slice(5)} ${temperature(Math.min(...days.map(d=>d.min)))}~${temperature(Math.max(...days.map(d=>d.max)))}℃ ${rain(chances.length?Math.max(...chances):null)}${days.length<items.length?' ('+days.length+'/17지역)':''}`;});}
  const title=`${data.label} ${data.start}~${data.end}`,command=`!${region?'날씨 '+region:'전국날씨'} ${data.label}${date&&weekly?' '+date:''}`;
  const label=(used.length?used:[data.source||'Open-Meteo']).join('+')+(mixed?'(*)':''),past=all.filter(d=>d?.available&&d.past),pastNote=data.dates.some(d=>d<data.today)?(!past.length||past.some(d=>(d.source||'Open-Meteo')==='Open-Meteo')?' · 과거=모델자료':' · 과거=저장예보'):'';
- const prefix=title+'\n'+scope+'\n',suffix='\n'+label+' · KST'+pastNote+'\n';
+ const partialNote=all.some(d=>d?.available&&d.partial)?' · 오늘은 남은 시간 기준':'',prefix=title+'\n'+scope+'\n',suffix='\n'+label+' · KST'+partialNote+pastNote+'\n';
  const budget=200-prefix.length-suffix.length-command.length-12,pages=[];let batch=[];
  for(const line of lines){if(batch.length&&[...batch,line].join('\n').length>budget){pages.push(batch);batch=[];}batch.push(line);}if(batch.length)pages.push(batch);
  if(page>pages.length)return `날씨는 1~${pages.length}페이지입니다. ${command} 1`;
