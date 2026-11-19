@@ -43,28 +43,28 @@
       "sha256": "5bfd39b4b92da0f910a929f981402a56ec0e658c20c719364ed7f8b2d8317176"
     },
     "01_요구사항분석서.docx": {
-      "bytes": 2081375,
-      "sha256": "92b5eae4d80d10a05c5d954ddad065f2592f5033f3bb839eb15a53e9e4422405"
+      "bytes": 2081376,
+      "sha256": "bc60c8268b24dc646e4ea32158d16e6bd8e7307691084911bf79416967e2dea0"
     },
     "02_요구사항명세서.docx": {
-      "bytes": 285132,
-      "sha256": "ba0fab8b68325b2d26e1f269983f7925a1854818a6857062f4cbdfddad006bf9"
+      "bytes": 285154,
+      "sha256": "e59c064dab46648d08f59e7dfc00bfa8223a4590069d710f93830edb0fe9440f"
     },
     "03_데이터정의서.docx": {
-      "bytes": 517849,
-      "sha256": "f62879b362ec33d66606ce89878affb5591fb75c386ff65ce678cea1bcf0b629"
+      "bytes": 517850,
+      "sha256": "55dd3eaf717e0cf5c6e58d589669f6b64a8e922fa93445ed410880181b1d27c5"
     },
     "04_기능순서도.pdf": {
-      "bytes": 2548515,
-      "sha256": "eb91100386937cb8ca07de7a7c0e3773de54c419ab3d2ae82b1a3e09b52a9be4"
+      "bytes": 2548140,
+      "sha256": "034acbf5a0b17e557c72c2184f9e6b4e4b48a5fa11818a307f08fd7f4b74c1f2"
     },
     "05_프로젝트포트폴리오.docx": {
-      "bytes": 2481550,
-      "sha256": "b4edb0eb1b7fab9f1fd667a59e5020dd9e380aaf06b67b1851a14686dfa0a29a"
+      "bytes": 2481563,
+      "sha256": "383008205171888f76f492516f46a4f8bc8b4bdd9026b54a13bd3955232dacc2"
     },
     "06_라디오메이트_발표자료.pptx": {
-      "bytes": 6658988,
-      "sha256": "1c88bccba966dae734d78a3ec104d5a2391c8be67aa008e0d9f617ffceb33ab1"
+      "bytes": 6658973,
+      "sha256": "607c0d646a00d8ee1f097ce116c60659275123c63c213f9d858f6229a6aaca81"
     },
     "ERD/ERD_JSON논리구조.png": {
       "bytes": 163420,
@@ -80,7 +80,7 @@
     },
     "ERD/ERD_날씨4테이블.svg": {
       "bytes": 45965,
-      "sha256": "73a18ed42e3837d98be9a8767c121ac3e803ab3cbe0cc40646619222daa10e11"
+      "sha256": "c68da2f7fe1a86e0b93fb8d5967405640020c915ebeebaf20e17f82b77806fad"
     },
     "ERD/ERD_물리구조_13테이블.png": {
       "bytes": 309717,
@@ -88,7 +88,7 @@
     },
     "ERD/ERD_물리구조_13테이블.svg": {
       "bytes": 98952,
-      "sha256": "254b164ed1753699c41e0ff5cf508325afc6555b1f9988b5f3e8275fca1d5155"
+      "sha256": "c7801af0e493e2947c639c4bd72a2b594da1fdca5d3c879e63eedfe471f0ebdf"
     },
     "ERD/mmd/ERD_날씨4테이블.mmd": {
       "bytes": 629,
@@ -100,23 +100,23 @@
     },
     "PDF/01_요구사항분석서.pdf": {
       "bytes": 1945116,
-      "sha256": "f362f20674289817ee7be3c21891af28b116eb912f784450e3c7dd78277b241a"
+      "sha256": "7b751f8c77d0523055c08298c50bf444d754a2721ba6596c4c822cd5feff2dba"
     },
     "PDF/02_요구사항명세서.pdf": {
-      "bytes": 645964,
-      "sha256": "7988f5d8684081f67660e03bd0c62e895821ebbaf72b6263a27994547995a68a"
+      "bytes": 645728,
+      "sha256": "822cce209d69feef2368558d55187a3966071a1da60f03e1fb8e31c57f0cc758"
     },
     "PDF/03_데이터정의서.pdf": {
       "bytes": 788857,
-      "sha256": "9347b7bc2ce1b86bba23e78ccb07bd142ac50c580ef6b08aa13a09d48ea63d52"
+      "sha256": "7f1a05906f2bc97b05dfa25e0ca9f340362143ca66c0e84c9b56c88a297745b7"
     },
     "PDF/05_프로젝트포트폴리오.pdf": {
-      "bytes": 2213045,
-      "sha256": "bbabd07251e9790ebd9ae168790b68beb516c9b037a3f0639a6290df377eb145"
+      "bytes": 2212585,
+      "sha256": "f1ed6d003419455d379775eb251cac9aa766e247be3662f45f988ae5445b5c41"
     },
     "README.md": {
       "bytes": 1513,
-      "sha256": "a922f48cd14a0cc6df4f3617bf340c2ca7f0c631ab85ce1d7db6c649d716ad57"
+      "sha256": "295cf8e1e99d07dcc1209775468d13bab32cfc108302496760bfd890c501db6c"
     },
     "순서도/01_전체_방송_이벤트_처리.png": {
       "bytes": 199682,
@@ -196,7 +196,7 @@
     },
     "순서도/10_날씨_명령_처리.svg": {
       "bytes": 25898,
-      "sha256": "39605b394da1cab71a3e2ae6cb5818490efcd3f9bc791e8082bdb6f94a754e8c"
+      "sha256": "b4229ce7eb99a5c253a6d6d080e31c2b32004203ceaa61329a7d5111dfce33a7"
     },
     "순서도/11_날씨_자료_수집과_대체_경로.png": {
       "bytes": 188913,
@@ -204,15 +204,15 @@
     },
     "순서도/11_날씨_자료_수집과_대체_경로.svg": {
       "bytes": 31902,
-      "sha256": "4adec52a57716ed0ce80001f06629cdf4b35a0ec16ed35d51bc4603fe1380890"
+      "sha256": "aea2e3ef5cb29587adf417c06bc09b59ad1412ec0f836fc0149095704c73fd91"
     },
     "순서도/12_미세먼지와_기상특보_조회.png": {
-      "bytes": 141431,
-      "sha256": "19d838d2f14ef14003ebd999c02add6940dda5b1644ed5420d74e80f94f90363"
+      "bytes": 141225,
+      "sha256": "ad62430751363fa3f77d0870a39108fb1935dbac9eb110a65c6c2a3f705428e9"
     },
     "순서도/12_미세먼지와_기상특보_조회.svg": {
-      "bytes": 25626,
-      "sha256": "f756f5b312db3f034c6fc3d60026d2a99b190b707e4a0c3156af285ce5bba567"
+      "bytes": 25604,
+      "sha256": "8b4eecefad7c667174e3e45eec522c0d93e2f094de9a2c4e88dc67cd68002c1b"
     },
     "순서도/13_방송_자동_날씨_안내.png": {
       "bytes": 107736,
@@ -228,7 +228,7 @@
     },
     "순서도/14_상시_운영_자동_복구.svg": {
       "bytes": 23823,
-      "sha256": "86135f9fde4877651a779475661b3fe0bce1c66ff54e8c245cc01c5635c5b9d0"
+      "sha256": "e6b7824020b3e8ab6316380579f096be162b9fbac61d9a99116b4cf86b66b614"
     },
     "순서도/15_AI_대화와_채팅방.png": {
       "bytes": 119478,
@@ -236,7 +236,7 @@
     },
     "순서도/15_AI_대화와_채팅방.svg": {
       "bytes": 22146,
-      "sha256": "7aba2960481ceb95e0cdc4b836259ccbbadefe91de703b363563fe7ba7948b5c"
+      "sha256": "16f1ad3f2a3a158ca852635b78d262887df31543e166248cd932af1933bfd7da"
     },
     "순서도/mmd/10_날씨_명령_처리.mmd": {
       "bytes": 692,
@@ -247,8 +247,8 @@
       "sha256": "408f8a622d59ca37fa59f9699b7b8cf86124fad4a5556d030971a885432364c2"
     },
     "순서도/mmd/12_미세먼지와_기상특보_조회.mmd": {
-      "bytes": 685,
-      "sha256": "fd08e14d0388ff267b7f19745d844dbfe1e1ad39656a33e355a23ae5d68ea650"
+      "bytes": 691,
+      "sha256": "116ca20e79cbb1a37c6e4f2215ade83469d3c9f2bdb15aed389fe18e1bd921b8"
     },
     "순서도/mmd/13_방송_자동_날씨_안내.mmd": {
       "bytes": 521,
@@ -276,7 +276,7 @@
     },
     "요구분석_그림/브레인스토밍_마인드맵.svg": {
       "bytes": 31249,
-      "sha256": "c83f114001a40d8c6c4ac7441e7b0f90782f8d63c6376a988a82f94b143866a7"
+      "sha256": "3b7ac2daddb31c3dc65959039c8565fb0c9576816d63c66fb51d20c8c376c48a"
     },
     "요구분석_그림/시스템_구성도.png": {
       "bytes": 123127,
@@ -284,7 +284,7 @@
     },
     "요구분석_그림/시스템_구성도.svg": {
       "bytes": 21127,
-      "sha256": "6e997b9b04706e5136cc93de0e301e6f08062e1b5fc0c41ca899d3ed0d8177ef"
+      "sha256": "fee0a6b6489d5dc928536a2c92e5a5cc91c9b19c5f745a2059e25dd4b5915989"
     },
     "포트폴리오_그림/mmd/시스템_구조도.mmd": {
       "bytes": 513,
@@ -296,7 +296,7 @@
     },
     "포트폴리오_그림/시스템_구조도.svg": {
       "bytes": 21341,
-      "sha256": "17ca86274c921c6979da4abed7d3ee5b5373b8ad6c85226f6b63204a6a73c4a7"
+      "sha256": "b5084760a4082a0468ba91018083fa303469636f078b10a69ce28ed50951281f"
     },
     "화면캡처/D01_시작화면.png": {
       "bytes": 620556,
