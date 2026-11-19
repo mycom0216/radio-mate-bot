@@ -1,0 +1,81 @@
+erDiagram
+ rooms{TEXT id PK
+ TEXT data "JSON 방송 상태"}
+ events{TEXT room PK
+ TEXT id PK
+ TEXT result}
+ audit{INTEGER seq PK
+ TEXT room
+ INTEGER time
+ TEXT user
+ TEXT type
+ TEXT data}
+ tokens{TEXT room PK
+ TEXT data "암호문"}
+ backups{TEXT id PK
+ TEXT room
+ INTEGER time
+ TEXT data}
+ outbox{TEXT id PK
+ TEXT room UK
+ TEXT event_key UK
+ TEXT text
+ INTEGER created
+ INTEGER due
+ INTEGER attempts
+ TEXT status}
+ studio_sessions{TEXT key PK
+ TEXT room
+ INTEGER expires
+ TEXT data "암호문"}
+ voice_links{TEXT room PK
+ TEXT token UK
+ INTEGER enabled}
+ voice_cards{TEXT id PK
+ TEXT room UK
+ TEXT request_id UK
+ TEXT nickname
+ TEXT title
+ TEXT mime
+ INTEGER bytes
+ INTEGER created
+ INTEGER is_read}
+ weather_location{TEXT id PK
+ TEXT zone
+ TEXT kma_name
+ INTEGER nx
+ INTEGER ny
+ REAL lat
+ REAL lon
+ TEXT mid_land
+ TEXT mid_temp
+ INTEGER sort
+ INTEGER national
+ INTEGER enabled
+ INTEGER managed}
+ weather_alias{TEXT alias PK
+ TEXT location FK}
+ weather_daily{TEXT location PK,FK
+ TEXT date PK
+ REAL min
+ REAL max
+ INTEGER rain
+ TEXT condition
+ INTEGER hours
+ TEXT source
+ INTEGER updated}
+ weather_snapshot{TEXT product PK
+ TEXT key PK
+ TEXT issued
+ INTEGER fetched
+ TEXT payload}
+ rooms ||--o{ events : "room(앱 참조)"
+ rooms ||--o{ audit : "room(앱 참조)"
+ rooms ||--o| tokens : "room(앱 참조)"
+ rooms ||--o{ backups : "room(앱 참조)"
+ rooms ||--o{ outbox : "room(앱 참조)"
+ rooms ||--o{ studio_sessions : "room(앱 참조)"
+ rooms ||--o| voice_links : "room(앱 참조)"
+ rooms ||--o{ voice_cards : "room(앱 참조)"
+ weather_location ||--o{ weather_alias : "FK 별칭"
+ weather_location ||--o{ weather_daily : "FK 일별 기록"

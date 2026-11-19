@@ -1,0 +1,20 @@
+flowchart TB
+ subgraph 클라이언트
+ W[DJ 웹앱 PWA]
+ A[Android WebView 앱]
+ V[청취자 음성·채팅 페이지]
+ end
+ subgraph 서버[서버 PC Windows]
+ H[HTTP·SSE 서버] --> E[게임·신청곡·보상 엔진]
+ H --> LF[날씨·AI·검색 서비스]
+ E --> DB[(SQLite WAL 13테이블)]
+ LF --> DB
+ O[outbox 송신 대기열] --> DB
+ end
+ W --> H
+ A --> H
+ V --> H
+ H <--> SP[Spoon API]
+ LF --> EXT[기상청·에어코리아·OpenAI·네이버·YouTube]
+ O --> SP
+ MG[관리자 --daemon] -.감시.-> H

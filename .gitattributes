@@ -1,2 +1,8 @@
 * text=auto eol=lf
 *.cmd text eol=crlf
+
+# Keep Office and PDF artifacts byte-for-byte intact
+*.pdf binary
+*.docx binary
+*.pptx binary
+*.xlsx binary

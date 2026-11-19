@@ -1,0 +1,31 @@
+{
+  "foodTypes": 20,
+  "deployment": {
+    "status": "verified",
+    "url": "https://radiomate-mycom0216.gallanttamarind4.chatgpt.site",
+    "testedAt": "2026-11-19T21:23:41.810Z",
+    "assetHashes": "5 matched",
+    "guideCommand": "passed",
+    "actualRestaurants": 9,
+    "queries": 3,
+    "partial": false
+  },
+  "date": "2026-11-20",
+  "regions": 17,
+  "fullRegression": "passed",
+  "cafeTypes": 5,
+  "browser": {
+    "horizontalOverflow": false,
+    "consoleErrors": 0,
+    "mobileWidth": 390,
+    "query": "부산 해운대 국밥",
+    "actualRestaurants": 9
+  },
+  "areas": 136,
+  "maxResults": 15,
+  "maxQueries": 3,
+  "facts": "136개는 탐색 지역 수이며 등록된 식당 수가 아님. 업체는 실제 검색 응답.",
+  "targetedPassed": 15,
+  "targetedTests": 15,
+  "provider": "Naver API HUB"
+}

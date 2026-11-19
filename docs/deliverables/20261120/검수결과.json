@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-20",
+  "baseline": "38f33f5",
+  "functionalRequirements": 51,
+  "nonfunctionalRequirements": 13,
+  "flows": 16,
+  "pdfPages": {
+    "04_기능순서도.pdf": 17,
+    "PDF/01_요구사항분석서.pdf": 15,
+    "PDF/02_요구사항명세서.pdf": 20,
+    "PDF/03_데이터정의서.pdf": 11,
+    "PDF/04_기능순서도.pdf": 17,
+    "PDF/05_프로젝트포트폴리오.pdf": 12,
+    "PDF/07_개발일정표.pdf": 1,
+    "PDF/08_테스트결과서.pdf": 1,
+    "PDF/09_사용설명서.pdf": 1,
+    "PDF/10_시스템설계서.pdf": 1,
+    "PDF/11_최종결과보고서.pdf": 1
+  },
+  "docxNativeLayout": "not verified: bundled LibreOffice unavailable; render_docx.py attempted",
+  "pdfReadingCopies": "rendered from updated DOCX content; not native Word pagination",
+  "sourceCodeTests": 269,
+  "sourceCodePassed": 269,
+  "publicDeployment": "verified in included evidence",
+  "pptSlides": 28
+}

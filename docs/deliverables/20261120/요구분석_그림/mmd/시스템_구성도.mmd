@@ -1,0 +1,12 @@
+flowchart LR
+ DJ([DJ 웹앱·Android 앱]) --> S[라디오메이트 서버 Node.js + SQLite]
+ L([청취자 스푼 채팅]) --> SP[Spoon 방송 API]
+ SP <--> S
+ S --> YT[YouTube 검색]
+ S --> OA[OpenAI]
+ S --> NV[네이버 지역 검색]
+ S --> KMA[기상청 RSS·단기·중기·특보]
+ S --> AK[에어코리아]
+ S --> OM[Open-Meteo]
+ S --> T[Cloudflare 터널] --> G[고정 공용 주소 중계] --> DJ
+ M[작업 스케줄러 관리자] -.감시·복구.-> S

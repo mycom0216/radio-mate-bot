@@ -1,0 +1,1624 @@
+TAP version 13
+# Subtest: five minute notice shows listening and hourly chat gains and total without duplicate rewards or notices
+ok 1 - five minute notice shows listening and hourly chat gains and total without duplicate rewards or notices
+  ---
+  duration_ms: 23.8117
+  type: 'test'
+  ...
+# Subtest: quiet, disabled and offline states do not send notices or credit connection gaps
+ok 2 - quiet, disabled and offline states do not send notices or credit connection gaps
+  ---
+  duration_ms: 7.0971
+  type: 'test'
+  ...
+# Subtest: many long Unicode nicknames are batched within Spoon limits while preserving every listener increase
+ok 3 - many long Unicode nicknames are batched within Spoon limits while preserving every listener increase
+  ---
+  duration_ms: 10.9928
+  type: 'test'
+  ...
+# Subtest: AI uses Responses API with bounded private context and no server credentials in payload
+ok 4 - AI uses Responses API with bounded private context and no server credentials in payload
+  ---
+  duration_ms: 11.7707
+  type: 'test'
+  ...
+# Subtest: AI missing key, upstream errors and daily quotas are explicit and do not fabricate replies
+ok 5 - AI missing key, upstream errors and daily quotas are explicit and do not fabricate replies
+  ---
+  duration_ms: 3.3689
+  type: 'test'
+  ...
+# Subtest: anonymous public previews cannot spend the configured OpenAI key
+ok 6 - anonymous public previews cannot spend the configured OpenAI key
+  ---
+  duration_ms: 3.6998
+  type: 'test'
+  ...
+# Subtest: dust grades follow the 4-level standard and the sido mapping covers regions and cities
+ok 7 - dust grades follow the 4-level standard and the sido mapping covers regions and cities
+  ---
+  duration_ms: 2.858
+  type: 'test'
+  ...
+# Subtest: realtime readings use one representative station unchanged, skip missing values and cache for 20 minutes
+ok 8 - realtime readings use one representative station unchanged, skip missing values and cache for 20 minutes
+  ---
+  duration_ms: 3.073
+  type: 'test'
+  ...
+# Subtest: forecast notices pick the latest issue for the day and the matching sub-region
+ok 9 - forecast notices pick the latest issue for the day and the matching sub-region
+  ---
+  duration_ms: 19.7549
+  type: 'test'
+  ...
+# Subtest: dust replies fit Spoon 200 characters and advise masks only for bad air
+ok 10 - dust replies fit Spoon 200 characters and advise masks only for bad air
+  ---
+  duration_ms: 0.8069
+  type: 'test'
+  ...
+# Subtest: an URL-encoded service key is decoded once so it is not double-encoded
+ok 11 - an URL-encoded service key is decoded once so it is not double-encoded
+  ---
+  duration_ms: 0.5004
+  type: 'test'
+  ...
+# Subtest: chat commands answer dust now and tomorrow, need a key, and explain a missing approval
+ok 12 - chat commands answer dust now and tomorrow, need a key, and explain a missing approval
+  ---
+  duration_ms: 8.002
+  type: 'test'
+  ...
+# Subtest: Android handoff requires the original verifier and is single use
+ok 13 - Android handoff requires the original verifier and is single use
+  ---
+  duration_ms: 2.1818
+  type: 'test'
+  ...
+# Subtest: Android handoff expires and bounds outstanding codes
+ok 14 - Android handoff expires and bounds outstanding codes
+  ---
+  duration_ms: 0.7605
+  type: 'test'
+  ...
+# Subtest: automatic quiz waits for its interval, first answer wins once and next round avoids repeat
+ok 15 - automatic quiz waits for its interval, first answer wins once and next round avoids repeat
+  ---
+  duration_ms: 53.4853
+  type: 'test'
+  ...
+# Subtest: automatic quiz reveals hint, answer and meaning once at five minutes
+ok 16 - automatic quiz reveals hint, answer and meaning once at five minutes
+  ---
+  duration_ms: 7.26
+  type: 'test'
+  ...
+# Subtest: a late automatic quiz answer reveals the result without paying or announcing twice
+ok 17 - a late automatic quiz answer reveals the result without paying or announcing twice
+  ---
+  duration_ms: 10.6351
+  type: 'test'
+  ...
+# Subtest: DJ config, quiet/offline modes and personal rounds prevent unsolicited or overlapping quizzes
+ok 18 - DJ config, quiet/offline modes and personal rounds prevent unsolicited or overlapping quizzes
+  ---
+  duration_ms: 11.0054
+  type: 'test'
+  ...
+# Subtest: failed/deferred delivery never starts a round and settings changes invalidate in-flight delivery
+ok 19 - failed/deferred delivery never starts a round and settings changes invalidate in-flight delivery
+  ---
+  duration_ms: 8.0855
+  type: 'test'
+  ...
+# Subtest: actual Spoon scheduler sends one automatic question and persists the active shared round
+ok 20 - actual Spoon scheduler sends one automatic question and persists the active shared round
+  ---
+  duration_ms: 10.2929
+  type: 'test'
+  ...
+# Subtest: automatic quiz settings reject invalid intervals and preserve backwards compatible defaults
+ok 21 - automatic quiz settings reject invalid intervals and preserve backwards compatible defaults
+  ---
+  duration_ms: 2.6379
+  type: 'test'
+  ...
+# Subtest: operating profile is idempotent, preserves quiet mode and restores settings without overwriting DJ edits
+ok 22 - operating profile is idempotent, preserves quiet mode and restores settings without overwriting DJ edits
+  ---
+  duration_ms: 5.503
+  type: 'test'
+  ...
+# Subtest: automatic operations commands are DJ-only and create a recoverable settings backup
+ok 23 - automatic operations commands are DJ-only and create a recoverable settings backup
+  ---
+  duration_ms: 14.9021
+  type: 'test'
+  ...
+# Subtest: tunnel address is read from cloudflared output, newest wins and the API host is ignored
+ok 24 - tunnel address is read from cloudflared output, newest wins and the API host is ignored
+  ---
+  duration_ms: 0.7102
+  type: 'test'
+  ...
+# Subtest: restart policy avoids a restart on one transient failure and exponentially limits crash loops
+ok 25 - restart policy avoids a restart on one transient failure and exponentially limits crash loops
+  ---
+  duration_ms: 0.3708
+  type: 'test'
+  ...
+# Subtest: running server rejects duplicate data owner and produces restorable encrypted full backup automatically
+ok 26 - running server rejects duplicate data owner and produces restorable encrypted full backup automatically
+  ---
+  duration_ms: 30616.0991
+  type: 'test'
+  ...
+# Subtest: public chat serves guests safely, enforces same-origin submission and does not expose management data
+ok 27 - public chat serves guests safely, enforces same-origin submission and does not expose management data
+  ---
+  duration_ms: 575.051
+  type: 'test'
+  ...
+# Subtest: song requests appear in next/list and DJ chat controls preserve the paused current song
+ok 28 - song requests appear in next/list and DJ chat controls preserve the paused current song
+  ---
+  duration_ms: 19.3394
+  type: 'test'
+  ...
+# Subtest: browser consumes each recent DJ control once and ignores expired controls
+ok 29 - browser consumes each recent DJ control once and ignores expired controls
+  ---
+  duration_ms: 0.9645
+  type: 'test'
+  ...
+# Subtest: DJ selects next/previous, plays that selection and deletes queued songs without losing history
+ok 30 - DJ selects next/previous, plays that selection and deletes queued songs without losing history
+  ---
+  duration_ms: 17.2153
+  type: 'test'
+  ...
+# Subtest: read-only provider requests recover from one network failure without retrying invalid keys
+ok 31 - read-only provider requests recover from one network failure without retrying invalid keys
+  ---
+  duration_ms: 4.1667
+  type: 'test'
+  ...
+# Subtest: chat links isolate rooms, revoke on rotation and never expose actor identifiers
+ok 32 - chat links isolate rooms, revoke on rotation and never expose actor identifiers
+  ---
+  duration_ms: 24.026
+  type: 'test'
+  ...
+# Subtest: chat bounds input, respects banned words, caps history and allows DJ moderation
+ok 33 - chat bounds input, respects banned words, caps history and allows DJ moderation
+  ---
+  duration_ms: 68.4554
+  type: 'test'
+  ...
+# Subtest: national weather caches and coalesces requests, validates data and splits chat replies
+ok 34 - national weather caches and coalesces requests, validates data and splits chat replies
+  ---
+  duration_ms: 4.9745
+  type: 'test'
+  ...
+# Subtest: Naver searches use server headers, safe map links and meal-specific query without fabricated ratings
+ok 35 - Naver searches use server headers, safe map links and meal-specific query without fabricated ratings
+  ---
+  duration_ms: 2.3929
+  type: 'test'
+  ...
+# Subtest: bot assistant observes quiet mode, response cooldown and event idempotency before remote fetch
+ok 36 - bot assistant observes quiet mode, response cooldown and event idempotency before remote fetch
+  ---
+  duration_ms: 9.2843
+  type: 'test'
+  ...
+# Subtest: a delayed old refresh cannot replace tokens saved by a new connection
+ok 37 - a delayed old refresh cannot replace tokens saved by a new connection
+  ---
+  duration_ms: 9.7846
+  type: 'test'
+  ...
+# Subtest: a failed old refresh uses a newly authorized token without reverting the new connection
+ok 38 - a failed old refresh uses a newly authorized token without reverting the new connection
+  ---
+  duration_ms: 4.2496
+  type: 'test'
+  ...
+# Subtest: a send waiting on authentication is cancelled by stop even if a new broadcast becomes live
+ok 39 - a send waiting on authentication is cancelled by stop even if a new broadcast becomes live
+  ---
+  duration_ms: 5.5165
+  type: 'test'
+  ...
+# Subtest: chat network failure does not throw out of the SSE loop or change live state
+ok 40 - chat network failure does not throw out of the SSE loop or change live state
+  ---
+  duration_ms: 8.2791
+  type: 'test'
+  ...
+# Subtest: attendance once a Korean day, room isolation and deduplicated events
+ok 41 - attendance once a Korean day, room isolation and deduplicated events
+  ---
+  duration_ms: 26.6947
+  type: 'test'
+  ...
+# Subtest: suppressed command metadata explains waiting and quiet mode without changing balances
+ok 42 - suppressed command metadata explains waiting and quiet mode without changing balances
+  ---
+  duration_ms: 5.4412
+  type: 'test'
+  ...
+# Subtest: DJ ticket command accepts signed integers, zero and the default quantity
+ok 43 - DJ ticket command accepts signed integers, zero and the default quantity
+  ---
+  duration_ms: 49.2915
+  type: 'test'
+  ...
+# Subtest: DJ ticket reset supports both spellings, logs previous balance and never replays over a new grant
+ok 44 - DJ ticket reset supports both spellings, logs previous balance and never replays over a new grant
+  ---
+  duration_ms: 8.3157
+  type: 'test'
+  ...
+# Subtest: ticket reset requires DJ and exactly one existing target and stays within its room
+ok 45 - ticket reset requires DJ and exactly one existing target and stays within its room
+  ---
+  duration_ms: 11.6998
+  type: 'test'
+  ...
+# Subtest: ticket recovery rejects overdrafts, fractions, unsafe integers and non-DJs; replay never recovers twice
+ok 46 - ticket recovery rejects overdrafts, fractions, unsafe integers and non-DJs; replay never recovers twice
+  ---
+  duration_ms: 11.6751
+  type: 'test'
+  ...
+# Subtest: DJ ticket grants and recovery have no 1000-ticket cap and preserve exact balances
+ok 47 - DJ ticket grants and recovery have no 1000-ticket cap and preserve exact balances
+  ---
+  duration_ms: 8.3008
+  type: 'test'
+  ...
+# Subtest: lottery rejects duplicates, matches without order, and consumes one ticket
+ok 48 - lottery rejects duplicates, matches without order, and consumes one ticket
+  ---
+  duration_ms: 4.9286
+  type: 'test'
+  ...
+# Subtest: fishing EXP and PT cap independently; EXP doubles and clips to the cap
+ok 49 - fishing EXP and PT cap independently; EXP doubles and clips to the cap
+  ---
+  duration_ms: 8.951
+  type: 'test'
+  ...
+# Subtest: odd/even: win returns stake plus profit, loss never reduces daily winnings
+ok 50 - odd/even: win returns stake plus profit, loss never reduces daily winnings
+  ---
+  duration_ms: 7.2535
+  type: 'test'
+  ...
+# Subtest: PT cap clips rewards, spending does not reopen cap and achiever is unique
+ok 51 - PT cap clips rewards, spending does not reopen cap and achiever is unique
+  ---
+  duration_ms: 7.2039
+  type: 'test'
+  ...
+# Subtest: month reset keeps EXP, inventory, buffs, book and fan ranking
+ok 52 - month reset keeps EXP, inventory, buffs, book and fan ranking
+  ---
+  duration_ms: 6.7591
+  type: 'test'
+  ...
+# Subtest: next song is read-only, consecutive 2-request limit and listener fishing toggles
+ok 53 - next song is read-only, consecutive 2-request limit and listener fishing toggles
+  ---
+  duration_ms: 10.063
+  type: 'test'
+  ...
+# Subtest: listeners enable games and attend; disabling games and sensitive commands stay DJ-only
+ok 54 - listeners enable games and attend; disabling games and sensitive commands stay DJ-only
+  ---
+  duration_ms: 19.9794
+  type: 'test'
+  ...
+# Subtest: automatic lottery picks 3 distinct numbers, spends one ticket and preserves all payout levels
+ok 55 - automatic lottery picks 3 distinct numbers, spends one ticket and preserves all payout levels
+  ---
+  duration_ms: 25.6819
+  type: 'test'
+  ...
+# Subtest: automatic lottery respects ticket shortage, cooldown, invalid arguments and event deduplication
+ok 56 - automatic lottery respects ticket shortage, cooldown, invalid arguments and event deduplication
+  ---
+  duration_ms: 9.7015
+  type: 'test'
+  ...
+# Subtest: cooldown prevents rewards, quiet stops games, shop spends only PT and extends buff
+ok 57 - cooldown prevents rewards, quiet stops games, shop spends only PT and extends buff
+  ---
+  duration_ms: 10.3923
+  type: 'test'
+  ...
+# Subtest: rare buff selects above-rare pool 70 percent, golden roll automatically held by default
+ok 58 - rare buff selects above-rare pool 70 percent, golden roll automatically held by default
+  ---
+  duration_ms: 7.5049
+  type: 'test'
+  ...
+# Subtest: invalid settings rejected; restore cannot change a different room
+ok 59 - invalid settings rejected; restore cannot change a different room
+  ---
+  duration_ms: 7.8999
+  type: 'test'
+  ...
+# Subtest: shop stock is consumed atomically and sold-out purchase never deducts PT
+ok 60 - shop stock is consumed atomically and sold-out purchase never deducts PT
+  ---
+  duration_ms: 5.1994
+  type: 'test'
+  ...
+# Subtest: SSE parser handles split CRLF, multiple data lines, heartbeats; token encryption authenticates
+ok 61 - SSE parser handles split CRLF, multiple data lines, heartbeats; token encryption authenticates
+  ---
+  duration_ms: 12.2528
+  type: 'test'
+  ...
+# Subtest: diagnostics distinguish local practice, pending reward policies and limited delivery evidence
+ok 62 - diagnostics distinguish local practice, pending reward policies and limited delivery evidence
+  ---
+  duration_ms: 3.7261
+  type: 'test'
+  ...
+# Subtest: diagnostics expose a summary only and do not imply HTTPS or saved tokens prove deployment readiness
+ok 63 - diagnostics expose a summary only and do not imply HTTPS or saved tokens prove deployment readiness
+  ---
+  duration_ms: 0.6798
+  type: 'test'
+  ...
+# Subtest: diagnostics report where weather comes from and surface KMA failures without exposing keys
+ok 64 - diagnostics report where weather comes from and surface KMA failures without exposing keys
+  ---
+  duration_ms: 3.0548
+  type: 'test'
+  ...
+# Subtest: diagnostics rendering escapes displayed strings and offers a non-mutating refresh
+ok 65 - diagnostics rendering escapes displayed strings and offers a non-mutating refresh
+  ---
+  duration_ms: 34.8737
+  type: 'test'
+  ...
+# Subtest: diagnostics report voice intake and missing title search configuration without exposing credentials
+ok 66 - diagnostics report voice intake and missing title search configuration without exposing credentials
+  ---
+  duration_ms: 0.4909
+  type: 'test'
+  ...
+# Subtest: automatic dice alias rolls once, keeps PT and EXP, and still obeys permissions and cooldown
+ok 67 - automatic dice alias rolls once, keeps PT and EXP, and still obeys permissions and cooldown
+  ---
+  duration_ms: 15.9244
+  type: 'test'
+  ...
+# Subtest: nationwide guide covers 17 provinces, 136 distinct regional searches and bounded chat pages
+ok 68 - nationwide guide covers 17 provinces, 136 distinct regional searches and bounded chat pages
+  ---
+  duration_ms: 2.947
+  type: 'test'
+  ...
+# Subtest: expanded searches stay within provider limit, merge distinct restaurants and coalesce concurrent requests
+ok 69 - expanded searches stay within provider limit, merge distinct restaurants and coalesce concurrent requests
+  ---
+  duration_ms: 5.1347
+  type: 'test'
+  ...
+# Subtest: branch addresses are preserved while whitespace duplicates are removed
+ok 70 - branch addresses are preserved while whitespace duplicates are removed
+  ---
+  duration_ms: 0.939
+  type: 'test'
+  ...
+# Subtest: missing keys still provide food-specific map search without remote calls
+ok 71 - missing keys still provide food-specific map search without remote calls
+  ---
+  duration_ms: 0.4472
+  type: 'test'
+  ...
+# Subtest: validation rejects unknown food categories and unbounded expansion values before remote calls
+ok 72 - validation rejects unknown food categories and unbounded expansion values before remote calls
+  ---
+  duration_ms: 0.9006
+  type: 'test'
+  ...
+# Subtest: expanded search surfaces authentication failure instead of returning empty success
+ok 73 - expanded search surfaces authentication failure instead of returning empty success
+  ---
+  duration_ms: 0.5594
+  type: 'test'
+  ...
+# Subtest: secondary search failure returns verified primary items with an explicit partial indicator
+ok 74 - secondary search failure returns verified primary items with an explicit partial indicator
+  ---
+  duration_ms: 1.0588
+  type: 'test'
+  ...
+# Subtest: different food categories have separate cache entries
+ok 75 - different food categories have separate cache entries
+  ---
+  duration_ms: 1.5687
+  type: 'test'
+  ...
+# Subtest: DJ can create and view their own profile and play without a registration dead end
+ok 76 - DJ can create and view their own profile and play without a registration dead end
+  ---
+  duration_ms: 45.7641
+  type: 'test'
+  ...
+# Subtest: first DJ fishing command creates a profile and ordinary info lookup does too
+ok 77 - first DJ fishing command creates a profile and ordinary info lookup does too
+  ---
+  duration_ms: 6.4772
+  type: 'test'
+  ...
+# Subtest: custom quiz bank accepts aliases and preserves an already issued question
+ok 78 - custom quiz bank accepts aliases and preserves an already issued question
+  ---
+  duration_ms: 52.8261
+  type: 'test'
+  ...
+# Subtest: quiz bank validation rejects malformed or duplicated rows and game ON handles an empty bank
+ok 79 - quiz bank validation rejects malformed or duplicated rows and game ON handles an empty bank
+  ---
+  duration_ms: 8.0574
+  type: 'test'
+  ...
+# Subtest: new settings safely default old backups and validate automatic chat rules
+ok 80 - new settings safely default old backups and validate automatic chat rules
+  ---
+  duration_ms: 2.6294
+  type: 'test'
+  ...
+# Subtest: mini games validate inputs and never change PT or EXP
+ok 81 - mini games validate inputs and never change PT or EXP
+  ---
+  duration_ms: 6.9315
+  type: 'test'
+  ...
+# Subtest: quiz gives one EXP reward, announces level-up and cannot repeat a solved round
+ok 82 - quiz gives one EXP reward, announces level-up and cannot repeat a solved round
+  ---
+  duration_ms: 13.8455
+  type: 'test'
+  ...
+# Subtest: quiz has isolated rounds, expires, skips without EXP, and obeys quiet mode and DJ-only OFF
+ok 83 - quiz has isolated rounds, expires, skips without EXP, and obeys quiet mode and DJ-only OFF
+  ---
+  duration_ms: 7.6161
+  type: 'test'
+  ...
+# Subtest: quiz reward validates old settings and snapshots EXP for the current round
+ok 84 - quiz reward validates old settings and snapshots EXP for the current round
+  ---
+  duration_ms: 6.5324
+  type: 'test'
+  ...
+# Subtest: number guessing keeps attempts, deduplicates events, finishes after 7 and supports reset
+ok 85 - number guessing keeps attempts, deduplicates events, finishes after 7 and supports reset
+  ---
+  duration_ms: 10.0805
+  type: 'test'
+  ...
+# Subtest: keyword replies normalize text, enforce cooldown and quiet mode, and preserve built-in commands
+ok 86 - keyword replies normalize text, enforce cooldown and quiet mode, and preserve built-in commands
+  ---
+  duration_ms: 8.164
+  type: 'test'
+  ...
+# Subtest: weather placeholders in periodic chat are replaced at send time and skipped when the lookup fails
+ok 87 - weather placeholders in periodic chat are replaced at send time and skipped when the lookup fails
+  ---
+  duration_ms: 12.9725
+  type: 'test'
+  ...
+# Subtest: periodic chat schedules sequential/random messages and retries without advancing on failure
+ok 88 - periodic chat schedules sequential/random messages and retries without advancing on failure
+  ---
+  duration_ms: 7.5972
+  type: 'test'
+  ...
+# Subtest: previous song is read only, accepts old rooms and stays isolated
+ok 89 - previous song is read only, accepts old rooms and stays isolated
+  ---
+  duration_ms: 20.2463
+  type: 'test'
+  ...
+# Subtest: YouTube requests normalize supported URLs and reject lookalike hosts
+ok 90 - YouTube requests normalize supported URLs and reject lookalike hosts
+  ---
+  duration_ms: 16.6303
+  type: 'test'
+  ...
+# Subtest: roulette wins become grouped keeps; misses only enter history; event replay cannot pay twice
+ok 91 - roulette wins become grouped keeps; misses only enter history; event replay cannot pay twice
+  ---
+  duration_ms: 45.8984
+  type: 'test'
+  ...
+# Subtest: keep grouping preserves quantity and normalizes legacy spacing without deleting data
+ok 92 - keep grouping preserves quantity and normalizes legacy spacing without deleting data
+  ---
+  duration_ms: 0.4249
+  type: 'test'
+  ...
+# Subtest: spoon recharge guidance returns the configurable message and observes command cooldown
+ok 93 - spoon recharge guidance returns the configurable message and observes command cooldown
+  ---
+  duration_ms: 6.3894
+  type: 'test'
+  ...
+# Subtest: like greeting enforces 10 minute per ID interval, global gap, event dedup and quiet mode
+ok 94 - like greeting enforces 10 minute per ID interval, global gap, event dedup and quiet mode
+  ---
+  duration_ms: 6.2426
+  type: 'test'
+  ...
+# Subtest: an unsent like greeting does not consume the viewer cooldown; receipt survives store reload
+ok 95 - an unsent like greeting does not consume the viewer cooldown; receipt survives store reload
+  ---
+  duration_ms: 2.8853
+  type: 'test'
+  ...
+# Subtest: playback advances on ended once, respects auto off, and never skips unplayable entries
+ok 96 - playback advances on ended once, respects auto off, and never skips unplayable entries
+  ---
+  duration_ms: 1.2437
+  type: 'test'
+  ...
+# Subtest: pause during an in-flight ended request prevents starting the next video
+ok 97 - pause during an in-flight ended request prevents starting the next video
+  ---
+  duration_ms: 0.9699
+  type: 'test'
+  ...
+# Subtest: program introduction sends only when live and due, pauses in quiet mode and retries failed sends
+ok 98 - program introduction sends only when live and due, pauses in quiet mode and retries failed sends
+  ---
+  duration_ms: 18.5608
+  type: 'test'
+  ...
+# Subtest: overlapping scheduler ticks cannot send two program introductions
+ok 99 - overlapping scheduler ticks cannot send two program introductions
+  ---
+  duration_ms: 4.2559
+  type: 'test'
+  ...
+# Subtest: fixed gateway requires signed updates, rejects private targets and prevents stale route replay
+ok 100 - fixed gateway requires signed updates, rejects private targets and prevents stale route replay
+  ---
+  duration_ms: 59.9938
+  type: 'test'
+  ...
+# Subtest: fixed gateway forwards cookie, Origin, body, ranges and redirects without leaking platform headers
+ok 101 - fixed gateway forwards cookie, Origin, body, ranges and redirects without leaking platform headers
+  ---
+  duration_ms: 5.403
+  type: 'test'
+  ...
+# Subtest: authenticated weather bridge only queries fixed provider coordinates and rejects arbitrary targets
+ok 102 - authenticated weather bridge only queries fixed provider coordinates and rejects arbitrary targets
+  ---
+  duration_ms: 6.5775
+  type: 'test'
+  ...
+# Subtest: a slash-prefixed path stays on the registered tunnel origin
+ok 103 - a slash-prefixed path stays on the registered tunnel origin
+  ---
+  duration_ms: 3.3117
+  type: 'test'
+  ...
+# Subtest: JSON parsing preserves Korean and emoji when every UTF-8 byte arrives separately
+ok 104 - JSON parsing preserves Korean and emoji when every UTF-8 byte arrives separately
+  ---
+  duration_ms: 10.7285
+  type: 'test'
+  ...
+# Subtest: oversized requests return 413; malformed UTF-8, JSON and non-object bodies return 400
+ok 105 - oversized requests return 413; malformed UTF-8, JSON and non-object bodies return 400
+  ---
+  duration_ms: 6.6097
+  type: 'test'
+  ...
+# Subtest: PUBLIC_URL is a normalized origin with HTTPS required in production
+ok 106 - PUBLIC_URL is a normalized origin with HTTPS required in production
+  ---
+  duration_ms: 0.8622
+  type: 'test'
+  ...
+# Subtest: shop shows prices and purchase instructions, and supports ID, number and full name purchases
+ok 107 - shop shows prices and purchase instructions, and supports ID, number and full name purchases
+  ---
+  duration_ms: 50.0194
+  type: 'test'
+  ...
+# Subtest: purchase shortages and duplicate delivery do not charge twice or create free items
+ok 108 - purchase shortages and duplicate delivery do not charge twice or create free items
+  ---
+  duration_ms: 11.6955
+  type: 'test'
+  ...
+# Subtest: limited stock stays atomic across listeners and purchased items can be used after the response gap
+ok 109 - limited stock stays atomic across listeners and purchased items can be used after the response gap
+  ---
+  duration_ms: 7.1972
+  type: 'test'
+  ...
+# Subtest: ambiguous item names and extra arguments never purchase a different product
+ok 110 - ambiguous item names and extra arguments never purchase a different product
+  ---
+  duration_ms: 7.6379
+  type: 'test'
+  ...
+# Subtest: listener can query keeps without first creating a profile or having DJ permissions
+ok 111 - listener can query keeps without first creating a profile or having DJ permissions
+  ---
+  duration_ms: 15.0093
+  type: 'test'
+  ...
+# Subtest: listener keep list groups their own rewards without exposing other listeners or rooms
+ok 112 - listener keep list groups their own rewards without exposing other listeners or rooms
+  ---
+  duration_ms: 7.3431
+  type: 'test'
+  ...
+# Subtest: listener keep lookup preserves paging and response cooldown without granting rewards
+ok 113 - listener keep lookup preserves paging and response cooldown without granting rewards
+  ---
+  duration_ms: 9.3871
+  type: 'test'
+  ...
+# Subtest: listener consumes one grouped keep and immediately moves it to completion history
+ok 114 - listener consumes one grouped keep and immediately moves it to completion history
+  ---
+  duration_ms: 58.5768
+  type: 'test'
+  ...
+# Subtest: cancel latest use restores one keep and cannot restore the same completion twice
+ok 115 - cancel latest use restores one keep and cannot restore the same completion twice
+  ---
+  duration_ms: 9.0689
+  type: 'test'
+  ...
+# Subtest: cancel targets completion numbering or exact name and never changes another listener
+ok 116 - cancel targets completion numbering or exact name and never changes another listener
+  ---
+  duration_ms: 8.7204
+  type: 'test'
+  ...
+# Subtest: duplicate use and cancellation events are idempotent and stale monthly history cannot be restored
+ok 117 - duplicate use and cancellation events are idempotent and stale monthly history cannot be restored
+  ---
+  duration_ms: 9.6844
+  type: 'test'
+  ...
+# Subtest: keeps remain valid until Korean month end and reset at midnight, including leap February and year rollover
+ok 118 - keeps remain valid until Korean month end and reset at midnight, including leap February and year rollover
+  ---
+  duration_ms: 15.1491
+  type: 'test'
+  ...
+# Subtest: listener can use and cancel after the global response gap without waiting for the game cooldown
+ok 119 - listener can use and cancel after the global response gap without waiting for the game cooldown
+  ---
+  duration_ms: 12.3229
+  type: 'test'
+  ...
+# Subtest: listener helper restricts targets to Spoon Korean broadcast pages and preserves existing drafts
+ok 120 - listener helper restricts targets to Spoon Korean broadcast pages and preserves existing drafts
+  ---
+  duration_ms: 1.9943
+  type: 'test'
+  ...
+# Subtest: speech only commits finalized text once and deduplicates repeated final recognition events
+ok 121 - speech only commits finalized text once and deduplicates repeated final recognition events
+  ---
+  duration_ms: 1.4315
+  type: 'test'
+  ...
+# Subtest: cancelled, failed and stale recognition cannot insert text
+ok 122 - cancelled, failed and stale recognition cannot insert text
+  ---
+  duration_ms: 0.4661
+  type: 'test'
+  ...
+# Subtest: input bridge appends with native setter, emits input events, deduplicates retry and never submits
+ok 123 - input bridge appends with native setter, emits input events, deduplicates retry and never submits
+  ---
+  duration_ms: 4.503
+  type: 'test'
+  ...
+# Subtest: input bridge refuses disabled, detached, overlength or navigated chat targets without editing them
+ok 124 - input bridge refuses disabled, detached, overlength or navigated chat targets without editing them
+  ---
+  duration_ms: 4.2008
+  type: 'test'
+  ...
+# Subtest: quiz initials mask non-Hangul answers and keep hints within the chat limit
+ok 125 - quiz initials mask non-Hangul answers and keep hints within the chat limit
+  ---
+  duration_ms: 17.2407
+  type: 'test'
+  ...
+# Subtest: listening rewards count consecutive snapshots once, cap per day and exclude disconnected gaps
+ok 126 - listening rewards count consecutive snapshots once, cap per day and exclude disconnected gaps
+  ---
+  duration_ms: 20.795
+  type: 'test'
+  ...
+# Subtest: listener polling follows cursors and resets accrual on permission failure
+ok 127 - listener polling follows cursors and resets accrual on permission failure
+  ---
+  duration_ms: 6.2905
+  type: 'test'
+  ...
+# Subtest: batch outcome weights preserve the exact 3-of-9 lottery distribution
+ok 128 - batch outcome weights preserve the exact 3-of-9 lottery distribution
+  ---
+  duration_ms: 3.1794
+  type: 'test'
+  ...
+# Subtest: batch lottery consumes all held tickets atomically and replay never adds EXP
+ok 129 - batch lottery consumes all held tickets atomically and replay never adds EXP
+  ---
+  duration_ms: 52.3879
+  type: 'test'
+  ...
+# Subtest: large lottery yields before committing and refuses to spend a changed balance
+ok 130 - large lottery yields before committing and refuses to spend a changed balance
+  ---
+  duration_ms: 13.1616
+  type: 'test'
+  ...
+# Subtest: ticket reset cancels an in-flight automatic draw without awarding EXP
+ok 131 - ticket reset cancels an in-flight automatic draw without awarding EXP
+  ---
+  duration_ms: 7.5485
+  type: 'test'
+  ...
+# Subtest: reset and regrant of the same balance cannot let an older draw spend newly granted tickets
+ok 132 - reset and regrant of the same balance cannot let an older draw spend newly granted tickets
+  ---
+  duration_ms: 7.1545
+  type: 'test'
+  ...
+# Subtest: large lottery commits all tickets and one summary after yielding
+ok 133 - large lottery commits all tickets and one summary after yielding
+  ---
+  duration_ms: 11.9878
+  type: 'test'
+  ...
+# Subtest: recursive binomial sampler preserves means, variance and integer support
+ok 134 - recursive binomial sampler preserves means, variance and integer support
+  ---
+  duration_ms: 62.379
+  type: 'test'
+  ...
+# Subtest: 500 trillion tickets use bounded sampling work and category counts keep the original probabilities
+ok 135 - 500 trillion tickets use bounded sampling work and category counts keep the original probabilities
+  ---
+  duration_ms: 1.0833
+  type: 'test'
+  ...
+# Subtest: huge automatic draws finish promptly and EXP overflow never spends tickets
+ok 136 - huge automatic draws finish promptly and EXP overflow never spends tickets
+  ---
+  duration_ms: 7.7315
+  type: 'test'
+  ...
+# Subtest: aggregate automatic draw consumes every ticket, records outcome counts and deduplicates
+ok 137 - aggregate automatic draw consumes every ticket, records outcome counts and deduplicates
+  ---
+  duration_ms: 6.2374
+  type: 'test'
+  ...
+# Subtest: prune trims old audit rows, events and extra backups; snapshot keeps rolling copies
+ok 138 - prune trims old audit rows, events and extra backups; snapshot keeps rolling copies
+  ---
+  duration_ms: 209.2607
+  type: 'test'
+  ...
+# Subtest: failed snapshot keeps the previous backup, repeated snapshots replace safely, invalid retention cannot erase data
+ok 139 - failed snapshot keeps the previous backup, repeated snapshots replace safely, invalid retention cannot erase data
+  ---
+  duration_ms: 72.8619
+  type: 'test'
+  ...
+# Subtest: paged replies stay within 200 code points and expose all entries without flooding
+ok 140 - paged replies stay within 200 code points and expose all entries without flooding
+  ---
+  duration_ms: 5.8079
+  type: 'test'
+  ...
+# Subtest: reward and outbox commit together; replay never rewards or queues twice
+ok 141 - reward and outbox commit together; replay never rewards or queues twice
+  ---
+  duration_ms: 55.6429
+  type: 'test'
+  ...
+# Subtest: outbox retries only safe failures, survives restart, expires, scopes management and serializes sends
+ok 142 - outbox retries only safe failures, survives restart, expires, scopes management and serializes sends
+  ---
+  duration_ms: 6.1835
+  type: 'test'
+  ...
+# Subtest: opt-in item clock pauses offline, game-off and quiet intervals and resumes remaining time
+ok 143 - opt-in item clock pauses offline, game-off and quiet intervals and resumes remaining time
+  ---
+  duration_ms: 9.8442
+  type: 'test'
+  ...
+# Subtest: encrypted full backup restores database and exact voice bytes, rejects bad key, overwrite and active server
+ok 144 - encrypted full backup restores database and exact voice bytes, rejects bad key, overwrite and active server
+  ---
+  duration_ms: 166.7427
+  type: 'test'
+  ...
+# Subtest: listener/account erasure and voice retention remain room-scoped and keep reward dedup IDs
+ok 145 - listener/account erasure and voice retention remain room-scoped and keep reward dedup IDs
+  ---
+  duration_ms: 13.024
+  type: 'test'
+  ...
+# Subtest: disconnect during token refresh cannot resurrect revoked local credentials
+ok 146 - disconnect during token refresh cannot resurrect revoked local credentials
+  ---
+  duration_ms: 38.3916
+  type: 'test'
+  ...
+# Subtest: resume position survives reload but is isolated by room, song, video and expiry
+ok 147 - resume position survives reload but is isolated by room, song, video and expiry
+  ---
+  duration_ms: 2.0085
+  type: 'test'
+  ...
+# Subtest: remote play cannot start or advance a queue in a hidden page
+ok 148 - remote play cannot start or advance a queue in a hidden page
+  ---
+  duration_ms: 1.1311
+  type: 'test'
+  ...
+# Subtest: service worker caches only public offline assets and never intercepts authenticated routes
+ok 149 - service worker caches only public offline assets and never intercepts authenticated routes
+  ---
+  duration_ms: 4.3216
+  type: 'test'
+  ...
+# Subtest: new queued request starts without a chat play command but explicit stop remains stopped
+ok 150 - new queued request starts without a chat play command but explicit stop remains stopped
+  ---
+  duration_ms: 0.76
+  type: 'test'
+  ...
+# Subtest: automatic reception cannot override a paused server, selected previous track or hidden page
+ok 151 - automatic reception cannot override a paused server, selected previous track or hidden page
+  ---
+  duration_ms: 0.3713
+  type: 'test'
+  ...
+# Subtest: finite stock sales invalidate stale settings, but failed and duplicate sales do not change revision
+ok 152 - finite stock sales invalidate stale settings, but failed and duplicate sales do not change revision
+  ---
+  duration_ms: 45.9591
+  type: 'test'
+  ...
+# Subtest: JSON requests preserve conflict errors and expose session expiry without retrying mutations
+ok 153 - JSON requests preserve conflict errors and expose session expiry without retrying mutations
+  ---
+  duration_ms: 56.6003
+  type: 'test'
+  ...
+# Subtest: timeouts and failed connections keep mutation outcomes explicit and never retry
+ok 154 - timeouts and failed connections keep mutation outcomes explicit and never retry
+  ---
+  duration_ms: 0.7033
+  type: 'test'
+  ...
+# Subtest: non-JSON gateway failures are readable and successful JSON is returned
+ok 155 - non-JSON gateway failures are readable and successful JSON is returned
+  ---
+  duration_ms: 3.1582
+  type: 'test'
+  ...
+# Subtest: session expiry remains visible even when a proxy returns a non-JSON 401
+ok 156 - session expiry remains visible even when a proxy returns a non-JSON 401
+  ---
+  duration_ms: 2.1415
+  type: 'test'
+  ...
+# Subtest: daily attendance grants 20 once while listening grants at most 100 tickets independently
+ok 157 - daily attendance grants 20 once while listening grants at most 100 tickets independently
+  ---
+  duration_ms: 301.9772
+  type: 'test'
+  ...
+# Subtest: hourly chatting and listening increase affinity and select a different ranking than EXP
+ok 158 - hourly chatting and listening increase affinity and select a different ranking than EXP
+  ---
+  duration_ms: 9.7119
+  type: 'test'
+  ...
+# Subtest: quiz provides category initials and meaning, chooses EXP or tickets, and never pays twice
+ok 159 - quiz provides category initials and meaning, chooses EXP or tickets, and never pays twice
+  ---
+  duration_ms: 13.6741
+  type: 'test'
+  ...
+# Subtest: scheduler reveals expired answer and definition once without paying a reward
+ok 160 - scheduler reveals expired answer and definition once without paying a reward
+  ---
+  duration_ms: 9.2531
+  type: 'test'
+  ...
+# Subtest: private email aliases are scoped hashes and account aliases support ticket lookup
+ok 161 - private email aliases are scoped hashes and account aliases support ticket lookup
+  ---
+  duration_ms: 8.1466
+  type: 'test'
+  ...
+# Subtest: rule migration preserves custom quiz banks and changes defaults only once
+ok 162 - rule migration preserves custom quiz banks and changes defaults only once
+  ---
+  duration_ms: 1.0805
+  type: 'test'
+  ...
+# Subtest: chat playback resolves a title and records its request without any browser player
+ok 163 - chat playback resolves a title and records its request without any browser player
+  ---
+  duration_ms: 8.3347
+  type: 'test'
+  ...
+# Subtest: word-quiz migration replaces untouched legacy defaults but preserves edited questions
+ok 164 - word-quiz migration replaces untouched legacy defaults but preserves edited questions
+  ---
+  duration_ms: 0.4341
+  type: 'test'
+  ...
+# Subtest: attendance and single lottery never overflow balances or partially consume a ticket
+ok 165 - attendance and single lottery never overflow balances or partially consume a ticket
+  ---
+  duration_ms: 27.5448
+  type: 'test'
+  ...
+# Subtest: fishing and odd/even overflow roll back EXP, book, PT, limits and audit writes
+ok 166 - fishing and odd/even overflow roll back EXP, book, PT, limits and audit writes
+  ---
+  duration_ms: 12.8958
+  type: 'test'
+  ...
+# Subtest: reserved object property names cannot impersonate an existing listener
+ok 167 - reserved object property names cannot impersonate an existing listener
+  ---
+  duration_ms: 43.7105
+  type: 'test'
+  ...
+# Subtest: failed scheduled announcement remains due and advances only after a successful send
+ok 168 - failed scheduled announcement remains due and advances only after a successful send
+  ---
+  duration_ms: 9.6454
+  type: 'test'
+  ...
+# Subtest: an aborted old connection cannot overwrite a replacement connection state
+ok 169 - an aborted old connection cannot overwrite a replacement connection state
+  ---
+  duration_ms: 6.2557
+  type: 'test'
+  ...
+# Subtest: pause during a pending playback start cannot restart audio when the server responds
+ok 170 - pause during a pending playback start cannot restart audio when the server responds
+  ---
+  duration_ms: 0.5793
+  type: 'test'
+  ...
+# Subtest: public previews isolate visitors, contain no real credentials, expire and enforce capacity
+ok 171 - public previews isolate visitors, contain no real credentials, expire and enforce capacity
+  ---
+  duration_ms: 19.7924
+  type: 'test'
+  ...
+# Subtest: production opt-in exposes isolated test button/session and never writes demo users to live database
+ok 172 - production opt-in exposes isolated test button/session and never writes demo users to live database
+  ---
+  duration_ms: 587.3263
+  type: 'test'
+  ...
+# Subtest: HTTP login, CSRF, settings, DJ grant, backup ownership and logout
+ok 173 - HTTP login, CSRF, settings, DJ grant, backup ownership and logout
+  ---
+  duration_ms: 15509.3744
+  type: 'test'
+  ...
+# Subtest: API HUB and legacy credentials use separate official endpoints and header names
+ok 174 - API HUB and legacy credentials use separate official endpoints and header names
+  ---
+  duration_ms: 2.1463
+  type: 'test'
+  ...
+# Subtest: invalid Naver credentials do not block saving a working OpenAI key or leak error bodies
+ok 175 - invalid Naver credentials do not block saving a working OpenAI key or leak error bodies
+  ---
+  duration_ms: 6.2426
+  type: 'test'
+  ...
+# Subtest: Naver permission and quota failures have actionable separate messages
+ok 176 - Naver permission and quota failures have actionable separate messages
+  ---
+  duration_ms: 0.9902
+  type: 'test'
+  ...
+# Subtest: local setup accepts browser-origin forms without weakening CSRF or exposing credentials
+ok 177 - local setup accepts browser-origin forms without weakening CSRF or exposing credentials
+  ---
+  duration_ms: 329.7876
+  type: 'test'
+  ...
+# Subtest: DJ sessions survive recreation, are encrypted and still expire and revoke
+ok 178 - DJ sessions survive recreation, are encrypted and still expire and revoke
+  ---
+  duration_ms: 5.1941
+  type: 'test'
+  ...
+# Subtest: public demo sessions remain volatile and room revocation removes durable sessions
+ok 179 - public demo sessions remain volatile and room revocation removes durable sessions
+  ---
+  duration_ms: 1.3474
+  type: 'test'
+  ...
+# Subtest: delete prompts number from 1, consume plain numeric replies, clear state and renumber after deletion
+ok 180 - delete prompts number from 1, consume plain numeric replies, clear state and renumber after deletion
+  ---
+  duration_ms: 25.1995
+  type: 'test'
+  ...
+# Subtest: previous deletion by artist removes every archived reference and never reappears on navigation
+ok 181 - previous deletion by artist removes every archived reference and never reappears on navigation
+  ---
+  duration_ms: 13.3234
+  type: 'test'
+  ...
+# Subtest: next deletion accepts artist or title while ambiguous matches require a number
+ok 182 - next deletion accepts artist or title while ambiguous matches require a number
+  ---
+  duration_ms: 6.4353
+  type: 'test'
+  ...
+# Subtest: pending deletion is DJ scoped, expires, supports cancellation and cannot delete a shifted index
+ok 183 - pending deletion is DJ scoped, expires, supports cancellation and cannot delete a shifted index
+  ---
+  duration_ms: 7.6318
+  type: 'test'
+  ...
+# Subtest: purging a replayed current song removes queue duplicates, saved video, undo and previous selection
+ok 184 - purging a replayed current song removes queue duplicates, saved video, undo and previous selection
+  ---
+  duration_ms: 4.0645
+  type: 'test'
+  ...
+# Subtest: remembered title lookup tolerates spacing and case, stays room scoped and replaces old choices
+ok 185 - remembered title lookup tolerates spacing and case, stays room scoped and replaces old choices
+  ---
+  duration_ms: 2.2857
+  type: 'test'
+  ...
+# Subtest: already connected previous songs can be reused and title cache is bounded
+ok 186 - already connected previous songs can be reused and title cache is bounded
+  ---
+  duration_ms: 66.8272
+  type: 'test'
+  ...
+# Subtest: play selected request preserves the rest of the queue and rejects stale selection
+ok 187 - play selected request preserves the rest of the queue and rejects stale selection
+  ---
+  duration_ms: 2.2532
+  type: 'test'
+  ...
+# Subtest: chat title-only requests reuse a previously linked video without a search key
+ok 188 - chat title-only requests reuse a previously linked video without a search key
+  ---
+  duration_ms: 13.4666
+  type: 'test'
+  ...
+# Subtest: official search coalesces requests, caches and does not put key in URL
+ok 189 - official search coalesces requests, caches and does not put key in URL
+  ---
+  duration_ms: 5.274
+  type: 'test'
+  ...
+# Subtest: title request resolves before playback; a paused lookup cannot start video
+ok 190 - title request resolves before playback; a paused lookup cannot start video
+  ---
+  duration_ms: 1.0723
+  type: 'test'
+  ...
+# Subtest: armed empty player starts a newly arrived request
+ok 191 - armed empty player starts a newly arrived request
+  ---
+  duration_ms: 0.3234
+  type: 'test'
+  ...
+# Subtest: voice byte ranges support Safari probing and reject invalid requests
+ok 192 - voice byte ranges support Safari probing and reject invalid requests
+  ---
+  duration_ms: 0.4386
+  type: 'test'
+  ...
+# Subtest: replacing a video on the same request reloads it and deleting current pauses old audio
+ok 193 - replacing a video on the same request reloads it and deleting current pauses old audio
+  ---
+  duration_ms: 0.3375
+  type: 'test'
+  ...
+# Subtest: queue moves preserve the current song and reject stale, out-of-bounds and invalid operations
+ok 194 - queue moves preserve the current song and reject stale, out-of-bounds and invalid operations
+  ---
+  duration_ms: 5.08
+  type: 'test'
+  ...
+# Subtest: deletion undo restores exactly one entry at its former position, expires, and is invalidated by other changes
+ok 195 - deletion undo restores exactly one entry at its former position, expires, and is invalidated by other changes
+  ---
+  duration_ms: 1.5105
+  type: 'test'
+  ...
+# Subtest: two tabs cannot skip two songs using the same manual advance revision
+ok 196 - two tabs cannot skip two songs using the same manual advance revision
+  ---
+  duration_ms: 0.4517
+  type: 'test'
+  ...
+# Subtest: listener cancellation is owner-scoped, targets queued songs only, and replay never cancels twice
+ok 197 - listener cancellation is owner-scoped, targets queued songs only, and replay never cancels twice
+  ---
+  duration_ms: 20.5749
+  type: 'test'
+  ...
+# Subtest: charge reply always keeps the official URL and price-condition disclaimer within 200 UTF-16 code units
+ok 198 - charge reply always keeps the official URL and price-condition disclaimer within 200 UTF-16 code units
+  ---
+  duration_ms: 1.9804
+  type: 'test'
+  ...
+# Subtest: charge command works without a profile for listeners and DJs and chooses the configured region
+ok 199 - charge command works without a profile for listeners and DJs and chooses the configured region
+  ---
+  duration_ms: 16.5167
+  type: 'test'
+  ...
+# Subtest: region selects the matching Spoon API host and rejects unknown regions
+ok 200 - region selects the matching Spoon API host and rejects unknown regions
+  ---
+  duration_ms: 2.3149
+  type: 'test'
+  ...
+# Subtest: OAuth login, SSE chat event and chat reply work end to end against a mock Spoon API
+ok 201 - OAuth login, SSE chat event and chat reply work end to end against a mock Spoon API
+  ---
+  duration_ms: 1254.9234
+  type: 'test'
+  ...
+# Subtest: level progress handles level boundaries and large safe balances
+ok 202 - level progress handles level boundaries and large safe balances
+  ---
+  duration_ms: 2.5563
+  type: 'test'
+  ...
+# Subtest: readiness uses both cooldown clocks, rounds up, and permits DJ testing
+ok 203 - readiness uses both cooldown clocks, rounds up, and permits DJ testing
+  ---
+  duration_ms: 0.5413
+  type: 'test'
+  ...
+# Subtest: saved test history tolerates malformed data and bounds restored input
+ok 204 - saved test history tolerates malformed data and bounds restored input
+  ---
+  duration_ms: 9.8543
+  type: 'test'
+  ...
+# Subtest: ticket grants resolve registered nicknames with spaces, invisible characters and optional quotes
+ok 205 - ticket grants resolve registered nicknames with spaces, invisible characters and optional quotes
+  ---
+  duration_ms: 60.3816
+  type: 'test'
+  ...
+# Subtest: duplicate and unknown names never change balances and duplicate candidates expose exact targets
+ok 206 - duplicate and unknown names never change balances and duplicate candidates expose exact targets
+  ---
+  duration_ms: 9.9839
+  type: 'test'
+  ...
+# Subtest: voice uploads are private, idempotent and scoped to the receiving DJ
+ok 207 - voice uploads are private, idempotent and scoped to the receiving DJ
+  ---
+  duration_ms: 23.6758
+  type: 'test'
+  ...
+# Subtest: voice link rotation/disable invalidate old links and unsupported or oversized data is rejected
+ok 208 - voice link rotation/disable invalidate old links and unsupported or oversized data is rejected
+  ---
+  duration_ms: 9.0483
+  type: 'test'
+  ...
+# Subtest: an upload cannot finish after its intake link is revoked
+ok 209 - an upload cannot finish after its intake link is revoked
+  ---
+  duration_ms: 7.4919
+  type: 'test'
+  ...
+# Subtest: voice intake enforces room capacity and per-connection upload rate
+ok 210 - voice intake enforces room capacity and per-connection upload rate
+  ---
+  duration_ms: 19.0576
+  type: 'test'
+  ...
+# Subtest: voice link uses current public origin and stays disabled after shutdown
+ok 211 - voice link uses current public origin and stays disabled after shutdown
+  ---
+  duration_ms: 4.6882
+  type: 'test'
+  ...
+# Subtest: compact voice links preserve the full token and share revocation and upload checks
+ok 212 - compact voice links preserve the full token and share revocation and upload checks
+  ---
+  duration_ms: 7.5754
+  type: 'test'
+  ...
+# Subtest: sunrise and sunset match the official Seoul values within two minutes and handle polar days
+ok 213 - sunrise and sunset match the official Seoul values within two minutes and handle polar days
+  ---
+  duration_ms: 3.3698
+  type: 'test'
+  ...
+# Subtest: wind chill follows the official winter formula and only shows when it matters
+ok 214 - wind chill follows the official winter formula and only shows when it matters
+  ---
+  duration_ms: 0.5119
+  type: 'test'
+  ...
+# Subtest: outfit advice follows temperature bands and mentions big daily ranges
+ok 215 - outfit advice follows temperature bands and mentions big daily ranges
+  ---
+  duration_ms: 0.7063
+  type: 'test'
+  ...
+# Subtest: hourly forecast picks every third future hour and labels tomorrow
+ok 216 - hourly forecast picks every third future hour and labels tomorrow
+  ---
+  duration_ms: 2.4822
+  type: 'test'
+  ...
+# Subtest: umbrella advice separates today, tomorrow and later rainy days
+ok 217 - umbrella advice separates today, tomorrow and later rainy days
+  ---
+  duration_ms: 4.0748
+  type: 'test'
+  ...
+# Subtest: briefing combines current, daily range, umbrella verdict, sun times and outfit and skips what is missing
+ok 218 - briefing combines current, daily range, umbrella verdict, sun times and outfit and skips what is missing
+  ---
+  duration_ms: 1.1267
+  type: 'test'
+  ...
+# Subtest: yesterday comparison reports the gap in max and min and works inside the briefing
+ok 219 - yesterday comparison reports the gap in max and min and works inside the briefing
+  ---
+  duration_ms: 1.48
+  type: 'test'
+  ...
+# Subtest: weather placeholders expand to answers, drop failed lookups and leave plain text untouched
+ok 220 - weather placeholders expand to answers, drop failed lookups and leave plain text untouched
+  ---
+  duration_ms: 2.4115
+  type: 'test'
+  ...
+# Subtest: weather helper words are modes, not regions, and short aliases route to the weather command
+ok 221 - weather helper words are modes, not regions, and short aliases route to the weather command
+  ---
+  duration_ms: 10.6298
+  type: 'test'
+  ...
+# Subtest: KMA hourly RSS parsing shifts day offsets, keeps 24시 and rejects wrong regions or non-RSS pages
+ok 222 - KMA hourly RSS parsing shifts day offsets, keeps 24시 and rejects wrong regions or non-RSS pages
+  ---
+  duration_ms: 11.3174
+  type: 'test'
+  ...
+# Subtest: daily summaries use KMA min/max, mark today as partial and need three wet hours to show rain
+ok 223 - daily summaries use KMA min/max, mark today as partial and need three wet hours to show rain
+  ---
+  duration_ms: 6.4232
+  type: 'test'
+  ...
+# Subtest: current weather is the latest hourly row at or before now and refuses stale data
+ok 224 - current weather is the latest hourly row at or before now and refuses stale data
+  ---
+  duration_ms: 5.0726
+  type: 'test'
+  ...
+# Subtest: mid-term helpers pick the latest 06/18 announcement and merge land and temperature forecasts
+ok 225 - mid-term helpers pick the latest 06/18 announcement and merge land and temperature forecasts
+  ---
+  duration_ms: 1.5797
+  type: 'test'
+  ...
+# Subtest: weather DB seeds the 17 regions plus extras, resolves names and keeps manual edits
+ok 226 - weather DB seeds the 17 regions plus extras, resolves names and keeps manual edits
+  ---
+  duration_ms: 9.5851
+  type: 'test'
+  ...
+# Subtest: daily records keep exact temperatures, the most complete forecast, and expire after 400 days
+ok 227 - daily records keep exact temperatures, the most complete forecast, and expire after 400 days
+  ---
+  duration_ms: 2.9805
+  type: 'test'
+  ...
+# Subtest: KMA hourly snapshots survive restarts, serve stale data during outages and reject mismatched regions
+ok 228 - KMA hourly snapshots survive restarts, serve stale data during outages and reject mismatched regions
+  ---
+  duration_ms: 9.0805
+  type: 'test'
+  ...
+# Subtest: kma current weather labels the source, fits Spoon 200 characters and caches regional lookups
+ok 229 - kma current weather labels the source, fits Spoon 200 characters and caches regional lookups
+  ---
+  duration_ms: 50.7489
+  type: 'test'
+  ...
+# Subtest: a region whose KMA response stops matching is filled from Open-Meteo, labelled, and fails loudly if both are down
+ok 230 - a region whose KMA response stops matching is filled from Open-Meteo, labelled, and fails loudly if both are down
+  ---
+  duration_ms: 63.8168
+  type: 'test'
+  ...
+# Subtest: kma weekly forecast uses KMA for Thu-Sun and marks Open-Meteo for the past days it cannot know
+ok 231 - kma weekly forecast uses KMA for Thu-Sun and marks Open-Meteo for the past days it cannot know
+  ---
+  duration_ms: 67.8831
+  type: 'test'
+  ...
+# Subtest: past days of the week come from stored KMA records without calling Open-Meteo
+ok 232 - past days of the week come from stored KMA records without calling Open-Meteo
+  ---
+  duration_ms: 39.2753
+  type: 'test'
+  ...
+# Subtest: today's minimum keeps the exact early-morning value after later partial forecasts
+ok 233 - today's minimum keeps the exact early-morning value after later partial forecasts
+  ---
+  duration_ms: 45.3889
+  type: 'test'
+  ...
+# Subtest: next week uses KMA mid-term forecasts only when a service key is set and never leaks the key
+ok 234 - next week uses KMA mid-term forecasts only when a service key is set and never leaks the key
+  ---
+  duration_ms: 71.7978
+  type: 'test'
+  ...
+# Subtest: a rejected mid-term key falls back to Open-Meteo and pauses retries
+ok 235 - a rejected mid-term key falls back to Open-Meteo and pauses retries
+  ---
+  duration_ms: 30.0467
+  type: 'test'
+  ...
+# Subtest: KMA failures are logged once, listed in status(), and recovery is announced
+ok 236 - KMA failures are logged once, listed in status(), and recovery is announced
+  ---
+  duration_ms: 1.3496
+  type: 'test'
+  ...
+# Subtest: a rejected or broken mid-term response is logged with its reason, never prints the service key and recovers
+ok 237 - a rejected or broken mid-term response is logged with its reason, never prints the service key and recovers
+  ---
+  duration_ms: 1.7522
+  type: 'test'
+  ...
+# Subtest: collectWeather warms every national region and weatherStatus feeds the diagnostics page
+ok 238 - collectWeather warms every national region and weatherStatus feeds the diagnostics page
+  ---
+  duration_ms: 17.5335
+  type: 'test'
+  ...
+# Subtest: today's range is flagged as partial in chat, UI and API until a full-day forecast confirms it
+ok 239 - today's range is flagged as partial in chat, UI and API until a full-day forecast confirms it
+  ---
+  duration_ms: 22.2769
+  type: 'test'
+  ...
+# Subtest: today's range is confirmed by an early-morning or afternoon record and stays partial otherwise
+ok 240 - today's range is confirmed by an early-morning or afternoon record and stays partial otherwise
+  ---
+  duration_ms: 128.5609
+  type: 'test'
+  ...
+# Subtest: short-term base times: the newest published base first (10 minutes after the issue), falling back across midnight
+ok 241 - short-term base times: the newest published base first (10 minutes after the issue), falling back across midnight
+  ---
+  duration_ms: 0.5228
+  type: 'test'
+  ...
+# Subtest: short-term API items become the same rows as the RSS: 0시 is the previous day 24시 and daily min/max sit on every row
+ok 242 - short-term API items become the same rows as the RSS: 0시 is the previous day 24시 and daily min/max sit on every row
+  ---
+  duration_ms: 2.1171
+  type: 'test'
+  ...
+# Subtest: when the RSS fails and a key is set, hourly data comes from the short-term API and the RSS is retried after 30 minutes
+ok 243 - when the RSS fails and a key is set, hourly data comes from the short-term API and the RSS is retried after 30 minutes
+  ---
+  duration_ms: 3.6677
+  type: 'test'
+  ...
+# Subtest: after 15시 the RSS has no maximum: today's max comes from the newest base before 14시 and the min from the 02시 base
+ok 244 - after 15시 the RSS has no maximum: today's max comes from the newest base before 14시 and the min from the 02시 base
+  ---
+  duration_ms: 3.1769
+  type: 'test'
+  ...
+# Subtest: a base that is not published yet falls back to the previous one without an error
+ok 245 - a base that is not published yet falls back to the previous one without an error
+  ---
+  duration_ms: 2.3704
+  type: 'test'
+  ...
+# Subtest: a rejected service key is explained with the portal reason and never printed
+ok 246 - a rejected service key is explained with the portal reason and never printed
+  ---
+  duration_ms: 1.0947
+  type: 'test'
+  ...
+# Subtest: with a key, today's min and max are filled from the 02시 base so the day is not partial without an earlier record
+ok 247 - with a key, today's min and max are filled from the 02시 base so the day is not partial without an earlier record
+  ---
+  duration_ms: 27.5507
+  type: 'test'
+  ...
+# Subtest: with a key, the current temperature is the observed 초단기실황 value and the answer says so
+ok 248 - with a key, the current temperature is the observed 초단기실황 value and the answer says so
+  ---
+  duration_ms: 99.9319
+  type: 'test'
+  ...
+# Subtest: weather extras: hourly, umbrella, outfit and sunrise answers fit Spoon 200 characters and need no region
+ok 249 - weather extras: hourly, umbrella, outfit and sunrise answers fit Spoon 200 characters and need no region
+  ---
+  duration_ms: 7.279
+  type: 'test'
+  ...
+# Subtest: weather extras: briefing, several regions at once and the default region
+ok 250 - weather extras: briefing, several regions at once and the default region
+  ---
+  duration_ms: 32.6826
+  type: 'test'
+  ...
+# Subtest: yesterday comparison uses the stored record, then model data for the 17 regions, and the briefing only compares stored KMA values
+ok 251 - yesterday comparison uses the stored record, then model data for the 17 regions, and the briefing only compares stored KMA values
+  ---
+  duration_ms: 5.5603
+  type: 'test'
+  ...
+# Subtest: weather source is validated and Open-Meteo stays the library default
+ok 252 - weather source is validated and Open-Meteo stays the library default
+  ---
+  duration_ms: 0.15
+  type: 'test'
+  ...
+# Subtest: Korean calendar periods use Monday-Sunday across weekends, UTC midnight and year boundaries
+ok 253 - Korean calendar periods use Monday-Sunday across weekends, UTC midnight and year boundaries
+  ---
+  duration_ms: 4.2328
+  type: 'test'
+  ...
+# Subtest: weather aliases and natural phrasing preserve tomorrow, week, region and page
+ok 254 - weather aliases and natural phrasing preserve tomorrow, week, region and page
+  ---
+  duration_ms: 2.9103
+  type: 'test'
+  ...
+# Subtest: daily forecast requests use explicit KST ranges and never convert missing values into zero
+ok 255 - daily forecast requests use explicit KST ranges and never convert missing values into zero
+  ---
+  duration_ms: 3.9807
+  type: 'test'
+  ...
+# Subtest: weekly national summaries and daily regional pages fit Spoon 200 characters and show source
+ok 256 - weekly national summaries and daily regional pages fit Spoon 200 characters and show source
+  ---
+  duration_ms: 39.3597
+  type: 'test'
+  ...
+# Subtest: weather aliases pass the real Engine command gate and remain idempotent
+ok 257 - weather aliases pass the real Engine command gate and remain idempotent
+  ---
+  duration_ms: 8.4009
+  type: 'test'
+  ...
+# Subtest: weather service can use the authenticated edge bridge without transmitting API keys
+ok 258 - weather service can use the authenticated edge bridge without transmitting API keys
+  ---
+  duration_ms: 1.319
+  type: 'test'
+  ...
+# Subtest: weather falls back after proxy and upstream failure and retries the primary later
+ok 259 - weather falls back after proxy and upstream failure and retries the primary later
+  ---
+  duration_ms: 1.6206
+  type: 'test'
+  ...
+# Subtest: areas are split only at top-level commas and parsed into names and sub-areas
+ok 260 - areas are split only at top-level commas and parsed into names and sub-areas
+  ---
+  duration_ms: 2.7159
+  type: 'test'
+  ...
+# Subtest: a region is affected only when its province is listed, cities by name, and excluded areas do not count
+ok 261 - a region is affected only when its province is listed, cities by name, and excluded areas do not count
+  ---
+  duration_ms: 1.0154
+  type: 'test'
+  ...
+# Subtest: replies fit Spoon 200 characters and cover active, preliminary and no warnings
+ok 262 - replies fit Spoon 200 characters and cover active, preliminary and no warnings
+  ---
+  duration_ms: 1.0617
+  type: 'test'
+  ...
+# Subtest: the status request is cached for five minutes and failures explain themselves without the key
+ok 263 - the status request is cached for five minutes and failures explain themselves without the key
+  ---
+  duration_ms: 5.1988
+  type: 'test'
+  ...
+# Subtest: an URL-encoded service key is decoded once so it is not double-encoded
+ok 264 - an URL-encoded service key is decoded once so it is not double-encoded
+  ---
+  duration_ms: 0.6797
+  type: 'test'
+  ...
+# Subtest: briefing shows an active warning first and chat commands answer, need a key and explain a missing approval
+ok 265 - briefing shows an active warning first and chat commands answer, need a key and explain a missing approval
+  ---
+  duration_ms: 7.7681
+  type: 'test'
+  ...
+# Subtest: pause before a video exists and stale iframe checkpoints cannot block logout
+ok 266 - pause before a video exists and stale iframe checkpoints cannot block logout
+  ---
+  duration_ms: 2.6302
+  type: 'test'
+  ...
+# Subtest: timed out player restores its host and can successfully retry without reloading the page
+ok 267 - timed out player restores its host and can successfully retry without reloading the page
+  ---
+  duration_ms: 29.7107
+  type: 'test'
+  ...
+# Subtest: synchronous player creation failure is retryable and never leaves a rejected readiness promise cached
+ok 268 - synchronous player creation failure is retryable and never leaves a rejected readiness promise cached
+  ---
+  duration_ms: 2.3603
+  type: 'test'
+  ...
+# Subtest: new player resumes only a saved matching request and clears checkpoint on completion
+ok 269 - new player resumes only a saved matching request and clears checkpoint on completion
+  ---
+  duration_ms: 2.7295
+  type: 'test'
+  ...
+1..269
+# tests 269
+# suites 0
+# pass 269
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 31345.6444

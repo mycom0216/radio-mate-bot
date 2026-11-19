@@ -38,3 +38,7 @@ deploy/automation*.tmp
 *.previous
 
 deploy/automation.lock
+
+# Document authoring previews and runtime inspection output
+docs/deliverables/20261120/_build/
+docs/deliverables/20261120/*.inspect.ndjson
