@@ -23,6 +23,9 @@ test('diagnostics report where weather comes from and surface KMA failures witho
  assert.equal(down.status,'warn');assert.match(down.title,/받지 못하고/);assert.match(down.detail,/서울·부산·광주/);assert.doesNotMatch(down.detail,/대구/);assert.match(down.detail,/HTTP 503/);
  const mid=check({source:'kma',hourly:view(),mid:view({enabled:true,ok:false,failing:['서울'],lastError:'중기예보 요청이 거절되었습니다(30 SERVICE_KEY_IS_NOT_REGISTERED_ERROR).'}),collectedAt:collected});
  assert.equal(mid.status,'warn');assert.match(mid.title,/중기예보/);assert.match(mid.detail,/거절/);
+ const via=check({source:'kma',hourly:view({ok:false,failing:['서울'],viaApi:['서울'],lastError:'기상청 서버가 응답하지 않습니다(HTTP 503).'}),mid:view({enabled:true}),collectedAt:collected});
+ assert.equal(via.status,'info');assert.match(via.title,/단기예보 API/);assert.match(via.detail,/HTTP 503/);
+ assert.equal(check({source:'kma',hourly:view({ok:false,failing:['서울','부산'],viaApi:['서울'],lastError:'x'}),mid:view({enabled:true}),collectedAt:collected}).status,'warn'); // API가 못 받는 지역이 있으면 경고
  assert.equal(check({source:'openmeteo'}).status,'info');assert.match(check({source:'openmeteo'}).title,/Open-Meteo/);
 });
 test('diagnostics rendering escapes displayed strings and offers a non-mutating refresh',()=>{

@@ -90,8 +90,10 @@ export class Lifestyle {
   if(failed.length)try{model=new Map((await this.openMeteoCurrent()).items.map(item=>[item.region,item]));}catch{}
   const live=new Map(items.map(item=>[item.region,{...item,source:KMA_LABEL}])),merged=locations.map(loc=>live.get(loc.id)||(model.has(loc.id)?{...model.get(loc.id),source:'Open-Meteo'}:null));
   if(merged.some(item=>!item))throw Error('날씨 응답에 누락된 값이 있습니다.');
-  const sources=orderSources(merged.map(item=>item.source));
-  return {source:sources.join('+'),sources,updatedAt:this.now(),note:'기상청 동네예보(1시간 단위)의 현재 시각 예보값이며 실제 관측값이 아닙니다.'+(sources.includes('Open-Meteo')?' 기상청 응답이 없는 지역은 Open-Meteo 모델로 보충했습니다.':''),items:merged};
+  const sources=orderSources(merged.map(item=>item.source)),kmaItems=merged.filter(item=>item.source===KMA_LABEL),seen=kmaItems.filter(item=>item.observed).length,observed=kmaItems.length>0&&seen===kmaItems.length;
+  // 서비스키가 있으면 현재 기온은 기상청 초단기실황(관측값)입니다. 실황을 못 받은 지역은 현재 시각의 동네예보값을 씁니다.
+  const basis=observed?'기상청 초단기실황(관측값)의 현재 기온이며 날씨 상태는 현재 시각의 동네예보를 함께 씁니다.':seen?'일부 지역은 기상청 초단기실황(관측값), 나머지는 현재 시각의 동네예보값입니다.':'기상청 동네예보(1시간 단위)의 현재 시각 예보값이며 실제 관측값이 아닙니다.';
+  return {source:sources.join('+'),sources,observed,updatedAt:this.now(),note:basis+(sources.includes('Open-Meteo')?' 기상청 응답이 없는 지역은 Open-Meteo 모델로 보충했습니다.':''),items:merged};
  }
  async openMeteoCurrent(){return this.cached('weather:'+koreaDate(this.now()),600000,async()=>{
   const url=new URL('https://api.open-meteo.com/v1/forecast');url.search=new URLSearchParams({latitude:regions.map(r=>r[1]).join(','),longitude:regions.map(r=>r[2]).join(','),current:'temperature_2m,weather_code',timezone:'Asia/Seoul',forecast_days:'1'});
@@ -147,7 +149,7 @@ export class Lifestyle {
    }
    const data=await this.weather({region});let items=region?data.items.filter(x=>x.region===region):data.items,heading=region?selection.region+' 날씨':'전국 날씨';
    if(!region){if(selection.page>3)return '전국 날씨: !전국날씨 1 / 2 / 3';items=items.slice((selection.page-1)*6,selection.page*6);heading+=` ${selection.page}/3`;}
-   return `${heading} · ${items[0].time.replace('T',' ')} KST\n${items.map(x=>`${x.region} ${x.temperature}℃ ${x.condition}`).join(' · ')}\n출처 ${data.source} · 대표 지점`;
+   return `${heading} · ${items[0].time.replace('T',' ')} KST\n${items.map(x=>`${x.region} ${x.temperature}℃ ${x.condition}`).join(' · ')}\n출처 ${data.source}${data.observed?' 실황':''} · 대표 지점`;
   }
 
   const meal=/(아침|점심|저녁)/.exec(arg)?.[0]||'',region=arg.replace(/(아침|점심|저녁)/g,'').trim();const result=await this.places({region,kind,meal});if(!result.configured)return '네이버 검색 키 설정이 필요해요. '+result.searchUrl;
