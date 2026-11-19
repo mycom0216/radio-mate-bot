@@ -3,6 +3,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {WeatherDb} from '../weather-db.mjs';
 import {KmaWeather,parseHourlyRss,dailyFromRows,currentFromRows,latestTmFc,parseMid,normalizeKey,vilageBases,ncstBases,parseVilage} from '../weather-kma.mjs';
 import {Lifestyle,regions} from '../lifestyle.mjs';
+import {weatherHelp} from '../weather-extras.mjs';
 import {shiftDate} from '../weather-periods.mjs';
 import {weatherHTML} from '../public/weather-ui.mjs';
 
@@ -37,7 +38,7 @@ function vilageItems(baseDate,baseTime,loc){
   const [date,time]=row.hour===24?[shiftDate(base,row.day+1),'0000']:[shiftDate(base,row.day),String(row.hour).padStart(2,'0')+'00'],d=compact(date);
   add('TMP',d,time,row.temp);add('POP',d,time,row.pop);add('PTY',d,time,row.pty);add('SKY',d,time,row.wf==='맑음'?1:row.wf==='구름 많음'?3:4);
  }
- for(let day=0;day<4;day++){const shift=offset+2*day,d=compact(shiftDate(base,day));if(day>0||baseHour===2)add('TMN',d,'0600',(shift-3).toFixed(1));if(day>0||baseHour<15)add('TMX',d,'1500',(shift+3).toFixed(1));}
+ for(let day=0;day<4;day++){const shift=offset+2*day,d=compact(shiftDate(base,day));if(day>0||baseHour===2)add('TMN',d,'0600',(shift-3).toFixed(1));if(day>0||baseHour<14)add('TMX',d,'1500',(shift+3+(day===0?(baseHour>=8?1:0)+(baseHour>=11?1:0):0)).toFixed(1));} // 오늘 최고는 발표가 거듭될수록 오르고(02·05시 3, 08시 4, 11시 5), 14시 이후 발표분에는 없습니다
  return items;
 }
 function world({fail=[],wrong=[],startHour=10,issued='202611190800',modelFails=false,apiFail=false,noObs=false,obsPty=0,vilageNoData=[]}={}){
@@ -119,7 +120,9 @@ test('mid-term helpers pick the latest 06/18 announcement and merge land and tem
 });
 test('weather DB seeds the 17 regions plus extras, resolves names and keeps manual edits',()=>{
  const db=memoryDb();
- assert.deepEqual(db.national().map(loc=>loc.id),regions.map(region=>region[0]));assert.deepEqual(db.names().slice(17),EXTRAS);
+ assert.deepEqual(db.national().map(loc=>loc.id),regions.map(region=>region[0]));assert.deepEqual(db.names().slice(17,21),EXTRAS);
+ assert.equal(db.names().length,47);for(const name of db.names().slice(17)){const loc=db.get(name);assert.ok(!loc.national&&/^\d{10}$/.test(loc.zone)&&loc.nx>0&&loc.ny>0&&loc.midLand&&loc.midTemp,name);} // 주요 시·군 추가 지역
+ assert.deepEqual(['성남시','서울시','강릉','세종시'].map(text=>db.resolve(text)?.id),['성남','서울','강릉','세종']);
  for(const [text,id] of [['서울특별시','서울'],['광주광역시','광주'],['전남광주통합특별시','광주'],['강원특별자치도','강원'],['세종특별자치시','세종'],['제주시','제주'],['수원','경기'],['여수','여수'],['충청남도','충남']])assert.equal(db.resolve(text)?.id,id,text);
  assert.equal(db.resolve('없는곳'),null);assert.equal(db.resolve('  '),null);
  for(const [name,lat,lon] of regions){const loc=db.get(name);assert.deepEqual([loc.lat,loc.lon],[lat,lon],name);assert.match(loc.zone,/^\d{10}$/);assert.ok(loc.kmaName.length>2);}
@@ -305,10 +308,16 @@ test('when the RSS fails and a key is set, hourly data comes from the short-term
  assert.deepEqual(w.vilage().map(url=>url.searchParams.get('base_time')),['0800','0200']); // 최근 발표분 + 오늘 최저를 위한 02시 발표분
  assert.deepEqual([kma.status().hourly.ok,kma.status().hourly.failing,kma.status().hourly.viaApi],[false,['서울'],['서울']]);
  assert.equal(logs.length,1);assert.match(logs[0],/동네예보 요청 실패\(서울\): .*HTTP 503.*단기예보 API로 대체/);assert.ok(!logs.join('\n').includes('k-123'));
- const today=dailyFromRows(data.rows).get('2026-11-19');assert.deepEqual([today.min,today.max,today.exactMin],[-3,3,true]);
+ const today=dailyFromRows(data.rows).get('2026-11-19');assert.deepEqual([today.min,today.max,today.exactMin],[-3,4,true]); // 최저는 02시 발표분, 최고는 08시 발표분(02시 발표분은 3)
  time+=31*60000;await kma.hourly(seoul);assert.equal(w.hosts('www.weather.go.kr').length,2);assert.equal(logs.length,1); // 30분 뒤 RSS를 다시 시도, 같은 장애는 다시 쓰지 않음
  fail.length=0;time+=31*60000;await kma.hourly(seoul);
  assert.equal(w.hosts('www.weather.go.kr').length,3);assert.deepEqual([kma.status().hourly.ok,kma.status().hourly.viaApi],[true,[]]);assert.match(logs.at(-1),/다시 정상/);
+});
+test("after 15시 the RSS has no maximum: today's max comes from the newest base before 14시 and the min from the 02시 base",async()=>{
+ const seoul=probe.get('서울'),w=world({startHour:16,issued:'202611191400'}),time=Date.parse('2026-11-19T15:30:00+09:00');
+ const kma=new KmaWeather({db:memoryDb(),fetcher:w.fetcher,now:()=>time,key:'k-123'}),data=await kma.hourly(seoul),today=dailyFromRows(data.rows).get('2026-11-19');
+ assert.deepEqual([today.min,today.max,today.exactMin,today.exactMax],[-3,5,true,true]); // 02시 발표분 최저 -3, 11시 발표분 최고 5(02시 발표분은 3)
+ assert.deepEqual(w.vilage().map(url=>url.searchParams.get('base_time')),['0200','1400','1100']); // 최저용 02시, 최고용은 14시(오늘 최고 없음)를 건너뛰고 11시
 });
 test('a base that is not published yet falls back to the previous one without an error',async()=>{
  const seoul=probe.get('서울'),w=world({fail:[seoul.zone],vilageNoData:['202611190800']}),kma=new KmaWeather({db:memoryDb(),fetcher:w.fetcher,now:()=>NOW,key:'k-123'}),data=await kma.hourly(seoul);
@@ -327,12 +336,42 @@ test("with a key, today's min and max are filled from the 02시 base so the day 
 });
 test('with a key, the current temperature is the observed 초단기실황 value and the answer says so',async()=>{
  const w=world(),service=lifestyle(w,{kmaKey:'k-123'}),seoul=await service.answer({kind:'날씨',arg:'서울'});
- assert.match(seoul,/서울 날씨 · 2026-11-19 10:00 KST/);assert.match(seoul,/서울 4\.3℃ 구름많음/);assert.match(seoul,/출처 기상청 실황 · 대표 지점/);
+ assert.match(seoul,/서울 날씨 · 2026-11-19 10:00 KST/);assert.match(seoul,/서울 4\.3℃\(체감 2\.4℃\) 구름많음 · 습도 40% · 바람 2\.1m\/s/);assert.match(seoul,/출처 기상청 실황 · 대표 지점/);
  const national=await service.answer({kind:'전국날씨',arg:''});assert.ok(national.length<=200,national);assert.match(national,/출처 기상청 실황 · 대표 지점/);
  const page=await service.weather();assert.equal(page.observed,true);assert.ok(page.items.every(item=>item.observed));assert.match(page.note,/초단기실황\(관측값\)/);assert.equal(w.vilage().filter(url=>url.pathname.endsWith('getUltraSrtNcst')).length,17);
  const rainy=await lifestyle(world({obsPty:1}),{kmaKey:'k-123'}).weather();assert.ok(rainy.items.every(item=>item.condition==='비'));
  const none=await lifestyle(world({noObs:true}),{kmaKey:'k-123'}).answer({kind:'날씨',arg:'서울'});assert.match(none,/서울 3℃ 구름많음/);assert.match(none,/출처 기상청 · 대표 지점/);
  const denied=await lifestyle(world({apiFail:true}),{kmaKey:'secret-key-777'}).answer({kind:'날씨',arg:'서울'});assert.match(denied,/서울 3℃/);assert.doesNotMatch(denied,/secret-key-777/);
+});
+test('weather extras: hourly, umbrella, outfit and sunrise answers fit Spoon 200 characters and need no region',async()=>{
+ const w=world(),service=lifestyle(w,{kmaKey:'k-123'});
+ const hourly=await service.answer({kind:'날씨',arg:'서울 시간별'});assert.ok(hourly.length<=200,hourly);assert.match(hourly,/^서울 시간별 예보 · 11-19\n11시 /);assert.match(hourly,/\n내일 0\d시 .*\n기상청 · KST$/);
+ const umbrella=await service.answer({kind:'날씨',arg:'서울 우산'});assert.ok(umbrella.length<=200,umbrella);
+ assert.match(umbrella,/^서울 우산 · 오늘 우산은 필요 없어요 \(남은 시간 강수확률 최대 0%\)\n내일 비 10~15시 \(강수확률 최대 60%\)\n이후 비·눈: 11-25\(수\) · 11-26\(목\)\n기상청 · KST$/); // 다음 주 수·목은 중기예보 강수확률 65·75%
+ const outfit=await service.answer({kind:'날씨',arg:'서울 옷차림'});assert.ok(outfit.length<=200,outfit);
+ assert.equal(outfit,'서울 옷차림 · 지금 4.3℃(체감 2.4℃)\n패딩·두꺼운 코트·목도리·기모 제품 추천 · 오늘 -3~3℃\n기상청 · KST');
+ assert.match(await service.answer({kind:'날씨',arg:'서울 일출'}),/^서울 오늘 일출 07:1\d · 일몰 17:[12]\d/);assert.match(await service.answer({kind:'날씨',arg:'제주 내일 일몰'}),/^제주 내일 일출 07:\d\d · 일몰 17:\d\d/);
+ assert.equal(await service.answer({kind:'날씨',arg:'도움말'}),weatherHelp);assert.match(await service.answer({kind:'날씨',arg:'우산'}),/^서울 우산/);assert.match(await service.answer({kind:'날씨',arg:'없는곳 우산'}),/^지원 지역: /);
+ assert.match(await lifestyle(world()).answer({kind:'날씨',arg:'서울 옷차림'}),/^서울 옷차림 · 지금 3℃\n/); // 서비스키가 없으면 체감온도 없이 예보값으로 안내
+ const legacy=new Lifestyle({now:()=>NOW});assert.match(await legacy.answer({kind:'날씨',arg:'서울 일출'}),/^서울 오늘 일출/);assert.match(await legacy.answer({kind:'날씨',arg:'서울 우산'}),/기상청 자료로 날씨를 받을 때만/);
+});
+test('weather extras: briefing, several regions at once and the default region',async()=>{
+ const w=world(),service=lifestyle(w,{kmaKey:'k-123',defaultRegion:'부산'});
+ const briefing=await service.answer({kind:'날씨',arg:'서울 브리핑'});assert.ok(briefing.length<=200,briefing);
+ assert.match(briefing,/^서울 오늘 브리핑 · 11-19\(목\)\n지금 4\.3℃\(체감 2\.4℃\) 구름많음 · 최저 -3 · 최고 3℃\n우산은 필요 없어요 · 일출 07:1\d · 일몰 17:[12]\d\n패딩·두꺼운 코트·목도리·기모 제품 추천\n기상청 · KST$/);
+ assert.match(await service.answer({kind:'날씨',arg:'브리핑'}),/^부산 오늘 브리핑/);assert.match(await service.answer({kind:'날씨',arg:'우산'}),/^부산 우산/); // 지역을 빼면 기본 지역
+ const several=await service.answer({kind:'날씨',arg:'서울 부산 제주'});assert.ok(several.length<=200,several);
+ assert.match(several,/^서울·부산·제주 날씨 · 2026-11-19 10:00 KST\n서울 4\.3℃ 구름많음 · 부산 [\d.]+℃ 구름많음 · 제주 [\d.]+℃ 구름많음\n출처 기상청 실황 · 대표 지점$/);
+ assert.match(await service.answer({kind:'날씨',arg:'서울 없는곳'}),/^지원 지역: /);assert.match(await lifestyle(world(),{kmaKey:'k-123',defaultRegion:'없는곳'}).answer({kind:'날씨',arg:'브리핑'}),/^서울 오늘 브리핑/); // 잘못된 기본 지역은 서울로
+});
+test('yesterday comparison uses the stored record, then model data for the 17 regions, and the briefing only compares stored KMA values',async()=>{
+ const db=memoryDb(),w=world(),service=lifestyle(w,{weatherDb:db,kmaKey:'k-123'});
+ const model=await service.answer({kind:'날씨',arg:'서울 어제'});assert.match(model,/^서울 어제 -2\.5~15\.7℃ \(모델 자료\)\n오늘 -3~3℃ · 최고는 어제보다 12\.7℃ 낮아요, 최저는 .*℃ 낮아요\n기상청 · KST$/);
+ assert.doesNotMatch(await service.answer({kind:'날씨',arg:'서울 브리핑'}),/어제/); // 기록이 없으면 브리핑에는 어제 비교를 넣지 않음
+ assert.match(await service.answer({kind:'날씨',arg:'목포 어제'}),/기록이 아직 없어요/); // 추가 지역은 모델 대체 없음
+ db.saveDaily('서울',new Map([['2026-11-18',storedDay('2026-11-18',{min:-3,max:6})]]),NOW-86400000);
+ assert.equal(await service.answer({kind:'날씨',arg:'서울 어제'}),'서울 어제 -3~6℃ (저장된 예보값)\n오늘 -3~3℃ · 최고는 어제보다 3℃ 낮아요, 최저는 같아요\n기상청 · KST');
+ const briefing=await service.answer({kind:'날씨',arg:'서울 브리핑'});assert.ok(briefing.length<=200,briefing);assert.match(briefing,/최저 -3 · 최고 3℃ \(어제보다 3℃ 낮음\)/);
 });
 test('weather source is validated and Open-Meteo stays the library default',()=>{
  assert.throws(()=>new Lifestyle({weatherSource:'naver'}),/WEATHER_SOURCE/);

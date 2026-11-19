@@ -2,6 +2,7 @@
 // 네이버에는 날씨 공식 API가 없고(NAVER API HUB: 검색·검색어트렌드·쇼핑인사이트만 제공), 기상청 공식 자료를 사용합니다.
 // 외부 요청은 SQLite 트랜잭션 밖에서만 실행하며 DB에는 파싱된 값만 저장합니다.
 import {shiftDate} from './weather-periods.mjs';
+import {feelsLike} from './weather-extras.mjs';
 export const KMA_LABEL='기상청';
 export const KMA_HOURLY_URL='https://www.weather.go.kr/w/rss/dfs/hr1-forecast.do';
 const HOURLY_TTL=30*60000,STALE_MAX=12*3600000,MID_TTL=60*60000,MID_RETRY=10*60000,CURRENT_MAX_AGE=6*3600000;
@@ -143,7 +144,7 @@ export class KmaWeather{
   return this.once('hourly:'+loc.id,value=>value.stale?60000:HOURLY_TTL,async()=>{
    const snap=this.db.snapshot('kma-hourly',loc.id);let saved=null;
    try{const data=snap&&JSON.parse(snap.payload);if(data?.name===loc.kmaName&&Array.isArray(data.rows)&&data.rows.length)saved=data;}catch{}
-   if(saved&&this.now()-snap.fetched<HOURLY_TTL)return saved;
+   if(saved&&this.now()-snap.fetched<HOURLY_TTL){await this.fillToday(loc,saved);return saved;} // 재시작 직후의 저장본에도 오늘 최저·최고를 보충
    // 서비스키가 있으면 RSS가 실패했을 때 단기예보 API로 대신 받고(RSS는 30분 동안 쉼), 없으면 예전처럼 RSS만 사용합니다.
    const paused=!!this.key&&this.rssPausedUntil.get(loc.id)>this.now();
    let data=null,failure=null,viaApi=false;
@@ -184,14 +185,18 @@ export class KmaWeather{
   }
   throw Error('기상청 단기예보 자료를 받지 못했습니다.');
  }
- // RSS와 최근 발표분에는 오늘 최저(06시)·최고(15시)가 빠져 있을 수 있어, 오늘 02시 발표분의 값으로 채웁니다(서비스키가 있을 때만, 실패해도 무시).
+ // RSS와 최근 발표분에는 오늘 최저(06시)·최고(15시)가 빠져 있을 수 있어, 02시 발표분(최저)과 15시 전 가장 최근 발표분(최고)으로 채웁니다(서비스키가 있을 때만, 실패해도 무시).
  async fillToday(loc,data){
   if(!this.key||!loc.nx||!loc.ny)return;
   const today=new Date(this.now()+9*3600000).toISOString().slice(0,10),compact=today.replaceAll('-',''),rows=data.rows.filter(row=>row.date===today);
   const needMin=rows.length>0&&!rows.some(row=>known(row.tmn)),needMax=rows.length>0&&!rows.some(row=>known(row.tmx));
   if(!needMin&&!needMax||data.issued===compact+'0200')return;
   try{
-   const early=await this.vilageForecast(loc,compact,'0200'),tmn=early?.rows.find(row=>row.date===today&&known(row.tmn))?.tmn,tmx=early?.rows.find(row=>row.date===today&&known(row.tmx))?.tmx;
+   // 오늘 최저(06시)는 02시 발표분에만 있고, 최고(15시)는 15시 전 발표분 중 가장 최근 것(14시 이후 발표분에는 없음)이 가장 정확합니다.
+   const early=needMin?await this.vilageForecast(loc,compact,'0200'):null,tmn=early?.rows.find(row=>row.date===today&&known(row.tmn))?.tmn;let tmx;
+   if(needMax)for(const base of vilageBases(this.now(),8).filter(item=>item.date===compact)){
+    const forecast=await this.vilageForecast(loc,base.date,base.time);tmx=forecast?.rows.find(row=>row.date===today&&known(row.tmx))?.tmx;if(tmx!==undefined)break;
+   }
    for(const row of rows){if(needMin&&tmn!==undefined)row.tmn=tmn;if(needMax&&tmx!==undefined)row.tmx=tmx;}
   }catch{}
  }
@@ -231,7 +236,7 @@ export class KmaWeather{
      if(!items?.length)continue;
      const values=new Map(items.map(item=>[item.category,number(item.obsrValue)])),temperature=values.get('T1H')??null;
      if(!known(temperature))continue;
-     return {temperature,rain:OBS_PTY_WORD[values.get('PTY')]||'',time:`${dashed(base.date)}T${base.time.slice(0,2)}:00`};
+     return {temperature,rain:OBS_PTY_WORD[values.get('PTY')]||'',humidity:values.get('REH')??null,wind:values.get('WSD')??null,time:`${dashed(base.date)}T${base.time.slice(0,2)}:00`};
     }
     return null;
    }catch{this.obsRetryAt.set(loc.id,this.now()+OBS_RETRY);return null;}
@@ -264,7 +269,7 @@ export class KmaWeather{
    try{
     const hourly=await this.hourly(loc),item={region:loc.id,...currentFromRows(hourly.rows,this.now())},obs=await this.observe(loc);
     // 서비스키가 있으면 현재 기온은 초단기실황(관측값)으로 바꾸고, 날씨 상태는 실황의 강수 형태 → 동네예보의 하늘 상태 순으로 씁니다.
-    if(obs)Object.assign(item,{temperature:obs.temperature,time:obs.time,condition:obs.rain||skyOnly(item.condition),observed:true});
+    if(obs)Object.assign(item,{temperature:obs.temperature,time:obs.time,condition:obs.rain||skyOnly(item.condition),observed:true,humidity:obs.humidity,wind:obs.wind,feels:feelsLike(obs.temperature,obs.wind)});
     items.push(item);
    }catch{failed.push(loc.id);}
   });

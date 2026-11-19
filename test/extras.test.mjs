@@ -88,6 +88,16 @@ test('keyword replies normalize text, enforce cooldown and quiet mode, and prese
   assert.equal(f.say('!안내 더보기').text,null);assert.equal(f.say('!안내').text,'설정한 안내입니다');
   assert.match(f.say('!도움말').text,/내정보/);f.store.transaction('a',r=>r.settings.quiet=true);assert.equal(f.say('!안내').text,null);f.store.db.close();
 });
+test('weather placeholders in periodic chat are replaced at send time and skipped when the lookup fails',async()=>{
+  const f=fixture(),spoon=new Spoon(f.store,f.engine,{}),messages=[],requests=[];let fail=false;
+  f.engine.lifestyle={answer:async(request,context)=>{requests.push([request,context]);if(fail)throw Error('조회 실패');return '서울 오늘 브리핑';}};
+  f.store.transaction('a',r=>{r.live=true;r.settings.introEnabled=false;Object.assign(r.settings,{autoChatEnabled:true,autoChatMinutes:1,autoChatMessages:['좋은 아침 {브리핑 서울}','{날씨 부산}','일반 안내']});});
+  spoon.send=async(room,text)=>{messages.push(text);return true;};await spoon.tick();
+  const due=()=>f.store.transaction('a',r=>{r.autoChat.dueAt=Date.now()-1;r.lastResponse=0;});
+  due();await spoon.tick();assert.deepEqual(messages,['좋은 아침 서울 오늘 브리핑']);assert.deepEqual(requests[0],[{kind:'날씨',arg:'서울 브리핑'},{strict:true}]);
+  fail=true;due();await spoon.tick();assert.equal(messages.length,1);assert.equal(f.store.load('a').autoChat.index,2); // {날씨 부산} 조회가 실패하면 보내지 않고 다음 순서로
+  due();await spoon.tick();assert.equal(messages.at(-1),'일반 안내');assert.deepEqual(requests.at(-1)[0],{kind:'날씨',arg:'부산'});f.store.db.close();
+});
 test('periodic chat schedules sequential/random messages and retries without advancing on failure',async()=>{
   const f=fixture(),spoon=new Spoon(f.store,f.engine,{});let success=false,messages=[];
   f.store.transaction('a',r=>{r.live=true;r.settings.introEnabled=false;Object.assign(r.settings,{autoChatEnabled:true,autoChatMinutes:1,autoChatMessages:['첫 안내','둘째 안내']});});

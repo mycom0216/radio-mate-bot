@@ -2,6 +2,7 @@ import {setAutomation} from './automation.mjs';
 import {Outbox} from './outbox.mjs';
 import {expireQuizRounds,autoQuizCandidate,autoQuizDelivered} from './quiz.mjs';
 import {autoChatCandidate} from './extras.mjs';
+import {expandWeatherTokens,hasWeatherTokens} from './weather-extras.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 const REGIONS={kr:'https://kr-openapi.spooncast.net',jp:'https://jp-openapi.spooncast.net'};
 export function spoonRegion(env={}){const region=String(env.SPOON_REGION||'kr').toLowerCase();if(!REGIONS[region])throw Error('SPOON_REGION은 kr 또는 jp여야 합니다.');return region;}
@@ -132,7 +133,7 @@ export class Spoon {
       });
       const current=this.store.load(id);if(current?.live&&!current.settings.quiet)await this.outbox.flush(id,text=>this.sendDetailed(id,text));
       if(quiz){let result;try{result=await this.sendDetailed(id,quiz.text);}catch{result={kind:'ambiguous'};}this.store.transaction(id,r=>autoQuizDelivered(this.engine,r,quiz,result.kind,Date.now()));}
-      if(notice){const sent=await this.send(id,notice);if(announcement&&sent)this.store.transaction(id,r=>{const current=r.settings.announcements.find(a=>a.id===announcement.id);if(current?.enabled&&current.text===announcement.text&&current.minutes===announcement.minutes){this.timers.set(announcement.key,Date.now());r.lastResponse=Date.now();this.store.log(id,'system','announcement',{id:announcement.id});}});if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
+      if(notice){const text=hasWeatherTokens(notice)?await expandWeatherTokens(notice,request=>this.engine.lifestyle?.answer(request,{strict:true})):notice,sent=text?await this.send(id,text):true;/* 날씨 문구가 전부 비면 보내지 않고 다음 순서로 넘어갑니다 */if(announcement&&sent)this.store.transaction(id,r=>{const current=r.settings.announcements.find(a=>a.id===announcement.id);if(current?.enabled&&current.text===announcement.text&&current.minutes===announcement.minutes){this.timers.set(announcement.key,Date.now());r.lastResponse=Date.now();this.store.log(id,'system','announcement',{id:announcement.id});}});if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
     }}finally{this.ticking=false;}
   }
 }

@@ -11,6 +11,9 @@ export function weatherRange(period,now=Date.now()){
 }
 export function parseWeatherQuery(arg='',now=Date.now()){
  let text=String(arg).trim().replace(/이번\s*주/g,'이번주').replace(/다음\s*주/g,'다음주');
+ // 부가 기능 낱말(시간별·우산·옷차림·일출·도움말)은 지역명이 아니라 동작 선택입니다. 먼저 떼어 내 mode로 돌려줍니다.
+ const modeMatch=/(?:^|\s)(시간별|시간대별|우산|옷차림|일출|일몰|브리핑|어제|초미세먼지|미세먼지|먼지|기상특보|특보|도움말|도움)(?=\s|$)/.exec(text),mode=modeMatch?{시간별:'hourly',시간대별:'hourly',우산:'umbrella',옷차림:'outfit',일출:'sun',일몰:'sun',브리핑:'briefing',어제:'yesterday',초미세먼지:'dust',미세먼지:'dust',먼지:'dust',기상특보:'alert',특보:'alert',도움말:'help',도움:'help'}[modeMatch[1]]:null;
+ if(modeMatch)text=(text.slice(0,modeMatch.index)+' '+text.slice(modeMatch.index+modeMatch[0].length)).trim();
  // Explicit tomorrow wins even in phrases such as '이번주 전국 내일 날씨'.
  let period=text.includes('내일')?'tomorrow':text.includes('다음주')?'nextWeek':text.includes('이번주')?'thisWeek':'current';
  const weekday=/([월화수목금토일])요일/.exec(text)?.[1],dateToken=/\b\d{4}-\d{2}-\d{2}\b/.exec(text)?.[0];
@@ -20,7 +23,7 @@ export function parseWeatherQuery(arg='',now=Date.now()){
  const range=weatherRange(period,now);let date=period==='tomorrow'?range.start:dateToken||(weekday?shiftDate(range.start,'월화수목금토일'.indexOf(weekday)):null);
  if(date&&!range.dates.includes(date))throw Error(`선택한 날짜는 ${range.start}~${range.end} 범위에 있어야 합니다.`);
  const region=text.replace(/이번주|다음주|내일|오늘|현재|전국\s*날씨|전국|날씨|[월화수목금토일]요일|\b\d{4}-\d{2}-\d{2}\b/g,' ').trim().replace(/\s+/g,' ');
- return {...range,page,date,region};
+ return {...range,page,date,region,mode};
 }
 const temperature=n=>Number(n.toFixed(1));
 export function forecastReply(data,selection){
