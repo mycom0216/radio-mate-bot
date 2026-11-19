@@ -1,0 +1,522 @@
+{
+  "date": "2026-11-19",
+  "codeBaseline": "7d9fe1b",
+  "pdfPages": {
+    "04_기능순서도.pdf": 16,
+    "PDF/01_요구사항분석서.pdf": 14,
+    "PDF/02_요구사항명세서.pdf": 21,
+    "PDF/03_데이터정의서.pdf": 11,
+    "PDF/05_프로젝트포트폴리오.pdf": 11
+  },
+  "docx": {
+    "01_요구사항분석서.docx": {
+      "paragraphs": 311,
+      "tables": 12,
+      "images": 6
+    },
+    "02_요구사항명세서.docx": {
+      "paragraphs": 728,
+      "tables": 22,
+      "images": 1
+    },
+    "03_데이터정의서.docx": {
+      "paragraphs": 434,
+      "tables": 17,
+      "images": 3
+    },
+    "05_프로젝트포트폴리오.docx": {
+      "paragraphs": 125,
+      "tables": 5,
+      "images": 6
+    }
+  },
+  "pptx": {
+    "06_라디오메이트_발표자료.pptx": {
+      "slides": 26,
+      "slidesWithNotes": 26,
+      "media": 21
+    }
+  },
+  "files": {
+    "00_자료안내.md": {
+      "bytes": 3615,
+      "sha256": "5bfd39b4b92da0f910a929f981402a56ec0e658c20c719364ed7f8b2d8317176"
+    },
+    "01_요구사항분석서.docx": {
+      "bytes": 2081375,
+      "sha256": "92b5eae4d80d10a05c5d954ddad065f2592f5033f3bb839eb15a53e9e4422405"
+    },
+    "02_요구사항명세서.docx": {
+      "bytes": 285132,
+      "sha256": "ba0fab8b68325b2d26e1f269983f7925a1854818a6857062f4cbdfddad006bf9"
+    },
+    "03_데이터정의서.docx": {
+      "bytes": 517849,
+      "sha256": "f62879b362ec33d66606ce89878affb5591fb75c386ff65ce678cea1bcf0b629"
+    },
+    "04_기능순서도.pdf": {
+      "bytes": 2548515,
+      "sha256": "eb91100386937cb8ca07de7a7c0e3773de54c419ab3d2ae82b1a3e09b52a9be4"
+    },
+    "05_프로젝트포트폴리오.docx": {
+      "bytes": 2481550,
+      "sha256": "b4edb0eb1b7fab9f1fd667a59e5020dd9e380aaf06b67b1851a14686dfa0a29a"
+    },
+    "06_라디오메이트_발표자료.pptx": {
+      "bytes": 6658988,
+      "sha256": "1c88bccba966dae734d78a3ec104d5a2391c8be67aa008e0d9f617ffceb33ab1"
+    },
+    "ERD/ERD_JSON논리구조.png": {
+      "bytes": 163420,
+      "sha256": "d2579f9a38ee1bda767f699b877e7f99b88facf48aa4ca81e337eb01d522e897"
+    },
+    "ERD/ERD_JSON논리구조.svg": {
+      "bytes": 4751,
+      "sha256": "58ff829b69f9a140e81fa7c1d975fbaa269951a299ab10e783747a665434117a"
+    },
+    "ERD/ERD_날씨4테이블.png": {
+      "bytes": 85801,
+      "sha256": "1ee0b4b241378c750c4ff2219cdc562b61a51525f73292683fb68dd66e681751"
+    },
+    "ERD/ERD_날씨4테이블.svg": {
+      "bytes": 45965,
+      "sha256": "73a18ed42e3837d98be9a8767c121ac3e803ab3cbe0cc40646619222daa10e11"
+    },
+    "ERD/ERD_물리구조_13테이블.png": {
+      "bytes": 309717,
+      "sha256": "969dc089da11b5385841ce09b5ebcfbf271f6e470bef9516a23271c3a7b51e3e"
+    },
+    "ERD/ERD_물리구조_13테이블.svg": {
+      "bytes": 98952,
+      "sha256": "254b164ed1753699c41e0ff5cf508325afc6555b1f9988b5f3e8275fca1d5155"
+    },
+    "ERD/mmd/ERD_날씨4테이블.mmd": {
+      "bytes": 629,
+      "sha256": "997f2bc3c54adc5035162e1de26c572f2a196f09f0500d37ede3302cf016dde7"
+    },
+    "ERD/mmd/ERD_물리구조_13테이블.mmd": {
+      "bytes": 1650,
+      "sha256": "92210996795cb8c8bc1f9fb4786bbabeda005c718cae53e4b763ba1727088ae2"
+    },
+    "PDF/01_요구사항분석서.pdf": {
+      "bytes": 1945116,
+      "sha256": "f362f20674289817ee7be3c21891af28b116eb912f784450e3c7dd78277b241a"
+    },
+    "PDF/02_요구사항명세서.pdf": {
+      "bytes": 645964,
+      "sha256": "7988f5d8684081f67660e03bd0c62e895821ebbaf72b6263a27994547995a68a"
+    },
+    "PDF/03_데이터정의서.pdf": {
+      "bytes": 788857,
+      "sha256": "9347b7bc2ce1b86bba23e78ccb07bd142ac50c580ef6b08aa13a09d48ea63d52"
+    },
+    "PDF/05_프로젝트포트폴리오.pdf": {
+      "bytes": 2213045,
+      "sha256": "bbabd07251e9790ebd9ae168790b68beb516c9b037a3f0639a6290df377eb145"
+    },
+    "README.md": {
+      "bytes": 1513,
+      "sha256": "a922f48cd14a0cc6df4f3617bf340c2ca7f0c631ab85ce1d7db6c649d716ad57"
+    },
+    "순서도/01_전체_방송_이벤트_처리.png": {
+      "bytes": 199682,
+      "sha256": "d575e8aabd38cdca877326c64df7dabb423111788c7e1a755dafe46ed7c7b8ed"
+    },
+    "순서도/01_전체_방송_이벤트_처리.svg": {
+      "bytes": 6382,
+      "sha256": "a38e248c7e287fa0fbf8b9d7a891308e11a0ebd4c9c20688256db2b80ffd2a48"
+    },
+    "순서도/02_신청곡_접수와_재생.png": {
+      "bytes": 223896,
+      "sha256": "a4f8d44ae69fb129ff3b698625c8ca540cda8b281b07ac1d4017a0ada6512e27"
+    },
+    "순서도/02_신청곡_접수와_재생.svg": {
+      "bytes": 7357,
+      "sha256": "09ec86e79f32a502bca65542bd24aa88aed181c0fe3bdeaa9e4613ed69d0454e"
+    },
+    "순서도/03_킵_사용___취소___월말_만료.png": {
+      "bytes": 218367,
+      "sha256": "e13770b470490525d154e9054f693efe5bc458ec59ca6e14bfa0efed3d6f48c9"
+    },
+    "순서도/03_킵_사용___취소___월말_만료.svg": {
+      "bytes": 7337,
+      "sha256": "b61211b71c0b05d5c6426df3323da45d8f92ce1513c794fad9010e75491ac109"
+    },
+    "순서도/04_아이템_구매와_사용.png": {
+      "bytes": 204375,
+      "sha256": "0dfc8fabb39f99b73f3ee2fae9c47b0937bcff48baf96b8e649869d063836d7c"
+    },
+    "순서도/04_아이템_구매와_사용.svg": {
+      "bytes": 6627,
+      "sha256": "e131d6731d20861bed6455baa133bf95b426fc2ba331b116afcb5c84c19671ee"
+    },
+    "순서도/05_청취_보상과_애청지수.png": {
+      "bytes": 244110,
+      "sha256": "450ae4af76648d1b7cbd59675213f75f690a65306411017badb2ea163f70f135"
+    },
+    "순서도/05_청취_보상과_애청지수.svg": {
+      "bytes": 7955,
+      "sha256": "9aa37302061325fc568dba269a5d288a7bbad7669ff8ba3017fbe6c77c298c21"
+    },
+    "순서도/06_자동_퀴즈_출제와_보상.png": {
+      "bytes": 214482,
+      "sha256": "f613d64d768b244a908d6d3f51a3a73fc4bd7a9bdc82f233f532c41ddbd6ee01"
+    },
+    "순서도/06_자동_퀴즈_출제와_보상.svg": {
+      "bytes": 6952,
+      "sha256": "e7e2155dcbc0193e30c96f91438b4acf844a9ae12d8fe2e7f27ee977a519acc7"
+    },
+    "순서도/07_보이스카드_접수와_DJ_확인.png": {
+      "bytes": 212102,
+      "sha256": "95d1e2094ea16c79e194b993a34b794af985a102a239daed9864c9b73f75ccdc"
+    },
+    "순서도/07_보이스카드_접수와_DJ_확인.svg": {
+      "bytes": 6755,
+      "sha256": "0efcc04388e2f390fdd6149d33596ae3ef4d7cbd07efb376a938f68dc0f79c83"
+    },
+    "순서도/08_Android_외부_로그인과_세션_교환.png": {
+      "bytes": 207237,
+      "sha256": "51a88c98b6404d2253397e5a837899681254eebb084eb47699728bd012c457a4"
+    },
+    "순서도/08_Android_외부_로그인과_세션_교환.svg": {
+      "bytes": 6075,
+      "sha256": "26815a472a480d34964f38143751de1503967ba53220e2020be41a5adca29243"
+    },
+    "순서도/09_Android_빌드와_직접_배포.png": {
+      "bytes": 202775,
+      "sha256": "1e1681658192c67d531026b13505f37441f5c10912611eddf359b56aff126ab8"
+    },
+    "순서도/09_Android_빌드와_직접_배포.svg": {
+      "bytes": 6365,
+      "sha256": "8632f8538184058da49b5e4c376ef42701cb534fe952d48923ebc935df56f284"
+    },
+    "순서도/10_날씨_명령_처리.png": {
+      "bytes": 153233,
+      "sha256": "d823959f51acfb031770a48123fba4f242d977d4d5d87f4b7af5ffda475a40f8"
+    },
+    "순서도/10_날씨_명령_처리.svg": {
+      "bytes": 25898,
+      "sha256": "39605b394da1cab71a3e2ae6cb5818490efcd3f9bc791e8082bdb6f94a754e8c"
+    },
+    "순서도/11_날씨_자료_수집과_대체_경로.png": {
+      "bytes": 188913,
+      "sha256": "63885b5c84fa4522eaecc9d7e7930d5c249b22a9d9031ecfd76b41dbb0f4f098"
+    },
+    "순서도/11_날씨_자료_수집과_대체_경로.svg": {
+      "bytes": 31902,
+      "sha256": "4adec52a57716ed0ce80001f06629cdf4b35a0ec16ed35d51bc4603fe1380890"
+    },
+    "순서도/12_미세먼지와_기상특보_조회.png": {
+      "bytes": 141431,
+      "sha256": "19d838d2f14ef14003ebd999c02add6940dda5b1644ed5420d74e80f94f90363"
+    },
+    "순서도/12_미세먼지와_기상특보_조회.svg": {
+      "bytes": 25626,
+      "sha256": "f756f5b312db3f034c6fc3d60026d2a99b190b707e4a0c3156af285ce5bba567"
+    },
+    "순서도/13_방송_자동_날씨_안내.png": {
+      "bytes": 107736,
+      "sha256": "f46c6daf246321a51a036b7341e337cc8bb9cae7e6ce6c64e011ded86d053ed1"
+    },
+    "순서도/13_방송_자동_날씨_안내.svg": {
+      "bytes": 20196,
+      "sha256": "1a3f56523b26079c4a3acfbc002275486b83e0f936874dd7c2c45c8540275904"
+    },
+    "순서도/14_상시_운영_자동_복구.png": {
+      "bytes": 118019,
+      "sha256": "7782fe227362fb3f17d9e3d0374aa6bb236776b01093b8a35ddc9e6f1c6c46c6"
+    },
+    "순서도/14_상시_운영_자동_복구.svg": {
+      "bytes": 23823,
+      "sha256": "86135f9fde4877651a779475661b3fe0bce1c66ff54e8c245cc01c5635c5b9d0"
+    },
+    "순서도/15_AI_대화와_채팅방.png": {
+      "bytes": 119478,
+      "sha256": "855927395e86f05d8131e760e7ceb32449c123719020c172930a8be5c8434b33"
+    },
+    "순서도/15_AI_대화와_채팅방.svg": {
+      "bytes": 22146,
+      "sha256": "7aba2960481ceb95e0cdc4b836259ccbbadefe91de703b363563fe7ba7948b5c"
+    },
+    "순서도/mmd/10_날씨_명령_처리.mmd": {
+      "bytes": 692,
+      "sha256": "62c90c570d77b35e2a3bc8ae23be0b5f2421348e0fff499793bc12affea8c60e"
+    },
+    "순서도/mmd/11_날씨_자료_수집과_대체_경로.mmd": {
+      "bytes": 769,
+      "sha256": "408f8a622d59ca37fa59f9699b7b8cf86124fad4a5556d030971a885432364c2"
+    },
+    "순서도/mmd/12_미세먼지와_기상특보_조회.mmd": {
+      "bytes": 685,
+      "sha256": "fd08e14d0388ff267b7f19745d844dbfe1e1ad39656a33e355a23ae5d68ea650"
+    },
+    "순서도/mmd/13_방송_자동_날씨_안내.mmd": {
+      "bytes": 521,
+      "sha256": "ecc901e1ac7ad68fd10082e03de5a952a8f37c2d65564cf6cbd20b83100d92a7"
+    },
+    "순서도/mmd/14_상시_운영_자동_복구.mmd": {
+      "bytes": 672,
+      "sha256": "831d68b604cfb83807ff73e67cc03b353f6cb24ac03bb8dede947e8c22b86cf4"
+    },
+    "순서도/mmd/15_AI_대화와_채팅방.mmd": {
+      "bytes": 641,
+      "sha256": "b29cf01ae342341f87998288b8e20d653cb577533e73b502d2317f18925939ef"
+    },
+    "요구분석_그림/mmd/브레인스토밍_마인드맵.mmd": {
+      "bytes": 469,
+      "sha256": "fb0461a33b280eff7f6cc85ea69b1960de7c28d7d56f29064e6e29440cbbf55c"
+    },
+    "요구분석_그림/mmd/시스템_구성도.mmd": {
+      "bytes": 462,
+      "sha256": "20437d648f87aaaaa9f1059bb80d3f55c1b81ffeec92474a3b43a7c7d3a2d339"
+    },
+    "요구분석_그림/브레인스토밍_마인드맵.png": {
+      "bytes": 29166,
+      "sha256": "40b889f913d281674500ff0ce0075a192ea66c1b3271752fbf99a42acdc7b9e2"
+    },
+    "요구분석_그림/브레인스토밍_마인드맵.svg": {
+      "bytes": 31249,
+      "sha256": "c83f114001a40d8c6c4ac7441e7b0f90782f8d63c6376a988a82f94b143866a7"
+    },
+    "요구분석_그림/시스템_구성도.png": {
+      "bytes": 123127,
+      "sha256": "65b5f681c9894378520158e2c461c8ebced2224b8575424cc10c70079e899bbb"
+    },
+    "요구분석_그림/시스템_구성도.svg": {
+      "bytes": 21127,
+      "sha256": "6e997b9b04706e5136cc93de0e301e6f08062e1b5fc0c41ca899d3ed0d8177ef"
+    },
+    "포트폴리오_그림/mmd/시스템_구조도.mmd": {
+      "bytes": 513,
+      "sha256": "df89832ae71141f0ac8fa65d04fc3652ad240d3652187ce3023ec14d8ac369b0"
+    },
+    "포트폴리오_그림/시스템_구조도.png": {
+      "bytes": 124797,
+      "sha256": "3b1ea1436af7af73b52f7f38cfaa18af7ce59316896d2f8af4d7b988839e7602"
+    },
+    "포트폴리오_그림/시스템_구조도.svg": {
+      "bytes": 21341,
+      "sha256": "17ca86274c921c6979da4abed7d3ee5b5373b8ad6c85226f6b63204a6a73c4a7"
+    },
+    "화면캡처/D01_시작화면.png": {
+      "bytes": 620556,
+      "sha256": "fa47da1dae5e048846cd7afd61928a98f2a432471a0ae713a5655fe3bf24ef01"
+    },
+    "화면캡처/D01_시작화면_본문.png": {
+      "bytes": 585859,
+      "sha256": "56afddf2f65c35bc509752fc7bf92722e3edb2d774d32e031b4901d2bb76ebc2"
+    },
+    "화면캡처/D02_방송대시보드.png": {
+      "bytes": 888057,
+      "sha256": "b448972292cefe9bb5df76d541a14e4cfbaf12e0c82a41678290720c7a2a13f3"
+    },
+    "화면캡처/D02_방송대시보드_본문.png": {
+      "bytes": 663423,
+      "sha256": "474023bd2e9e6965cafaf193a4f4cafbf190cf07b4f8511c857e6ea4aaf21842"
+    },
+    "화면캡처/D03_게임설정.png": {
+      "bytes": 1063592,
+      "sha256": "fe0cbb951ae37fcc9ae2b3d16d3783fe1c657f2d379f9d51d126aa913af3c832"
+    },
+    "화면캡처/D03_게임설정_본문.png": {
+      "bytes": 406144,
+      "sha256": "224e49095c76a88cc456c1f8719c2f52e5351f9e72ee094dd75f928510782d95"
+    },
+    "화면캡처/D04_아이템상점.png": {
+      "bytes": 478238,
+      "sha256": "a3ed9546d268f599e47b1c0013e4f402bb94b86bba8cbf411717a7c66adc6479"
+    },
+    "화면캡처/D04_아이템상점_본문.png": {
+      "bytes": 400811,
+      "sha256": "6d940423f0ef42cba5bd7709a31dac4ef08a0a3f6bedbcb436a7a37e62a74ead"
+    },
+    "화면캡처/D05_신청곡관리.png": {
+      "bytes": 632431,
+      "sha256": "7a895dc7a6bd510041cc2b5f14495a2f6aa874fffb91359d94950a3a450fe138"
+    },
+    "화면캡처/D05_신청곡관리_본문.png": {
+      "bytes": 433052,
+      "sha256": "4c07650261bac37819884980569367c58079cc45859e93130669011ba3f51f7a"
+    },
+    "화면캡처/D06_청취자팬랭킹.png": {
+      "bytes": 812413,
+      "sha256": "5d9cb973f54b47a108f3bd74f63a86888d4b1c3d1d89f629dce6be76d88a32d8"
+    },
+    "화면캡처/D06_청취자팬랭킹_본문.png": {
+      "bytes": 383971,
+      "sha256": "3eb4c1e12e5c2383fa5d177ff1ff7a5d0c880dbb5ebf5dd0b920ecac8ea9c4d5"
+    },
+    "화면캡처/D07_공지자동안내.png": {
+      "bytes": 765484,
+      "sha256": "bfc862e7f64800259006e89b1bfe1a58b43d952ed7658aedb3c8fc2bea0c770d"
+    },
+    "화면캡처/D07_공지자동안내_본문.png": {
+      "bytes": 399245,
+      "sha256": "ba6478f38c5155ffac987482bbe19ef8edf1145d4ff5d72995fa4b3bea30bfd6"
+    },
+    "화면캡처/D08_기록보상관리.png": {
+      "bytes": 728444,
+      "sha256": "bc21fd89ef43e01909684fae4d049841a75e8d941e85e69dabfa5aac83c17acf"
+    },
+    "화면캡처/D08_기록보상관리_본문.png": {
+      "bytes": 411434,
+      "sha256": "e4e846db30e6b8dd959e9ca52d87aa3bf701dd93d37ae276bb42595f168bc60b"
+    },
+    "화면캡처/D09_자동채팅.png": {
+      "bytes": 554285,
+      "sha256": "e862d95a7bbded2cccd290837b1dd9bc205187ca271e10c649910b8e55926e63"
+    },
+    "화면캡처/D09_자동채팅_본문.png": {
+      "bytes": 426412,
+      "sha256": "12891b389e9c9c12947905e4d851918e8cbda96202966599a51e2c5068b1324a"
+    },
+    "화면캡처/D10_음성메시지.png": {
+      "bytes": 356304,
+      "sha256": "c103936f947350d81c6c7406e66393751a76e03b440f0541bd4e46184491f52f"
+    },
+    "화면캡처/D10_음성메시지_본문.png": {
+      "bytes": 419872,
+      "sha256": "cdff23e25fe9bf9609f86319021ee9caaf4ba6f29478c7700b694370d5814cd5"
+    },
+    "화면캡처/D11_운영백업.png": {
+      "bytes": 956112,
+      "sha256": "8111c80ce1219c3e8a3d7cfcaac7c4ff6fb56919b9e6d1e5cd45ab5e620852fd"
+    },
+    "화면캡처/D11_운영백업_본문.png": {
+      "bytes": 338509,
+      "sha256": "8b0367240bdc54c31bdf9a6d99652567ddd403dbddcd65f5b1cb6b34dffecae3"
+    },
+    "화면캡처/D12_AI와대화.png": {
+      "bytes": 511064,
+      "sha256": "7755b9555fb2d7eedf3bcd5249a422e5a851a70668906528079b5df8f29451aa"
+    },
+    "화면캡처/D12_AI와대화_본문.png": {
+      "bytes": 404832,
+      "sha256": "196ca1f682db8dc45cc2985d1e686e7d0fd19eec997acc8bf8bea49d0397456d"
+    },
+    "화면캡처/D13_방송채팅방.png": {
+      "bytes": 497574,
+      "sha256": "425be7f2cd70385a6273185d59c32728420a52eb1459fe834558cf3a0cafdf6b"
+    },
+    "화면캡처/D13_방송채팅방_본문.png": {
+      "bytes": 378418,
+      "sha256": "e8e71133c6d9855a92e8d6d8e8a2ff30159dab850c1cbe653f12b268b8db9f1f"
+    },
+    "화면캡처/D14_날씨맛집카페.png": {
+      "bytes": 844427,
+      "sha256": "3d50ee89586104eea597162e3354e9d87512fb3453f80d4ae7d95e25b6200169"
+    },
+    "화면캡처/D14_날씨맛집카페_본문.png": {
+      "bytes": 416402,
+      "sha256": "7292c8ff4cd3fe38da49e47468cf1c3f9e30a7118536022a59c204a90d889d49"
+    },
+    "화면캡처/D15_날씨주간표.png": {
+      "bytes": 841035,
+      "sha256": "dbd9b2d41e53123e96f15e609554a9fcae4c920969059953ace17654f7aaf13d"
+    },
+    "화면캡처/D15_날씨주간표_본문.png": {
+      "bytes": 373219,
+      "sha256": "6cf2603dd2dd2faa4dbbc8973eb55c49b91fe9499b8e853db722c560d962e116"
+    },
+    "화면캡처/D16_명령어테스트.png": {
+      "bytes": 973310,
+      "sha256": "005ac9199a72a5e8d05630570da74bb98560622892ad347481fe1104d02dabb3"
+    },
+    "화면캡처/D16_명령어테스트_본문.png": {
+      "bytes": 263981,
+      "sha256": "416bbf78872f33fc96e41b0d31e375df001625a4437b8a51174fcf060a39004f"
+    },
+    "화면캡처/D17_명령어안내.png": {
+      "bytes": 1038556,
+      "sha256": "788318c319d5f2f3b69d51632ef96f7d2c412d852cbeff6fa1ec0579f567e532"
+    },
+    "화면캡처/D17_명령어안내_본문.png": {
+      "bytes": 394360,
+      "sha256": "1d6485dfb1b6a3b1f58407781b6bfad77e21f11dfa1b651c1dedadfaf8d4547d"
+    },
+    "화면캡처/D18_음성접수페이지.png": {
+      "bytes": 221763,
+      "sha256": "24dd1dcccf254983ac36becf0ce282548621ea83557906ab2f932543b8cb0508"
+    },
+    "화면캡처/D19_청취자화면.png": {
+      "bytes": 297139,
+      "sha256": "5cc0e908a1328c9e167e95ab209c901e6d8e5aad30693ce545fc071de60bcf73"
+    },
+    "화면캡처/D19_청취자화면_본문.png": {
+      "bytes": 271216,
+      "sha256": "2bab483ed57f0bc63c816e727c9b9eb81d05afc3f0f9eefb119002e2e46821e6"
+    },
+    "화면캡처/D20_안드로이드설치안내.png": {
+      "bytes": 66734,
+      "sha256": "a5acf70be5850aa7f89b346168689b03d7134213eb956863add5dd4b7067cfbe"
+    },
+    "화면캡처/D20_안드로이드설치안내_본문.png": {
+      "bytes": 66734,
+      "sha256": "a5acf70be5850aa7f89b346168689b03d7134213eb956863add5dd4b7067cfbe"
+    },
+    "화면캡처/D21_개인정보처리방침.png": {
+      "bytes": 146781,
+      "sha256": "35c64c752c5232dc1a16e93990c5c3ca4756a85eda93f6e7cae392f79416959c"
+    },
+    "화면캡처/D22_오프라인화면.png": {
+      "bytes": 35399,
+      "sha256": "9b9e8203a9aef0287b42c79696e9b3bc6ebd9c5727f1def1be91926a91375fc0"
+    },
+    "화면캡처/M01_시작화면.png": {
+      "bytes": 974132,
+      "sha256": "532fcd7223a916a55630166c89f9f16d12c254b16d15ec296c2395e92fb8ee56"
+    },
+    "화면캡처/M01_시작화면_본문.png": {
+      "bytes": 561512,
+      "sha256": "2e6554a7f88791b7e7150347897c1f332232dbea52d05853bf285077795a9a85"
+    },
+    "화면캡처/M02_방송대시보드.png": {
+      "bytes": 1684488,
+      "sha256": "fb533a721cb076a08d01059570c33f7556f9e8f230c4d00ea1e3d86a92f15ed1"
+    },
+    "화면캡처/M02_방송대시보드_본문.png": {
+      "bytes": 595542,
+      "sha256": "dd06ad79b00aba42b3384c7ec780f80f8ed408c7d73c99f26347453fa844ef64"
+    },
+    "화면캡처/M05_신청곡관리.png": {
+      "bytes": 1127121,
+      "sha256": "c48247b9f772202466393414169dbea0161ff9131089c23c5d6e0bb92deedeaa"
+    },
+    "화면캡처/M05_신청곡관리_본문.png": {
+      "bytes": 463973,
+      "sha256": "507b6c6b40ee7dcedc2b51fbd84bc2ab586c1cfab8f16bf11999e8a7b97e3eb3"
+    },
+    "화면캡처/M14_날씨맛집카페.png": {
+      "bytes": 1542232,
+      "sha256": "c20e25a941fb1bc58f5626f1e8307caf539353b2689a5fa77003511f11063aed"
+    },
+    "화면캡처/M14_날씨맛집카페_본문.png": {
+      "bytes": 481050,
+      "sha256": "6f1657e9ca7bd7d3c93d1c01ca6ebe15a8afde3acfbfeb7b707f9ddb2e057d49"
+    },
+    "화면캡처/M16_명령어테스트.png": {
+      "bytes": 1434379,
+      "sha256": "ba00d51ab0265a858612bf173a4f3a05e6cba645f265687c22c5559159f3c3c3"
+    },
+    "화면캡처/M16_명령어테스트_본문.png": {
+      "bytes": 316202,
+      "sha256": "d2b55773b4774d9b1848004e9d598cd505913c437c6f8491eecf3b816794eea4"
+    },
+    "화면캡처/M18_음성접수페이지.png": {
+      "bytes": 336340,
+      "sha256": "39d90d24a9b5cac260c079d3d2fac9a8ca312d71d825e8d263b27f38fa8eecbc"
+    },
+    "화면캡처/_capture-log.txt": {
+      "bytes": 675,
+      "sha256": "28dee4e961bcf296b8edd1f5b25d67223cf08fc150afedc3a6f811dd93344716"
+    }
+  },
+  "requirements": {
+    "functional": 47,
+    "nonfunctional": 12
+  },
+  "screenshots": 52,
+  "flowcharts": 15,
+  "problems": [],
+  "warnings": []
+}

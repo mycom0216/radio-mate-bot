@@ -1,0 +1,31 @@
+erDiagram
+ weather_location{TEXT id PK
+ TEXT zone "행정구역 코드"
+ TEXT kma_name
+ INTEGER nx
+ INTEGER ny
+ REAL lat
+ REAL lon
+ TEXT mid_land
+ TEXT mid_temp
+ INTEGER national
+ INTEGER enabled
+ INTEGER managed}
+ weather_alias{TEXT alias PK
+ TEXT location FK}
+ weather_daily{TEXT location PK,FK
+ TEXT date PK
+ REAL min
+ REAL max
+ INTEGER rain
+ TEXT condition
+ INTEGER hours
+ TEXT source
+ INTEGER updated}
+ weather_snapshot{TEXT product PK
+ TEXT key PK
+ TEXT issued
+ INTEGER fetched
+ TEXT payload "응답 원문"}
+ weather_location ||--o{ weather_alias : "별칭"
+ weather_location ||--o{ weather_daily : "일별 기록(400일)"
