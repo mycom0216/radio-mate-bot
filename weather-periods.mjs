@@ -28,12 +28,15 @@ export function forecastReply(data,selection){
  const rain=n=>Number.isFinite(n)?n+'%':'강수 미제공';
  const describe=d=>d?.available?`${temperature(d.min)}~${temperature(d.max)}℃ ${d.condition} ${rain(d.rainChance)}`:'예보 미제공';
  const weekly=['thisWeek','nextWeek'].includes(period);
+ // 날짜별 출처(day.source)가 섞이면 모델 보충일에 *를 붙입니다. 출처가 없는 기존(Open-Meteo 전용) 자료는 예전 출력과 같습니다.
+ const all=items.flatMap(item=>item.days),used=[...new Set(all.filter(d=>d?.available).map(d=>d.source||'Open-Meteo'))].sort((a,b)=>(a==='기상청'?0:1)-(b==='기상청'?0:1)),mixed=used.length>1,mark=d=>mixed&&d?.available&&d.source==='Open-Meteo'?'*':'';
  let lines,scope;
- if(region){lines=items[0].days.filter(d=>!date||d.date===date).map(d=>`${d.date.slice(5)} ${describe(d)}`);scope=items[0].region+' 대표지점 · 최저~최고';}
- else if(!weekly||date){lines=items.map(item=>`${item.region} ${describe(item.days.find(d=>d.date===(date||data.start)))}`);scope=(date||data.start)+' · 지역별 최저~최고';}
+ if(region){lines=items[0].days.filter(d=>!date||d.date===date).map(d=>`${d.date.slice(5)} ${describe(d)}${mark(d)}`);scope=items[0].region+' 대표지점 · 최저~최고';}
+ else if(!weekly||date){lines=items.map(item=>`${item.region} ${describe(item.days.find(d=>d.date===(date||data.start)))}${mark(item.days.find(d=>d.date===(date||data.start)))}`);scope=(date||data.start)+' · 지역별 최저~최고';}
  else {scope='17지역 전체 기온범위·최대강수확률';lines=data.dates.map(day=>{const days=items.map(item=>item.days.find(d=>d.date===day)).filter(d=>d?.available);if(!days.length)return day.slice(5)+' 예보 미제공';const chances=days.map(d=>d.rainChance).filter(Number.isFinite);return `${day.slice(5)} ${temperature(Math.min(...days.map(d=>d.min)))}~${temperature(Math.max(...days.map(d=>d.max)))}℃ ${rain(chances.length?Math.max(...chances):null)}${days.length<items.length?' ('+days.length+'/17지역)':''}`;});}
  const title=`${data.label} ${data.start}~${data.end}`,command=`!${region?'날씨 '+region:'전국날씨'} ${data.label}${date&&weekly?' '+date:''}`;
- const prefix=title+'\n'+scope+'\n',suffix='\nOpen-Meteo · KST'+(data.dates.some(d=>d<data.today)?' · 과거=모델자료':'')+'\n';
+ const label=(used.length?used:[data.source||'Open-Meteo']).join('+')+(mixed?'(*)':''),past=all.filter(d=>d?.available&&d.past),pastNote=data.dates.some(d=>d<data.today)?(!past.length||past.some(d=>(d.source||'Open-Meteo')==='Open-Meteo')?' · 과거=모델자료':' · 과거=저장예보'):'';
+ const prefix=title+'\n'+scope+'\n',suffix='\n'+label+' · KST'+pastNote+'\n';
  const budget=200-prefix.length-suffix.length-command.length-12,pages=[];let batch=[];
  for(const line of lines){if(batch.length&&[...batch,line].join('\n').length>budget){pages.push(batch);batch=[];}batch.push(line);}if(batch.length)pages.push(batch);
  if(page>pages.length)return `날씨는 1~${pages.length}페이지입니다. ${command} 1`;

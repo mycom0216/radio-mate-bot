@@ -1,6 +1,7 @@
 import {setAutomation} from './automation.mjs';
 import {AIChat} from './ai-chat.mjs';
 import {Lifestyle} from './lifestyle.mjs';
+import {WeatherDb} from './weather-db.mjs';
 import {RoomChat} from './chat-room.mjs';
 import {applySongAction} from './song-queue.mjs';
 import {AndroidAuth} from './android-auth.mjs';
@@ -49,8 +50,11 @@ const voice=new VoiceInbox(store.db,join(DATA,'voice'));
 const publicDemo=env.PUBLIC_DEMO==='1'||env.PUBLIC_DEMO==='true';
 const sandbox=publicDemo?new PublicSandbox(join(DATA,'preview-voice'),{region:spoonRegion(env)}):null;
 const ai=new AIChat({key:env.OPENAI_API_KEY,model:env.OPENAI_MODEL||'gpt-4.1-mini'});
-const lifestyle=new Lifestyle({clientId:env.NAVER_CLIENT_ID,clientSecret:env.NAVER_CLIENT_SECRET,provider:env.NAVER_SEARCH_PROVIDER||'hub',weatherProxyURL:env.WEATHER_PROXY_URL||'',weatherProxyKey:env.WEATHER_PROXY_URL&&existsSync(join(ROOT,'deploy','gateway-router.key'))?readFileSync(join(ROOT,'deploy','gateway-router.key'),'utf8').trim():''});
+const weatherSource=env.WEATHER_SOURCE||'kma';
+const lifestyle=new Lifestyle({clientId:env.NAVER_CLIENT_ID,clientSecret:env.NAVER_CLIENT_SECRET,provider:env.NAVER_SEARCH_PROVIDER||'hub',weatherSource,weatherDb:weatherSource==='kma'?new WeatherDb(store.db):null,kmaKey:env.KMA_SERVICE_KEY||'',kmaBase:env.KMA_API_BASE||'',kmaKeyParam:env.KMA_API_KEY_PARAM||'',weatherProxyURL:env.WEATHER_PROXY_URL||'',weatherProxyKey:env.WEATHER_PROXY_URL&&existsSync(join(ROOT,'deploy','gateway-router.key'))?readFileSync(join(ROOT,'deploy','gateway-router.key'),'utf8').trim():''});
 lifestyle.ai=ai;engine.lifestyle=lifestyle;if(sandbox)sandbox.services.engine.lifestyle=lifestyle;
+// 기상청 동네예보를 1시간마다 수집해 DB에 스냅샷·일별 기록을 쌓습니다(질문이 없어도 새벽 발표분의 오늘 최저기온을 놓치지 않기 위함).
+if(weatherSource==='kma'){const collect=()=>lifestyle.collectWeather().catch(()=>{});setTimeout(collect,15000).unref();setInterval(collect,3600000).unref();}
 const chats=new WeakMap();function chatFor(store){if(!chats.has(store))chats.set(store,new RoomChat(store));return chats.get(store);}
 const liveServices={store,engine,spoon,voice};
 const youtubeSearch=new YouTubeSearch({key:env.YOUTUBE_API_KEY||''});engine.searchSong=title=>youtubeSearch.find(title);engine.publicUrl=env.PUBLIC_URL;if(sandbox){sandbox.services.engine.searchSong=engine.searchSong;sandbox.services.engine.publicUrl=env.PUBLIC_URL;}
