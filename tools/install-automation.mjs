@@ -1,5 +1,5 @@
-import {execFileSync} from 'node:child_process';import {dirname,join,resolve} from 'node:path';import {fileURLToPath} from 'node:url';import {readFileSync,writeFileSync} from 'node:fs';
-const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),runtime=join(root,'tools','managed-runtime.mjs'),configFile=join(root,'deploy','automation.json'),remove=process.argv.includes('remove');
+import {execFileSync} from 'node:child_process';import {dirname,join,resolve} from 'node:path';import {fileURLToPath} from 'node:url';import {readFileSync,writeFileSync} from 'node:fs';import {prepareState} from './runtime-policy.mjs';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),runtime=join(root,'tools','managed-runtime.mjs'),configFile=join(prepareState(root),'automation.json'),remove=process.argv.includes('remove');
 if(process.platform!=='win32')throw Error('Windows 전용 설치 도구입니다.');
 const config=JSON.parse(readFileSync(configFile,'utf8'));config.enabled=!remove;writeFileSync(configFile,JSON.stringify(config,null,2),{mode:0o600});
 const quote=value=>"'"+String(value).replaceAll("'","''")+"'";

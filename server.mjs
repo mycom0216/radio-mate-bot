@@ -23,7 +23,7 @@ import { createServer } from 'node:http';
 import { randomBytes,randomUUID,createHash,timingSafeEqual } from 'node:crypto';
 import { mkdirSync,readFileSync,existsSync,writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname,join } from 'node:path';
+import { dirname,join,resolve } from 'node:path';
 import { Store,Engine,defaults,validateSettings,dates,LIMIT } from './core.mjs';
 import { Spoon,spoonRegion } from './spoon.mjs';
 import {buildDiagnostics} from './diagnostics.mjs';
@@ -33,7 +33,7 @@ const production=env.NODE_ENV==='production';env.PUBLIC_URL=publicOrigin(env.PUB
 const trustProxy=env.TRUST_PROXY==='1'||env.TRUST_PROXY==='true';
 function clientIp(req){if(trustProxy){const f=String(req.headers['x-forwarded-for']||'').split(',').pop().trim();if(f)return f;}return req.socket.remoteAddress||'';}
 if(production&&(!env.PUBLIC_URL.startsWith('https://')||!/^[a-fA-F0-9]{64}$/.test(env.TOKEN_KEY||'')))throw Error('운영 환경에는 PUBLIC_URL HTTPS와 TOKEN_KEY가 필요합니다.');
-const DATA=env.DATA_DIR||join(ROOT,'data');
+const DATA=env.DATA_DIR||join(ROOT,'data'),STATE_DIR=env.RADIOMATE_STATE_DIR?resolve(ROOT,env.RADIOMATE_STATE_DIR):join(ROOT,'deploy'); // 자동 운영 관리자가 상태 파일을 두는 폴더(tools/runtime-policy.mjs의 stateDir와 같은 규칙)
 mkdirSync(DATA,{recursive:true});
 if(!env.TOKEN_KEY){const p=join(DATA,'local-key');if(!existsSync(p))writeFileSync(p,randomBytes(32).toString('hex'),{mode:0o600});env.TOKEN_KEY=readFileSync(p,'utf8').trim();}
 const lockFile=join(DATA,'server.lock');
@@ -78,7 +78,7 @@ function requireSession(req){const s=session(req);if(!s)throw Object.assign(Erro
 function checkSettingsRevision(room,expected){
   if(!Number.isSafeInteger(expected)||expected!==(room.settingsRevision||0))throw Object.assign(Error('다른 탭이나 채팅에서 설정이 변경되었습니다. 입력 내용을 확인하고 새로고침한 뒤 다시 수정해 주세요.'),{status:409});
 }
-function automationRuntime(){try{const data=JSON.parse(readFileSync(join(ROOT,'deploy','automation-status.json'),'utf8'));return {enabled:data.enabled===true,localHealthy:data.localHealthy===true,tunnelHealthy:data.tunnelHealthy===true,gatewayHealthy:data.gatewayHealthy===true,checkedAt:Number(data.checkedAt)||0,lastError:data.lastError?'복구 또는 연결 확인 중':null};}catch{return {enabled:false};}}
+function automationRuntime(){try{const data=JSON.parse(readFileSync(join(STATE_DIR,'automation-status.json'),'utf8'));return {enabled:data.enabled===true,localHealthy:data.localHealthy===true,tunnelHealthy:data.tunnelHealthy===true,gatewayHealthy:data.gatewayHealthy===true,checkedAt:Number(data.checkedAt)||0,lastError:data.lastError?'복구 또는 연결 확인 중':null};}catch{return {enabled:false};}}
 function safeRoom(room){const {store,spoon}=servicesFor(room);const r=store.load(room);return {...r,systemAutomation:isDemo(room)?{enabled:false}:automationRuntime(),id:isDemo(room)?'demo':r.id,connection:isDemo(room)?'테스트 모드 · 실제 방송 미연결':spoon.status.get(room)||'미연결',logs:store.logs(room),outbox:spoon.outbox.list(room),backups:store.db.prepare('SELECT id,time FROM backups WHERE room=? ORDER BY time DESC LIMIT 20').all(room)};}
 const server=createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
