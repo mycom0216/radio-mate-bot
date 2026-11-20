@@ -14,14 +14,20 @@ const questions=[
 ].map(([id,answer,category,meaning])=>({id,question:'초성을 보고 단어를 맞혀보세요.',answers:[answer],category,meaning}));
 export const defaultQuizQuestions=()=>structuredClone(questions);
 const normalize=text=>String(text).normalize('NFKC').replace(/\s+/gu,'').toLocaleLowerCase('ko-KR');
-// 명령어(!정답) 없이 입력한 말이 지금 풀 수 있는 문제의 정답과 같을 때만 그 정답(저장된 표기)을 돌려줍니다.
-// 틀린 말이나 일반 대화는 null이라 아무 반응도 하지 않습니다(자동 퀴즈 중 모든 채팅에 "오답"이 달리지 않게).
-// "정답 간호사"·"정답은 간호사"·"간호사요"·"간호사입니다!"처럼 말끝만 다른 대답도 같은 답으로 봅니다. 풀고 있는 문제는 개인 문제가 먼저, 없으면 모두 함께 푸는 자동 퀴즈입니다.
-export function plainQuizAnswer(r,u,message,now){
-  if(!r?.settings?.quiz||r.settings.quiet||typeof message!=='string')return null;
+// 지금 풀 수 있는 문제: 개인 문제가 먼저, 없으면 모두 함께 푸는 자동 퀴즈입니다. 퀴즈가 꺼져 있거나 조용 모드이거나 시간이 지났으면 null입니다.
+export function activeQuizRound(r,u,now){
+  if(!r?.settings?.quiz||r.settings.quiet)return null;
   const round=u?.quizRound||r.autoQuizRound;
-  if(!round||now>=round.expiresAt)return null;
-  const raw=message.normalize('NFC').trim();
+  return round&&now<round.expiresAt?round:null;
+}
+// 명령어(!정답) 없이 입력한 말이 지금 풀 수 있는 문제의 정답과 같을 때만 그 정답(저장된 표기)을 돌려줍니다.
+// "간호사"처럼 그냥 입력해도, "!간호사"처럼 느낌표만 붙여도 됩니다(진짜 명령어와 겹치는지는 호출하는 쪽이 가립니다).
+// 틀린 말이나 일반 대화는 null이라 아무 반응도 하지 않습니다(자동 퀴즈 중 모든 채팅에 "오답"이 달리지 않게).
+// "정답 간호사"·"정답은 간호사"·"간호사요"·"간호사입니다!"처럼 말끝만 다른 대답도 같은 답으로 봅니다.
+export function plainQuizAnswer(r,u,message,now){
+  const round=activeQuizRound(r,u,now);
+  if(!round||typeof message!=='string')return null;
+  const raw=message.normalize('NFC').trim().replace(/^[!！]\s*/u,'');
   const bare=raw.replace(/^["'“‘(\[]+|["'”’)\]]+$/gu,'').replace(/^(?:정답은|정답이|정답:|정답|답은|답이|답:|답)\s*/u,'').replace(/[\s?？!！.~〜…,，♡♥ㅋㅎㅠㅜ]+$/u,'');
   const plain=bare.replace(/(?:이?에요|입니다|이요|이야|이다|예요|요|야)$/u,'');
   const typed=[raw,bare,plain].map(normalize).filter(Boolean);
@@ -51,7 +57,7 @@ function finishAutoQuiz(engine,room,now){
 }
 function roundText(round,label='모두 함께 자동 퀴즈!'){
  const prefix=`${label} 초성: ${clip(quizHint(round.answers[0]),30)} (힌트: ${clip(round.category||'단어',20)})\n`;
- const suffix=`\n답만 입력하세요 · ${round.minutes||30}분 제한 · 선착순 1명 EXP 또는 복권!`;
+ const suffix=`\n정답만 입력하세요(! 붙여도 돼요) · ${round.minutes||30}분 제한 · 선착순 1명 EXP 또는 복권!`;
  return prefix+clip(round.question,Math.max(0,200-[...prefix+suffix].length))+suffix;
 }
 // Prepare before sending, activate only after Spoon confirms delivery.
@@ -96,14 +102,14 @@ export function expireQuizRounds(engine,room,now){
 export function playQuiz(engine,r,u,cmd,arg,now,fail){
   if(!['퀴즈','정답'].includes(cmd))return null;
   if(!r.settings.quiz)fail('퀴즈가 꺼져 있습니다. !게임 on으로 켜거나 게임 설정에서 활성화하세요.');
-  if(cmd==='퀴즈'&&arg&&arg!=='포기')fail('사용법: !퀴즈 → 답만 입력 / !퀴즈 포기');
-  if(cmd==='퀴즈'&&r.autoQuizPending&&!u.quizRound)return '자동 퀴즈를 전송 중입니다. 문제가 나오면 답만 입력해 참여하세요.';
+  if(cmd==='퀴즈'&&arg&&arg!=='포기')fail('사용법: !퀴즈 → 정답만 입력 / !포기');
+  if(cmd==='퀴즈'&&r.autoQuizPending&&!u.quizRound)return '자동 퀴즈를 전송 중입니다. 문제가 나오면 정답만 입력해 참여하세요.';
   const shared=r.autoQuizRound;
   let round=u.quizRound||shared;
   if(shared&&!u.quizRound&&now>=shared.expiresAt){
     return finishAutoQuiz(engine,r,now).text;
   }
-  if(shared&&!u.quizRound&&cmd==='퀴즈')return arg==='포기'?'함께 푸는 자동 퀴즈입니다. 답만 입력해 참여하세요. 중지는 DJ가 !자동퀴즈 off를 입력하세요.':roundText(shared);
+  if(shared&&!u.quizRound&&cmd==='퀴즈')return arg==='포기'?'함께 푸는 자동 퀴즈입니다. 정답만 입력해 참여하세요. 중지는 DJ가 !자동퀴즈 off를 입력하세요.':roundText(shared);
   if(round&&now>=round.expiresAt){delete u.quizRound;return clip(`${u.name}님 퀴즈 시간이 지났습니다. 정답: ${round.answers[0]}\n뜻: ${meaning(round)}\n!퀴즈로 새 문제를 받아주세요.`);}
   if(cmd==='퀴즈'&&arg==='포기'){
     if(!round)fail('진행 중인 문제가 없습니다. !퀴즈로 문제를 받아 주세요.');
@@ -120,12 +126,12 @@ export function playQuiz(engine,r,u,cmd,arg,now,fail){
       round=u.quizRound={...selected,key:randomUUID(),reward:r.settings.quizExp,ticketReward:r.settings.quizTickets||1,expChance:r.settings.quizExpChance??50,expiresAt:now+Math.min(30,r.settings.quizMinutes||30)*60000};
     }
     const prefix=`${clip(u.name,12)}님 퀴즈! 초성: ${clip(quizHint(round.answers[0]),30)} (힌트: ${clip(round.category||'단어',20)})\n`;
-    const suffix=`\n답만 입력하세요 · ${Math.ceil((round.expiresAt-now)/60000)}분 · EXP ${round.expChance??100}% / 복권 ${100-(round.expChance??100)}% · !퀴즈 포기`;
+    const suffix=`\n정답만 입력하세요(! 붙여도 돼요) · ${Math.ceil((round.expiresAt-now)/60000)}분 · EXP ${round.expChance??100}% / 복권 ${100-(round.expChance??100)}% · !포기`;
     return prefix+clip(round.question,Math.max(0,200-[...prefix+suffix].length))+suffix;
   }
-  if(!arg.trim())fail('사용법: !정답 답안 (먼저 !퀴즈로 문제를 받아 주세요.)');
+  if(!arg.trim())fail('사용법: 정답만 입력하세요(! 붙여도 돼요). 먼저 !퀴즈로 문제를 받아 주세요.');
   if(!round)fail('진행 중인 문제가 없거나 시간이 지났습니다. !퀴즈로 새 문제를 받아 주세요.');
-  if(!round.answers.some(answer=>normalize(answer)===normalize(arg)))return `${u.name}님, 아쉬워요! 정답: ${quizHint(round.answers[0])} (초성) · 답만 입력하세요 / !퀴즈 포기`;
+  if(!round.answers.some(answer=>normalize(answer)===normalize(arg)))return `${u.name}님, 아쉬워요! 정답: ${quizHint(round.answers[0])} (초성) · 정답만 입력하세요 / !포기`;
   const expReward=engine.int(1,100)<=(round.expChance??100),reward=expReward?round.reward:0,tickets=expReward?0:(round.ticketReward||1);
   const next=u.exp+reward;
   if(!Number.isSafeInteger(next))fail('경험치가 처리 가능한 범위를 초과해 지급하지 않았습니다.');

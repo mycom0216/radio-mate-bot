@@ -12,7 +12,7 @@ import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
 import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
-import {playQuiz,plainQuizAnswer} from './quiz.mjs';
+import {playQuiz,plainQuizAnswer,activeQuizRound} from './quiz.mjs';
 import {extraDefaults,normalizeExtras,validateExtras,keywordReply,keywordMatches,playMiniGame} from './extras.mjs';
 import {parseSongRequest,songVideoId,groupKeeps,keepName,keepExpiryLabel} from './public/song-utils.mjs';
 import { DatabaseSync } from 'node:sqlite';
@@ -101,6 +101,9 @@ export function validateSettings(s) {
 }
 const freshUser=(id,name,month)=>({id,name,month,exp:0,pt:0,tickets:0,attendance:'',daily:{day:'',fishExp:0,fishPt:0,oddPt:0,totalPt:0},bag:{},buffs:{},book:{},keeps:[],lastCommand:0});
 const n=x=>Number(x).toLocaleString('ko-KR');
+// 느낌표 뒤 첫 낱말이 이 목록에 있으면 진짜 명령어입니다. "!간호사"처럼 정답만 입력한 말과 구분하는 데 쓰며, 겹치면 명령어가 우선입니다.
+const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','조용','게임','구매','포기','취소']);
 export class Store {
   constructor(path=':memory:') {
     this.db=new DatabaseSync(path);
@@ -209,8 +212,16 @@ export class Engine {
       }catch{/* The request still works when search is unavailable; the player can retry. */}
     }
     const text=normalizeCommand(event.message),promptKey=JSON.stringify([roomId,event.user?.id]);
-    // 명령어 없이 정답만 입력해도 인정합니다. 진행 중인 문제의 정답과 같은 말만 정답 처리하고, 틀린 말이나 일반 대화에는 반응하지 않습니다(DJ는 !정답으로 참여).
-    if(r&&!text.startsWith('!')&&event.isDj!==true&&String(event.user?.id)!==String(roomId)&&plainQuizAnswer(r,user,event.message,now)!==null)return this.handle(roomId,event,{plainQuiz:true,followup:true});
+    // 정답만 입력해도 인정합니다: "간호사"처럼 그냥 입력하거나 "!간호사"처럼 느낌표만 붙여도 됩니다. 진행 중인 문제의 정답과 같은 말만 정답 처리하고(대기시간에 걸려 놓치지 않음),
+    // 틀린 말이나 일반 대화에는 반응하지 않습니다. 느낌표를 붙인 말이 진짜 명령어·키워드 규칙·날씨/맛집 요청이면 그쪽이 우선입니다. 일반 채팅은 DJ 본인을 제외합니다(DJ는 !간호사·!정답 간호사로 참여).
+    if(r&&event.user?.id){
+      const bang=text.startsWith('!'),word=bang?text.slice(1).trim().split(/\s+/u)[0]:'',listener=event.isDj!==true&&String(event.user.id)!==String(roomId);
+      const answerLike=bang?!COMMAND_WORDS.has(word)&&!assistantRequest(text)&&!keywordMatches(r.settings,text):listener;
+      if(answerLike&&plainQuizAnswer(r,user,event.message,now)!==null)return this.handle(roomId,event,{plainQuiz:true,followup:true});
+      // "!의사"처럼 느낌표를 붙인 틀린 한 낱말은, 본인이 !퀴즈로 받은 개인 문제가 진행 중일 때만 예전 "!정답 의사"와 같이 초성 힌트로 알려 줍니다(DJ 제외).
+      // 모두 함께 푸는 자동 퀴즈 중이거나 일반 채팅의 틀린 말에는 답하지 않습니다(다른 봇용 명령어나 잡담에 끼어들지 않도록).
+      if(answerLike&&bang&&listener&&word&&[...word].length<=20&&text.slice(1).trim()===word&&user?.quizRound&&activeQuizRound(r,user,now))return this.handle(roomId,{...event,message:'!정답 '+word});
+    }
     const pending=this.diningPrompts.get(promptKey);
     for(const [key,value] of this.diningPrompts)if(value.expires<=now)this.diningPrompts.delete(key);
     let request=assistantRequest(text),followup=false,cancel=false,expired=false;
@@ -361,6 +372,7 @@ export class Engine {
     const bits=text.slice(1).trim().split(/\s+/);let cmd=bits.shift()||'';
     if(request)cmd=request.kind==='greeting'?'채팅':request.kind;
     if(cmd==='구매'){cmd='아이템';bits.unshift('구매');}
+    if(cmd==='포기'){cmd='퀴즈';bits.unshift('포기');} // !포기 = !퀴즈 포기
     const arg=bits.join(' ');
     const dj=e.isDj===true;
     if(dj&&r.songDeletePrompt?.actor===e.user?.id&&!['삭제','이전곡','다음곡'].includes(cmd))delete r.songDeletePrompt;
@@ -429,7 +441,7 @@ export class Engine {
     if(s.quiet&&['낚시','홀','짝','홀짝','복권','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답'].includes(cmd))return {text:null,suppressed:'quiet'};
     if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
     if(!dj&&!preparedLottery?.followup&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
-    const known=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+    const known=KNOWN_COMMANDS;
     if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
@@ -455,7 +467,7 @@ export class Engine {
       if(preparedLottery?.assistantMore?.length)reply.more=preparedLottery.assistantMore.map(part=>String(part).slice(0,200));
       return reply;
     }
-    if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → 답만 입력':''}`);
+    if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → 정답만 입력 · !포기':''}`);
     if(cmd==='채팅방')return answer(r.chat?.enabled&&r.chat.token?`우리 방송 대화방 ♡ ${this.publicUrl}/chat/${r.chat.token} (스푼과 별도 채팅방)`:'DJ가 아직 앱 채팅방을 열지 않았습니다.');
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));

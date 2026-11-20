@@ -18,8 +18,10 @@ test('plainQuizAnswer accepts only the answer itself, in the ways people really 
  const now=T0,room={settings:{quiz:true,quiet:false},users:{},autoQuizRound:{answers:['간호사','Nurse'],expiresAt:now+1000}};
  const answer=text=>plainQuizAnswer(room,undefined,text,now);
  for(const text of ['간호사','간호 사','  간호사  ','간호사요','간호사입니다.','간호사예요!','간호사?','간호사~','간호사ㅋㅋ','정답 간호사','정답은 간호사','정답은 간호사예요!','정답: 간호사','"간호사"','(간호사)','답은 간호사'])assert.equal(answer(text),'간호사',text);
- for(const text of ['NURSE','ｎｕｒｓｅ','nurse!','정답 nurse'])assert.equal(answer(text),'Nurse',text); // 저장된 표기를 돌려줌
- for(const text of ['의사','간호','간호사 아닌가요','간호사 맞죠 ㅋㅋ 아닌가','안녕하세요','','   ','정답','!정답 간호사','오늘 간호사 선생님 만났어요'])assert.equal(answer(text),null,JSON.stringify(text));
+ // 느낌표만 붙여도 같은 답입니다(진짜 명령어와 겹치는지는 엔진이 따로 가립니다).
+ for(const text of ['!간호사','! 간호사','！간호사','!간호사요','!간호사!','!정답 간호사','!정답은 간호사'])assert.equal(answer(text),'간호사',text);
+ for(const text of ['NURSE','ｎｕｒｓｅ','nurse!','정답 nurse','!nurse'])assert.equal(answer(text),'Nurse',text); // 저장된 표기를 돌려줌
+ for(const text of ['의사','간호','간호사 아닌가요','간호사 맞죠 ㅋㅋ 아닌가','안녕하세요','','   ','정답','!','!의사','!!!','오늘 간호사 선생님 만났어요'])assert.equal(answer(text),null,JSON.stringify(text));
  assert.equal(plainQuizAnswer(room,undefined,12345,now),null);
  assert.equal(plainQuizAnswer(room,undefined,'간호사',now+1000),null,'제한시간이 지난 문제');
  assert.equal(plainQuizAnswer({...room,settings:{quiz:false}},undefined,'간호사',now),null,'퀴즈가 꺼져 있음');
@@ -90,4 +92,71 @@ test('plain answers are not stolen by free talk, and a repeated event never pays
  assert.match(solved.text,/수다쟁이님 정답!/);assert.equal(ai,1,'정답은 AI 대화로 넘어가지 않음');
  assert.equal((await t.say('간호사',{user:'u5',nickname:'수다쟁이',id:'same'})).duplicate,true);
  assert.equal(t.load().users.u5.exp,50);
+});
+test('the answer with only an exclamation mark, like !간호사, solves a personal quiz even inside the command cooldown',async()=>{
+ const t=quizRoom();
+ await t.say('!내정보 생성');t.advance(25000);await t.say('!퀴즈');
+ t.advance(21000);                                       // 개인 대기시간(20초)이 지난 뒤
+ const hint=await t.say('!의사');                         // 틀린 !낱말은 예전 "!정답 의사"처럼 초성 힌트로 알려 줌
+ assert.match(hint.text,/민수님, 아쉬워요! 정답: ㄱㅎㅅ/);assert.match(hint.text,/정답만 입력하세요 \/ !포기/);
+ assert.ok(t.load().users.u1.quizRound,'틀린 말로 문제가 끝나지 않음');
+ t.advance(1000);                                        // 대기시간 안이어도 정답은 놓치지 않음
+ const solved=await t.say('!간호사');
+ assert.match(solved.text,/^민수님 정답! 간호사 · \+50 EXP/);assert.equal(t.load().users.u1.exp,50);assert.equal(t.load().users.u1.quizRound,undefined);
+ for(const form of ['! 간호사','！간호사','!간호사요','!간호사!']){ // 띄어쓰기·전각 느낌표·말끝이 달라도 같은 답
+  t.advance(25000);await t.say('!퀴즈');t.advance(1000);
+  assert.match((await t.say(form)).text,/정답!/,form);
+ }
+});
+test('in the shared auto quiz !간호사 is accepted from anyone, while wrong !words stay silent',async()=>{
+ const t=quizRoom();t.sharedRound();
+ assert.equal((await t.say('!의사',{user:'u9',nickname:'빠른사람'})).text,null);        // 다른 봇의 명령어일 수도 있어 답하지 않음
+ assert.equal((await t.say('!노래추천',{user:'u9',nickname:'빠른사람'})).text,null);
+ assert.equal(t.load().users.u9,undefined);                                          // 프로필도 만들지 않음
+ t.advance(5000);
+ assert.match((await t.say('!간호사',{user:'u9',nickname:'빠른사람'})).text,/^빠른사람님 정답! 간호사/);
+ assert.equal(t.load().autoQuizRound,undefined);
+ const dj=quizRoom();dj.sharedRound(); // DJ는 !간호사로 참여할 수 있고, 틀린 말에는 반응하지 않음
+ assert.equal((await dj.say('!의사',{user:'dj',nickname:'DJ',isDj:true})).text,null);
+ dj.advance(5000);assert.match((await dj.say('!간호사',{user:'dj',nickname:'DJ',isDj:true})).text,/^DJ님 정답!/);
+});
+test('real commands and keyword rules keep priority over the !answer form',async()=>{
+ const HELP={id:'help',question:'뜻을 맞혀보세요.',answers:['도움말','룰설명'],category:'단어',meaning:'사용법을 알려 주는 안내'};
+ const t=quizRoom({quizQuestions:[HELP],autoReplies:[{id:'rule',keyword:'!룰',match:'contains',text:'룰 안내입니다',enabled:true,cooldown:1}]});
+ t.sharedRound(HELP);
+ const help=await t.say('!도움말',{user:'u2',nickname:'궁금이'});     // 답과 이름이 같아도 !명령어는 진짜 명령어
+ assert.match(help.text,/!내정보/);assert.ok(t.load().autoQuizRound,'명령어가 문제를 끝내면 안 됨');
+ t.advance(5000);
+ const rule=await t.say('!룰설명',{user:'u3',nickname:'규칙이'});    // 키워드 규칙에 걸리는 !말도 키워드 응답이 우선
+ assert.equal(rule.text,'룰 안내입니다');assert.ok(t.load().autoQuizRound);
+ t.advance(5000);
+ assert.match((await t.say('도움말',{user:'u4',nickname:'정답자'})).text,/^정답자님 정답! 도움말/); // 그냥 입력한 같은 말은 정답
+});
+test('!포기 gives up a personal quiz exactly like !퀴즈 포기',async()=>{
+ const t=quizRoom();
+ await t.say('!내정보 생성');t.advance(25000);
+ assert.match((await t.say('!포기')).text,/진행 중인 문제가 없/);                   // 문제가 없으면 안내
+ t.advance(25000);await t.say('!퀴즈');t.advance(25000);
+ assert.match((await t.say('!포기')).text,/^정답은 간호사! 뜻: 환자를 돌보고/);assert.equal(t.load().users.u1.quizRound,undefined);
+ t.advance(25000);await t.say('!퀴즈');t.advance(25000);
+ assert.match((await t.say('!퀴즈 포기')).text,/^정답은 간호사!/);                   // 예전 명령도 그대로
+ t.advance(25000);await t.say('!퀴즈');t.advance(25000);
+ assert.match((await t.say('! 포기')).text,/^정답은 간호사!/);                       // 느낌표 뒤 공백도 지원
+ t.advance(5000);const help=await t.say('!도움말',{user:'u2',nickname:'궁금이'});assert.match(help.text,/!퀴즈 → 정답만 입력 · !포기/);
+ const shared=quizRoom();shared.sharedRound();await shared.say('!내정보 생성');shared.advance(25000); // 함께 푸는 자동 퀴즈는 포기할 수 없음
+ assert.match((await shared.say('!포기')).text,/함께 푸는 자동 퀴즈입니다/);assert.ok(shared.load().autoQuizRound);
+ const quiet=quizRoom();await quiet.say('!내정보 생성');quiet.advance(25000);await quiet.say('!퀴즈');
+ quiet.store.transaction('room',r=>{r.settings.quiet=true;});quiet.advance(25000); // 조용 모드에서는 퀴즈 명령처럼 반응하지 않음
+ assert.equal((await quiet.say('!포기')).text,null);assert.ok(quiet.load().users.u1.quizRound);
+});
+test('wrong !guesses only get a hint when they look like a single answer word during a personal quiz',async()=>{
+ const t=quizRoom();await t.say('!내정보 생성');t.advance(25000);await t.say('!퀴즈');t.advance(21000);
+ assert.equal((await t.say('!아 이건 아니지 않나요')).text,null);       // 여러 낱말은 다른 명령어일 수 있어 답하지 않음
+ assert.equal((await t.say('!'+'가'.repeat(21))).text,null);            // 너무 긴 낱말도
+ assert.equal((await t.say('!취소')).text,null);                         // 지역 입력 취소 같은 명령어는 답으로 보지 않음
+ t.advance(21000);assert.match((await t.say('!의사')).text,/아쉬워요/);   // 한 낱말은 힌트
+ const idle=quizRoom();await idle.say('!내정보 생성');idle.advance(25000);
+ assert.equal((await idle.say('!의사')).text,null);                      // 퀴즈가 없을 때의 !낱말은 예전처럼 조용히 무시
+ const late=quizRoom();await late.say('!내정보 생성');late.advance(25000);await late.say('!퀴즈');late.advance(31*60000);
+ assert.equal((await late.say('!의사')).text,null);assert.equal((await late.say('!간호사')).text,null); // 시간이 지난 문제에는 답하지 않음
 });
