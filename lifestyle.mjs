@@ -1,7 +1,9 @@
 import {createHmac} from 'node:crypto';
 import {diningRequest,diningQuery,diningPrompt,diningGuide,normalizeCommand} from './dining.mjs';
 import {foodTypes,cafeTypes} from './public/dining-guide.mjs';
-import {parseWeatherQuery,weatherRange,koreaDate,shiftDate,forecastReply,isRegionWeek,regionWeekPages} from './weather-periods.mjs';
+import {parseWeatherQuery,weatherRange,koreaDate,shiftDate,forecastReply,weatherRequest,districtChatPage,districtForecastReply} from './weather-periods.mjs';
+import {districtCatalog,selectDistricts,districtPage,districtLabel,installDistricts} from './weather-districts.mjs';
+import {travelRequest,travelKinds,travelInfo,travelAnswer} from './travel.mjs';
 import {smallTalk,fallbackChat} from './converse.mjs';
 import {currentLine,hourlyReply,umbrellaReply,outfitReply,briefingReply,yesterdayReply,sunReply,weatherHelp} from './weather-extras.mjs';
 import {AirKorea,sidoOf,dustReply,dustShort,dustForecastReply} from './air-korea.mjs';
@@ -20,6 +22,8 @@ export function cleanText(value){return String(value??'').replace(/<[^>]*>/g,'')
 export function assistantRequest(message){
  message=normalizeCommand(message);
  const dining=diningRequest(message);if(dining)return dining;
+ const travel=travelRequest(message);if(travel)return travel;
+ const weather=weatherRequest(message);if(weather)return weather;
  const body=String(message).trim().replace(/^!\s*/,'');
  if(String(message).trim().startsWith('!')&&/^(?:(?:이번\s*주|다음\s*주|내일|오늘|현재)\s*)*(?:전국\s*)?(?:(?:이번\s*주|다음\s*주|내일|오늘|현재)\s*)*날씨(?:\s|$)/u.test(body))return {kind:body.includes('전국')?'전국날씨':'날씨',arg:body.replace(/날씨/u,'').trim()};
  // 짧은 별칭: !우산 부산 → !날씨 부산 우산 (시간별·옷차림·일출·일몰도 같음). 엔진은 이 별칭을 날씨 명령으로 취급합니다.
@@ -27,6 +31,7 @@ export function assistantRequest(message){
  const m=/^!\s*(전국날씨|날씨|맛집|카페|채팅|대화)(?:\s+(.*))?$/u.exec(String(message).trim());if(!m)return null;
  let [,kind,arg='']=m;
  if(['채팅','대화'].includes(kind)){
+   const travel=travelRequest('!'+arg.trim());if(travel)return travel;
    const question=arg.trim();const intent=/(전국\s*날씨|날씨|맛집|카페)/u.exec(question);
    if(intent){kind=intent[1].replace(/\s/g,'');arg=question.replace(intent[0],'').replace(/(알려줘|추천해줘|추천|어때|좀|\?)/g,'').trim();}
    else if(/(시간별|시간대별|우산|옷차림|일출|일몰|브리핑|초미세먼지|미세먼지|먼지|기상특보|특보)/u.test(question))return {kind:'날씨',arg:question.replace(/(알려줘|추천해줘|추천|어때|좀|\?)/g,'').trim()};
@@ -68,11 +73,11 @@ export class Lifestyle {
   }
  }
 
- async weatherJSON(url,period){
+ async weatherJSON(url,period,count=regions.length,allowProxy=true){
   const reserve=new URL(url);
   reserve.hostname='historical-forecast-api.open-meteo.com';
   const providers=[{id:'direct',url,timeout:4000},{id:'archive',url:reserve,timeout:7000}];
-  if(this.weatherProxyURL&&this.weatherProxyKey){
+  if(allowProxy&&this.weatherProxyURL&&this.weatherProxyKey){
    const timestamp=Date.now(),body=JSON.stringify({period}),signature=createHmac('sha256',this.weatherProxyKey).update(timestamp+'\n'+body).digest('hex');
    providers.unshift({id:'proxy',url:this.weatherProxyURL,timeout:5000,options:{method:'POST',headers:{'Content-Type':'application/json','x-radiomate-time':String(timestamp),'x-radiomate-signature':signature},body}});
   }
@@ -83,8 +88,8 @@ export class Lifestyle {
     const response=await this.fetcher(provider.url,{...provider.options,signal:AbortSignal.timeout(provider.timeout)});
     if(!response.ok)throw Error('Unavailable forecast');
     failure='날씨 서버의 응답 형식을 확인하지 못했습니다. 잠시 후 다시 조회해주세요.';
-    const data=await response.json();
-    if(!Array.isArray(data)||data.length!==regions.length||data.some(item=>!(period==='current'?item?.current:Array.isArray(item?.daily?.time))))throw Error('Invalid forecast');
+    let data=await response.json();if(count===1&&!Array.isArray(data))data=[data];
+    if(!Array.isArray(data)||data.length!==count||data.some(item=>!(period==='current'?item?.current:Array.isArray(item?.daily?.time))))throw Error('Invalid forecast');
     this.weatherRetryAt.delete(provider.id);
     return data;
    }catch(error){
@@ -121,10 +126,10 @@ export class Lifestyle {
   return this.openMeteoForecast(range);
  }
  // 기상청(동네예보 → 중기예보 → 저장해 둔 지난 예보값)을 우선 쓰고, 비어 있는 날짜만 Open-Meteo로 보충하며 날짜마다 출처를 남깁니다.
- async kmaForecast(range,only){
-  const locations=only?[this.weatherDb.get(only)]:this.weatherDb.national(),kma=await this.kma.days(range,locations);
+ async kmaForecast(range,only,selected=null,provider=this.kma){
+  const locations=selected||(only?[this.weatherDb.get(only)]:this.weatherDb.national()),kma=await provider.days(range,locations);
   let model=new Map();
-  if(locations.some(loc=>range.dates.some(date=>!kma.get(loc.id)?.has(date))))try{model=new Map((await this.openMeteoForecast(range)).items.map(item=>[item.region,new Map(item.days.filter(day=>day.available).map(day=>[day.date,day]))]));}catch{}
+  if(locations.some(loc=>range.dates.some(date=>!kma.get(loc.id)?.has(date))))try{model=new Map((await this.openMeteoForecast(range,selected)).items.map(item=>[item.region,new Map(item.days.filter(day=>day.available).map(day=>[day.date,day]))]));}catch{}
   const items=locations.map(loc=>({region:loc.id,days:range.dates.map(date=>{
    const past=date<range.today,day=kma.get(loc.id)?.get(date);
    if(day&&Number.isFinite(day.min)&&Number.isFinite(day.max)&&day.min<=day.max)return {date,past,available:true,min:day.min,max:day.max,condition:day.condition,rainChance:Number.isFinite(day.rain)?day.rain:null,source:KMA_LABEL,...(day.partial?{partial:true}:{}),...(past?{stored:true}:{})};
@@ -134,17 +139,32 @@ export class Lifestyle {
   const sources=orderSources(items.flatMap(item=>item.days).filter(day=>day.available).map(day=>day.source));
   return {...range,source:sources.join('+')||KMA_LABEL,sources,updatedAt:this.now(),note:'기상청 동네예보(오늘~글피)'+(this.kma.key?'·중기예보':'')+' 기준입니다.'+(sources.includes('Open-Meteo')?' 제공 범위 밖이거나 저장값이 없는 날짜는 Open-Meteo 모델로 보충했고 날짜마다 출처를 표시합니다.':'')+' 주간 기준은 월요일~일요일이며 지난 날짜는 저장해 둔 예보값으로 관측값이 아닙니다.'+(items.some(item=>item.days.some(day=>day.partial))?' 오늘 최저·최고는 이미 지난 시간이 빠진 값일 수 있어 "남은 시간 기준"으로 표시합니다.':''),items};
  }
- async openMeteoForecast(range){
-  return this.cached('forecast:'+range.today+':'+range.start+':'+range.end,600000,async()=>{
-   const url=new URL('https://api.open-meteo.com/v1/forecast');url.search=new URLSearchParams({latitude:regions.map(r=>r[1]).join(','),longitude:regions.map(r=>r[2]).join(','),daily:'weather_code,temperature_2m_min,temperature_2m_max,precipitation_probability_max',timezone:'Asia/Seoul',temperature_unit:'celsius',start_date:range.start,end_date:range.end});
-   const result=await this.weatherJSON(url,range.period);if(!Array.isArray(result)||result.length!==regions.length)throw Error('전국 예보 응답을 확인하지 못했습니다.');
+ async openMeteoForecast(range,selected=null){
+  const locations=selected||regions.map(([id,lat,lon])=>({id,lat,lon}));
+  return this.cached('forecast:'+range.today+':'+range.start+':'+range.end+':'+locations.map(loc=>loc.id).join('|'),600000,async()=>{
+   const url=new URL('https://api.open-meteo.com/v1/forecast');url.search=new URLSearchParams({latitude:locations.map(r=>r.lat).join(','),longitude:locations.map(r=>r.lon).join(','),daily:'weather_code,temperature_2m_min,temperature_2m_max,precipitation_probability_max',timezone:'Asia/Seoul',temperature_unit:'celsius',start_date:range.start,end_date:range.end});
+   const result=await this.weatherJSON(url,range.period,locations.length,!selected);if(!Array.isArray(result)||result.length!==locations.length)throw Error('전국 예보 응답을 확인하지 못했습니다.');
    return {...range,source:'Open-Meteo',updatedAt:this.now(),note:'17개 시·도 대표 지점의 모델 예보입니다. 주간 기준은 월요일~일요일이며, 지난 날짜는 모델 기반 과거 자료입니다.',items:result.map((response,i)=>{
     const daily=response.daily;if(!Array.isArray(daily?.time)||daily.time.some(day=>typeof day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(day))||new Set(daily.time).size!==daily.time.length)throw Error('일별 예보 날짜를 확인하지 못했습니다.');
     for(const key of ['weather_code','temperature_2m_min','temperature_2m_max','precipitation_probability_max'])if(!Array.isArray(daily[key])||daily[key].length!==daily.time.length)throw Error('일별 예보 응답에 누락된 항목이 있습니다.');
-    return {region:regions[i][0],days:range.dates.map(date=>{const at=daily.time.indexOf(date),min=daily.temperature_2m_min[at],max=daily.temperature_2m_max[at],code=daily.weather_code[at],chance=daily.precipitation_probability_max[at];const available=at>=0&&Number.isFinite(min)&&Number.isFinite(max)&&min<=max&&Number.isInteger(code);return {date,past:date<range.today,available,min:available?min:null,max:available?max:null,condition:available?weatherName(code):'예보 미제공',rainChance:available&&Number.isFinite(chance)&&chance>=0&&chance<=100?chance:null};})};
+    return {region:locations[i].id,days:range.dates.map(date=>{const at=daily.time.indexOf(date),min=daily.temperature_2m_min[at],max=daily.temperature_2m_max[at],code=daily.weather_code[at],chance=daily.precipitation_probability_max[at];const available=at>=0&&Number.isFinite(min)&&Number.isFinite(max)&&min<=max&&Number.isInteger(code);return {date,past:date<range.today,available,min:available?min:null,max:available?max:null,condition:available?weatherName(code):'예보 미제공',rainChance:available&&Number.isFinite(chance)&&chance>=0&&chance<=100?chance:null,source:'Open-Meteo'};})};
    })};
   });
  }
+ districtLocations(){return {source:districtCatalog.sourcePage,updatedAt:districtCatalog.retrievedAt,total:districtCatalog.locations.length,provinces:[...new Set(districtCatalog.locations.map(loc=>loc.province))],locations:districtCatalog.locations.map(loc=>({id:loc.id,province:loc.province,name:loc.name,label:districtLabel(loc)}))};}
+ async districtForecast(period,{region='',page=1,pageSize=12}={}){
+  const range=weatherRange(period,this.now()),slice=districtPage(region,page,pageSize);
+  return this.cached('district:'+range.today+':'+period+':'+JSON.stringify([region,page,pageSize])+':'+slice.locations.map(loc=>loc.id).join('|'),600000,async()=>{
+   let data;
+   if(this.weatherSource==='kma'){
+    // Detailed-region weather has a separate in-memory cache; production broadcast tables are untouched.
+    if(!this.districtDb){this.districtDb=new WeatherDb(new DatabaseSync(':memory:'));installDistricts(this.districtDb.db);this.districtKma=new KmaWeather({db:this.districtDb,fetcher:(...args)=>this.fetcher(...args),now:()=>this.now(),log:message=>this.log(message),key:this.kma.key,base:this.kma.base,keyParam:this.kma.keyParam});}
+    data=await this.kmaForecast(range,null,slice.locations.map(loc=>this.districtDb.get(loc.id)),this.districtKma);
+   }else data=await this.openMeteoForecast(range,slice.locations);
+   return {...data,scope:'districts',region,total:slice.total,page,pages:slice.pages,pageSize,items:data.items.map((item,i)=>({...item,displayName:districtLabel(slice.locations[i])})),note:'기상청 지역 목록의 시·군·구 및 특수지점 대표 좌표 기준입니다. '+(this.weatherSource==='kma'?'기상청 단기예보를 우선하고 없는 날짜는 해당 좌표의 Open-Meteo 모델로 보충합니다. ':'Open-Meteo 모델 예보입니다. ')+'주간은 한국시간 월~일, 지난 날짜는 과거 모델 또는 저장된 예보값으로 관측값이 아닙니다. 제공되지 않은 날짜는 미제공으로 표시합니다.'};
+  });
+ }
+ async travel(options){return travelInfo(this,options);}
  async places({region='',kind='맛집',meal='',foodType='',extended=false}={}){
   region=String(region).trim();if(!region||region.length>60||/[\r\n]/.test(region))throw Error('지역을 입력해주세요. 예: 광주 동명동');
   if(!['맛집','카페'].includes(kind)||!['','아침','점심','저녁'].includes(meal))throw Error('검색 종류와 식사 시간을 확인해주세요.');
@@ -220,18 +240,6 @@ export class Lifestyle {
   const range=weatherRange('current',now),day=(await this.kma.days(range,[loc])).get(loc.id)?.get(range.today);
   return outfitReply(loc.id,{temp:item.temperature,feels:item.feels,min:day?.min,max:day?.max});
  }
- // 스푼 채팅은 한 번에 200자라서 긴 답은 여러 쪽이 됩니다. 이번주·다음주 "지역별" 날씨처럼 전체를 물으면 모든 쪽을 한 번에 돌려주고, 나머지는 기존 answer와 같은 한 건입니다.
- async answerParts(request,context){
-  const {kind,arg}=request||{};
-  if(kind==='전국날씨'||kind==='날씨'){
-   let selection=null;try{selection=parseWeatherQuery(arg,this.now());}catch{/* 잘못된 입력은 answer가 안내 문구로 돌려줍니다 */}
-   if(selection&&!selection.pageGiven&&isRegionWeek(selection)){
-    try{return regionWeekPages(await this.forecast(selection.period,null),selection,{hint:false});}
-    catch(error){if(context?.strict)throw error;return [error.message];}
-   }
-  }
-  return [await this.answer(request,context)];
- }
  // 명령어 없는 자유 대화. 방송 채팅에 오류 문구가 흘러가지 않도록 예외 대신 결과 객체로 돌려줍니다(text가 null이면 답하지 않음).
  async converse(text,context){
   if(!this.ai?.configured)return {text:null,reason:'unconfigured'};
@@ -239,15 +247,15 @@ export class Lifestyle {
   catch(error){return {text:null,reason:'error',message:error.message};}
  }
  async answer(request,context){try{
-  const {kind,arg}=request;
-  if(kind==='greeting'){
-   if(arg==='초기화'&&this.ai&&context){this.ai.reset(context);return 'AI 대화 기록을 초기화했어요 ♡';}
-   if(this.ai?.configured&&context)return await this.ai.answer(arg,context);
-   return smallTalk(arg,{name:context?.nickname,botName:context?.botName,hour:new Date(this.now()+32400000).getUTCHours(),int:context?.int})||fallbackChat;
-  }
+  const {kind,arg}=request;if(travelKinds.has(kind))return await travelAnswer(this,request);if(kind==='greeting'){if(arg==='초기화'&&this.ai&&context){this.ai.reset(context);return 'AI 대화 기록을 초기화했어요 ♡';}if(this.ai?.configured&&context)return await this.ai.answer(arg,context);return smallTalk(arg,{name:context?.nickname,botName:context?.botName,hour:new Date(this.now()+32400000).getUTCHours(),int:context?.int})||fallbackChat;}
   if(kind==='전국날씨'||kind==='날씨'){
    const selection=parseWeatherQuery(arg,this.now());let region=selection.region;
    if(selection.mode==='help')return weatherHelp;
+   if(!selection.mode&&['thisWeek','nextWeek'].includes(selection.period)&&(kind==='전국날씨'||selectDistricts(region).length===1&&!this.resolveRegion(region))){
+    const locations=selectDistricts(region);if(!locations.length)return '지역을 찾지 못했어요. 예: !전국날씨 이번주 서울 / !날씨 서울 강남구 다음주';
+    const plan=districtChatPage(selection,locations),data=await this.districtForecast(selection.period,{region:plan.location.id,pageSize:1});
+    return districtForecastReply(data,selection,plan);
+   }
    // 현재 날씨는 지역을 여러 개(최대 6) 적어 한 번에 비교할 수 있습니다: !날씨 서울 부산 제주
    const names=region?region.split(' ').filter(Boolean):[];
    if(!selection.mode&&selection.period==='current'&&names.length>1&&names.length<=6){const resolved=names.map(name=>this.resolveRegion(name));if(resolved.every(Boolean))return await this.compareRegions([...new Set(resolved)]);}
@@ -255,7 +263,6 @@ export class Lifestyle {
    if(selection.mode)return await this.weatherExtra(selection,region);
    if(selection.period!=='current'){
     const forecast=await this.forecast(selection.period,region),data=region?{...forecast,items:forecast.items.filter(x=>x.region===region)}:forecast;
-    if(isRegionWeek(selection,region)){const pages=regionWeekPages(data,selection);return selection.page>pages.length?`날씨는 1~${pages.length}페이지입니다. !전국날씨 ${data.label} 1`:pages[selection.page-1];}
     return forecastReply(data,{...selection,region});
    }
    const data=await this.weather({region});let items=region?data.items.filter(x=>x.region===region):data.items,heading=region?selection.region+' 날씨':'전국 날씨';

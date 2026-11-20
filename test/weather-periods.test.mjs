@@ -22,10 +22,10 @@ test('daily forecast requests use explicit KST ranges and never convert missing 
  const a=await service.weather({period:'nextWeek'}),b=await service.weather({period:'nextWeek'});assert.equal(a,b);assert.equal(calls,1);assert.equal(a.items.length,17);assert.equal(a.items[0].days.length,7);assert.equal(a.items[0].days[0].available,false);assert.equal(a.items[0].days[0].min,null);assert.equal(a.items[0].days[1].min,-2.5);
  time=Date.parse('2026-11-18T15:01:00Z');await service.weather({period:'nextWeek'});assert.equal(calls,2);
 });
-test('weekly national summaries and daily regional pages fit Spoon 200 characters and show source',async()=>{
- const service=new Lifestyle({now:()=>now,fetcher:async url=>({ok:true,json:async()=>fixture(url.searchParams.get('start_date'),url.searchParams.get('end_date'))})});
+test('district weekly pages, legacy daily regional forecasts and summary formatting show their sources',async()=>{
+ const service=new Lifestyle({now:()=>now,fetcher:async url=>({ok:true,json:async()=>fixture(url.searchParams.get('start_date'),url.searchParams.get('end_date')).slice(0,url.searchParams.get('latitude').split(',').length)})});
  for(const arg of ['이번주','이번주 2','다음주','내일','다음주 화요일','서울 다음주']){
-  const text=await service.answer({kind:arg.startsWith('서울')?'날씨':'전국날씨',arg});assert.ok(text.length<=200,text);assert.match(text,/Open-Meteo/);assert.match(text,/11-\d\d/);
+  const text=await service.answer({kind:arg.startsWith('서울')?'날씨':'전국날씨',arg});assert.ok(text.length<=200,text);assert.match(text,/Open-Meteo/);assert.match(text,/2026-11-/);
  }
  const data=await service.forecast('thisWeek'),text=forecastReply(data,parseWeatherQuery('이번주',now));assert.match(text,/전체 기온범위/);assert.match(text,/과거=모델자료/);
  const missing=await new Lifestyle({now:()=>now,fetcher:async url=>({ok:true,json:async()=>fixture(url.searchParams.get('start_date'),url.searchParams.get('end_date'),{missing:true})})}).forecast('nextWeek');assert.match(weatherHTML(missing),/예보 미제공/);assert.match(weatherHTML(missing),/weather-week-scroll/);assert.ok(!weatherHTML(missing).includes('null℃'));

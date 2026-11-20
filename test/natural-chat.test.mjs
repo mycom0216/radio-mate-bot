@@ -4,8 +4,8 @@ import {Store,Engine,defaults,validateSettings} from '../core.mjs';
 import {Outbox} from '../outbox.mjs';
 import {naturalRequest,callsBot,botNames,cues,smallTalk,Conversation,fallbackChat} from '../converse.mjs';
 import {AIChat,fitChat} from '../ai-chat.mjs';
-import {Lifestyle,regions,assistantRequest} from '../lifestyle.mjs';
-import {shiftDate,parseWeatherQuery,regionWeekPages} from '../weather-periods.mjs';
+import {Lifestyle,assistantRequest} from '../lifestyle.mjs';
+import {parseWeatherQuery} from '../weather-periods.mjs';
 import {createExtraUI} from '../public/extra-ui.mjs';
 
 const FRIDAY=Date.parse('2026-11-20T03:00:00Z'); // 2026-11-20(금) 12:00 KST
@@ -136,7 +136,7 @@ test('the DJ, the DJ account echo of the bot and duplicates never trigger a repl
  assert.equal(t.calls.converse.length,1);assert.equal(t.outbox().length,2);
 });
 test('chat mode is respected: off is silent, call answers only when called, quiet mode stops everything',async()=>{
- const off=chatRoom({chatMode:'off'});assert.equal((await off.say('안녕하세요')).text,null);assert.equal((await off.say('이번주 전국날씨')).text,null);
+ const off=chatRoom({chatMode:'off'});assert.equal((await off.say('안녕하세요')).text,null);assert.equal((await off.say('서울 날씨 어때?')).text,null);
  const call=chatRoom({chatMode:'call',chatName:'봄이'});
  assert.equal((await call.say('안녕하세요')).text,null);assert.equal(call.calls.converse.length,0);
  call.advance(10000);assert.equal((await call.say('봄이야 안녕')).text,'네, 들었어요!');assert.equal(call.calls.converse[0].context.botName,'봄이');
@@ -150,7 +150,7 @@ test('keyword auto-replies and commands keep priority over free talk',async()=>{
 test('weekly weather asked in plain words is sent page by page, once per request window',async()=>{
  const t=chatRoom();
  const out=await t.say('이번주 각 지역별 전국날씨');
- assert.deepEqual(t.calls.parts[0],{kind:'전국날씨',arg:'이번주'});
+ assert.equal(t.calls.parts[0].kind,'전국날씨');assert.match(t.calls.parts[0].arg,/이번주/); // 로컬 구현은 말한 문장 전체를 인자로 넘김
  assert.deepEqual(t.outbox().map(row=>[row.event_key,row.text]),[['e1','1쪽'],['e1:2','2쪽'],['e1:3','3쪽']]);
  assert.equal(out.text,'1쪽\n2쪽\n3쪽'); // 전송 큐가 없는 화면에는 한 덩어리
  t.advance(10000);assert.equal((await t.say('다음주 전국날씨')).text,null);assert.equal(t.outbox().length,3); // 같은 사람의 연속 요청은 도배 방지
@@ -263,55 +263,4 @@ test('without a configured AI the explicit chat command answers kindly instead o
  assert.deepEqual(await service.converse('skip',{room:'a'}),{text:null,reason:'skipped'});
  service.ai={configured:true,answer:async()=>{throw Error('한도');}};
  assert.deepEqual(await service.converse('안녕',{room:'a'}),{text:null,reason:'error',message:'한도'});
-});
-
-// ───── 주간 지역별 날씨 ─────
-const codes=[0,3,61,71,2,3,0];
-function fixture(start,end){const dates=[];for(let d=start;d<=end;d=shiftDate(d,1))dates.push(d);return regions.map((_,i)=>({daily:{time:dates,weather_code:dates.map((__,j)=>codes[(i+j)%7]),temperature_2m_min:dates.map((__,j)=>-3.4+i%5+j%3),temperature_2m_max:dates.map((__,j)=>8.6+i%7+j%4),precipitation_probability_max:dates.map((__,j)=>(i*7+j*10)%100)}}));}
-const weekly=()=>new Lifestyle({now:()=>FRIDAY,fetcher:async url=>({ok:true,json:async()=>fixture(url.searchParams.get('start_date'),url.searchParams.get('end_date'))})});
-test('this week and next week list every one of the 17 regions, whichever way the six phrases are worded',async()=>{
- const service=weekly(),isKnown=token=>!!service.resolveRegion(token);
- for(const [period,start,end] of [['이번주','11-16','11-22'],['다음주','11-23','11-29']]){
-  const pages=await service.answerParts({kind:'전국날씨',arg:period},{});
-  assert.ok(pages.length>=2&&pages.length<=4,`${period} ${pages.length}쪽`);
-  pages.forEach((page,i)=>{assert.ok([...page].length<=200,page);assert.ok(page.startsWith(`${period} ${start}~${end} 지역별 (${i+1}/${pages.length})`),page);assert.match(page,/Open-Meteo · KST/);assert.ok(!page.includes('!전국날씨'),'모든 쪽을 보낼 때는 쪽 안내가 필요 없습니다.');});
-  const lines=pages.flatMap(page=>page.split('\n')).filter(line=>/^\S+ -?\d+~-?\d+℃/.test(line)||line.endsWith('예보 미제공'));
-  assert.deepEqual(lines.map(line=>line.split(' ')[0]),regions.map(region=>region[0]),'시·도 17곳이 빠짐없이 한 번씩');
-  assert.match(lines[0],/^서울 -?\d+~-?\d+℃ (?:비|눈|비·눈) \d일 강수\d+%$/);
- }
- const phrases=[['이번주 전국날씨','이번주'],['이번주 대한민국 각 지역별 전국날씨','이번주'],['다음주 전국날씨','다음주'],['다음주 대한민국 각 지역별 전국날씨','다음주'],['이번주 각 지역별 전국날씨','이번주'],['다음주 각 지역별 전국날씨','다음주']];
- for(const [phrase,period] of phrases){
-  const request=naturalRequest(phrase,{isRegion:isKnown,now:FRIDAY});
-  assert.deepEqual(await service.answerParts(request,{}),await service.answerParts({kind:'전국날씨',arg:period},{}),phrase);
- }
-});
-test('one page, the legacy daily summary and single regions still work and the 200 character limit holds',async()=>{
- const service=weekly(),all=await service.answerParts({kind:'전국날씨',arg:'이번주'},{});
- const second=await service.answer({kind:'전국날씨',arg:'이번주 2'});
- assert.ok(second.startsWith(all[1].split('\n')[0]));assert.match(second,/!전국날씨 이번주 3$/);assert.ok(second.length<=200);
- assert.match(await service.answer({kind:'전국날씨',arg:'이번주 9'}),/날씨는 1~\d페이지입니다/);
- assert.match(await service.answer({kind:'전국날씨',arg:'이번주 요약'}),/17지역 전체 기온범위/); // 하루 단위 전국 요약은 요약 키워드로 유지
- const seoul=await service.answerParts({kind:'날씨',arg:'서울 이번주'},{});assert.equal(seoul.length,1);assert.match(seoul[0],/서울 대표지점/);
- const tomorrow=await service.answerParts({kind:'전국날씨',arg:'내일'},{});assert.equal(tomorrow.length,1);assert.match(tomorrow[0],/내일/);
- const bad=await service.answerParts({kind:'전국날씨',arg:'이번주 0'},{});assert.equal(bad.length,1);assert.match(bad[0],/1 이상의 정수/);
-});
-test('weekly region lines summarise temperature, precipitation days, missing days and mixed sources',()=>{
- const day=(date,patch={})=>({date,past:false,available:true,min:2,max:9,condition:'맑음',rainChance:10,source:'기상청',...patch});
- const dates=['2026-11-23','2026-11-24','2026-11-25','2026-11-26','2026-11-27','2026-11-28','2026-11-29'];
- const items=regions.map(([region],i)=>({region,days:dates.map(date=>day(date))}));
- items[0].days=dates.map((date,i)=>day(date,i===2?{condition:'구름많고 비',rainChance:70,min:-0.4,max:5.6}:i===3?{condition:'흐리고 눈',rainChance:60,min:-3.5,max:1.2}:{condition:i%2?'흐림':'맑음'}));
- items[1].days=dates.map((date,i)=>i<4?day(date,{condition:'흐림',rainChance:null}):{date,past:false,available:false,min:null,max:null,condition:'예보 미제공',rainChance:null,source:null});
- items[2].days=dates.map(date=>({date,past:false,available:false,min:null,max:null,condition:'예보 미제공',rainChance:null,source:null}));
- items[3].days=dates.map((date,i)=>day(date,i===6?{source:'Open-Meteo',condition:'흐림'}:{condition:'눈'}));
- const data={label:'다음주',start:'2026-11-23',end:'2026-11-29',dates,today:'2026-11-20',source:'기상청+Open-Meteo',items};
- const pages=regionWeekPages(data,{},{hint:false}),lines=pages.flatMap(page=>page.split('\n'));
- assert.ok(lines.includes('서울 -4~9℃ 비·눈 2일 강수70%'),lines[1]);               // -3.5는 반올림해 -4, 비·눈 오는 날 수
- assert.ok(lines.includes('부산 2~9℃ 흐림 (4일)'),'강수 정보가 없으면 생략, 일부 날짜만 있으면 일수 표시');
- assert.ok(lines.includes('대구 예보 미제공'));
- assert.ok(lines.includes('인천 2~9℃ 눈 6일 강수10%*'),'모델 보충일이 섞이면 *');
- assert.match(pages[0],/기상청\+Open-Meteo\(\*\) · KST/);assert.ok(!lines.some(line=>/(?:^| )-0[~℃]/.test(line)),'-0은 표시하지 않습니다.');
- const hinted=regionWeekPages(data,{},{hint:true});assert.ok(hinted.at(-1).endsWith('!전국날씨 다음주 1'));assert.ok(hinted[0].endsWith(`!전국날씨 다음주 2`));assert.ok(hinted.every(page=>[...page].length<=200));
- // 지난 날짜·남은 시간 안내는 모든 쪽에 같은 형식으로 붙습니다.
- const week={...data,label:'이번주',dates:['2026-11-16',...dates.slice(1)],today:'2026-11-18'};week.items=items.map(item=>({...item,days:item.days.map((d,i)=>i===0?{...d,date:'2026-11-16',past:true,partial:i===0&&item.region==='서울'}:d)}));
- assert.ok(regionWeekPages(week,{},{hint:false}).every(page=>/과거=/.test(page)&&/오늘은 남은 시간 기준/.test(page)&&[...page].length<=200));
 });

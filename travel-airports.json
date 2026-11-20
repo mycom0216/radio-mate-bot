@@ -1,0 +1,145 @@
+{
+  "retrievedAt": "2026-11-20T03:28:05.982Z",
+  "sources": [
+    "https://www.airport.co.kr/www/index.do",
+    "https://www.airport.kr/ap_ko/index.do",
+    "https://developers.naver.com/notice/article/12567"
+  ],
+  "items": [
+    {
+      "title": "인천국제공항",
+      "category": "항공>공항",
+      "address": "인천광역시 영종구 공항로 271 인천국제공항역",
+      "lat": 37.4493294,
+      "lon": 126.4508231,
+      "url": "https://map.naver.com/p/search/%EC%9D%B8%EC%B2%9C%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.kr/"
+    },
+    {
+      "title": "김포국제공항",
+      "category": "항공>공항",
+      "address": "서울특별시 강서구 하늘길 111 국내선 주차대기실",
+      "lat": 37.5587816,
+      "lon": 126.803009,
+      "url": "https://map.naver.com/p/search/%EA%B9%80%ED%8F%AC%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "김해국제공항",
+      "category": "항공>공항",
+      "address": "부산광역시 강서구 대저1동 2 동 공항진입로 108",
+      "lat": 35.1703906,
+      "lon": 128.9488254,
+      "url": "https://map.naver.com/p/search/%EA%B9%80%ED%95%B4%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "제주국제공항",
+      "category": "항공>공항",
+      "address": "제주특별자치도 제주시 공항로 2 제주국제공항",
+      "lat": 33.5069232,
+      "lon": 126.4929933,
+      "url": "https://map.naver.com/p/search/%EC%A0%9C%EC%A3%BC%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "대구국제공항",
+      "category": "항공>공항",
+      "address": "대구광역시 동구 공항로 221",
+      "lat": 35.8999973,
+      "lon": 128.6376367,
+      "url": "https://map.naver.com/p/search/%EB%8C%80%EA%B5%AC%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "청주국제공항",
+      "category": "항공>공항",
+      "address": "충청북도 청주시 청원구 내수읍 오창대로 980 5-4",
+      "lat": 36.7219837,
+      "lon": 127.4959887,
+      "url": "https://map.naver.com/p/search/%EC%B2%AD%EC%A3%BC%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "무안국제공항",
+      "category": "항공>공항",
+      "address": "전남광주통합특별시 무안군 망운면 공항로 970-260 무안국제공항",
+      "lat": 34.9936869,
+      "lon": 126.3877301,
+      "url": "https://map.naver.com/p/search/%EB%AC%B4%EC%95%88%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "양양국제공항",
+      "category": "항공>공항",
+      "address": "강원특별자치도 양양군 손양면 공항로 201 양양국제공항",
+      "lat": 38.058708,
+      "lon": 128.663113,
+      "url": "https://map.naver.com/p/search/%EC%96%91%EC%96%91%EA%B5%AD%EC%A0%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "여수공항",
+      "category": "항공>공항",
+      "address": "전남광주통합특별시 여수시 율촌면 여순로 386 여수공항",
+      "lat": 34.8401825,
+      "lon": 127.6140339,
+      "url": "https://map.naver.com/p/search/%EC%97%AC%EC%88%98%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "울산공항",
+      "category": "항공>공항",
+      "address": "울산광역시 북구",
+      "lat": 35.5929293,
+      "lon": 129.3557414,
+      "url": "https://map.naver.com/p/search/%EC%9A%B8%EC%82%B0%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "군산공항",
+      "category": "항공>공항",
+      "address": "전북특별자치도 군산시 옥서면 산동길 2 군산공항",
+      "lat": 35.9260681,
+      "lon": 126.6155075,
+      "url": "https://map.naver.com/p/search/%EA%B5%B0%EC%82%B0%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "원주공항",
+      "category": "항공>공항",
+      "address": "강원특별자치도 횡성군 횡성읍 횡성로 42",
+      "lat": 37.459226,
+      "lon": 127.977175,
+      "url": "https://map.naver.com/p/search/%EC%9B%90%EC%A3%BC%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "포항경주공항",
+      "category": "항공>공항",
+      "address": "경상북도 포항시 남구 동해면 일월로 18 포항공항",
+      "lat": 35.9840823,
+      "lon": 129.4340073,
+      "url": "https://map.naver.com/p/search/%ED%8F%AC%ED%95%AD%EA%B2%BD%EC%A3%BC%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "사천공항",
+      "category": "항공>공항",
+      "address": "경상남도 사천시 사천읍 사천대로 1971 사천공항",
+      "lat": 35.0923698,
+      "lon": 128.0864384,
+      "url": "https://map.naver.com/p/search/%EC%82%AC%EC%B2%9C%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    },
+    {
+      "title": "광주공항",
+      "category": "항공>공항",
+      "address": "전남광주통합특별시 광산구 상무대로 420-25 광주공항",
+      "lat": 35.1399141,
+      "lon": 126.8107943,
+      "url": "https://map.naver.com/p/search/%EA%B4%91%EC%A3%BC%EA%B3%B5%ED%95%AD",
+      "originalUrl": "https://www.airport.co.kr/"
+    }
+  ]
+}

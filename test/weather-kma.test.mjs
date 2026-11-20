@@ -217,7 +217,7 @@ test('next week uses KMA mid-term forecasts only when a service key is set and n
  assert.deepEqual(seoul.map(d=>d.date),['2026-11-23','2026-11-24','2026-11-25','2026-11-26','2026-11-27','2026-11-28','2026-11-29']);
  assert.deepEqual([seoul[0].min,seoul[0].max,seoul[0].rainChance,seoul[0].condition],[-6,4,45,'구름많음']);
  assert.deepEqual([seoul[4].min,seoul[4].max,seoul[4].rainChance,seoul[4].condition],[-2,8,28,'흐림']);
- const text=await keyed.answer({kind:'전국날씨',arg:'다음주'});assert.ok(text.length<=200,text);assert.match(text,/기상청 · KST/);assert.doesNotMatch(text,/Open-Meteo/);
+ const text=await keyed.answer({kind:'날씨',arg:'서울 다음주'});assert.ok(text.length<=200,text);assert.match(text,/기상청 · KST/);assert.doesNotMatch(text,/Open-Meteo/);
  await keyed.forecast('thisWeek');assert.equal(w.mid().length,26); // 이번 주 목~일은 동네예보로 충분해 중기예보를 다시 부르지 않음
 });
 test('a rejected mid-term key falls back to Open-Meteo and pauses retries',async()=>{

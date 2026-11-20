@@ -31,6 +31,10 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/chat-delete',{id:chatMessageId});assert.equal(res.status,200);
     res=await request('/api/chat-link',{action:'enable'});assert.equal(res.status,400);
     res=await request('/api/lifestyle',{kind:'places',kindPlace:'카페',region:'서울'});assert.equal(res.status,200);assert.equal((await res.json()).configured,false);
+    res=await fetch(address+'/travel-ui.mjs');assert.equal(res.status,200);assert.match(res.headers.get('content-type'),/javascript/);
+    res=await request('/api/lifestyle',{kind:'weather-locations'});assert.equal(res.status,200);const locations=await res.json();assert.equal(locations.total,257);assert.equal(locations.locations.filter(loc=>loc.province==='서울특별시').length,25);
+    res=await request('/api/lifestyle',{kind:'weather',scope:'districts',period:'nextWeek',page:0});assert.equal(res.status,400);
+    res=await request('/api/lifestyle',{kind:'travel',travelKind:'숙박',region:'서울 강남구'});assert.equal(res.status,200);const travel=await res.json();assert.equal(travel.sections[0].configured,false);assert.equal(travel.sections[0].items.length,0);
     res=await fetch(address+'/api/chat-public/'+'x'.repeat(43));assert.equal(res.status,404);
     res=await fetch(address+'/api/test',{method:'POST',headers,body:'null'});assert.equal(res.status,400);
     res=await fetch(address+'/api/test',{method:'POST',headers,body:JSON.stringify({message:'x'.repeat(256001)})});assert.equal(res.status,413);
@@ -189,6 +193,8 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/grant',{user:'fresh-keep',kind:'pt',amount:20000,reason:'상점 구매 경로 검증'});assert.equal(res.status,200);
     await new Promise(r=>setTimeout(r,1100));res=await request('/api/test',{message:'!구매 exp',user:'fresh-keep',name:'청취자 킵'});assert.match((await res.json()).text,/구매 완료/);
     keepRoom=await(await fetch(address+'/api/room',{headers})).json();assert.equal(keepRoom.users['fresh-keep'].bag.exp,1);assert.equal(keepRoom.users['fresh-keep'].pt,0);
+    res=await request('/api/test',{message:'!숙박정보',user:'travel-user',name:'여행',dj:true});assert.equal(res.status,200);assert.match((await res.json()).text,/지역을 입력/);
+    res=await request('/api/test',{message:'서울 강남구',user:'travel-user',name:'여행',dj:true});assert.equal(res.status,200);assert.match((await res.json()).text,/숙박/);
     res=await request('/api/logout',{});assert.equal(res.status,200);
     res=await fetch(address+'/api/room',{headers});assert.equal(res.status,401);
   }finally{const exited=new Promise(resolve=>proc.once('exit',resolve));proc.kill();await exited;rmSync(data,{recursive:true,force:true});}

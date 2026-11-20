@@ -2,6 +2,7 @@ import {setAutomation} from './automation.mjs';
 import {assistantRequest} from './lifestyle.mjs';
 import {Conversation,squash} from './converse.mjs';
 import {diningQuery,diningPrompt,normalizeCommand} from './dining.mjs';
+import {travelKinds,travelQuery,travelPrompt} from './travel.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue,applySongAction} from './song-queue.mjs';
 import {rewardListening} from './listening.mjs';
@@ -231,17 +232,17 @@ export class Engine {
       // 지역을 묻는 중에 "취소"뿐 아니라 "아니", "됐어요"처럼 말해도 그만둔 것으로 봅니다.
       request={kind:pending.kind,arg:[pending.arg,text].filter(Boolean).join(' ')};followup=true;cancel=/^!?(?:취소|아니(?:야|요)?|됐어(?:요)?|괜찮아(?:요)?|그만|패스)$/u.test(text);expired=pending.expires<=now;
     }
-    if(request&&['맛집','카페'].includes(request.kind)&&request.arg==='취소')cancel=true;
+    if(request&&(['맛집','카페'].includes(request.kind)||travelKinds.has(request.kind))&&request.arg==='취소')cancel=true;
     if(request){
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
       const bulk=this.bulkBlocked(roomId,event,now);
       const blocked=r.settings.quiet||(!followup&&!event.isDj&&(now-r.lastResponse<r.settings.responseGap*1000||user&&now-user.lastCommand<r.settings.cooldown*1000))||bulk;
-      const needsRegion=['맛집','카페'].includes(request.kind)&&!diningQuery(request.arg,request.kind).region;
+      let needsRegion;try{needsRegion=travelKinds.has(request.kind)?!travelQuery(request.arg,now).region:['맛집','카페'].includes(request.kind)&&!diningQuery(request.arg,request.kind).region;}catch(error){return this.handle(roomId,event,{assistantRequest:request,assistantText:error.message,promptKey});}
       let assistantText='',assistantMore=[];
       if(!blocked){
-        if(cancel)assistantText='맛집·카페 지역 입력을 취소했어요.';
+        if(cancel)assistantText='검색 지역 입력을 취소했어요.';
         else if(expired)assistantText='지역 입력 시간이 지났어요. !맛집추천 또는 !카페추천으로 다시 시작해주세요.';
-        else if(needsRegion)assistantText=diningPrompt(request.kind);
+        else if(needsRegion)assistantText=travelKinds.has(request.kind)?travelPrompt(request.kind):diningPrompt(request.kind);
         else try{[assistantText,...assistantMore]=await this.assistantParts(request,this.chatContext(roomId,event,r.settings));if(assistantMore.length)this.markBulk(roomId,event,now,r.settings.cooldown);}
         catch{assistantText='검색·대화 서비스를 연결하지 못했어요. 잠시 후 같은 명령을 다시 입력해주세요.';}
       }
@@ -442,7 +443,7 @@ export class Engine {
     if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
     if(!dj&&!preparedLottery?.followup&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
     const known=KNOWN_COMMANDS;
-    if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
+    if(!known.includes(cmd)&&!request){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
     const interactionKey=cmd==='킵'?'lastKeepCommand':['아이템','가방','버프'].includes(cmd)?'lastItemCommand':null;
