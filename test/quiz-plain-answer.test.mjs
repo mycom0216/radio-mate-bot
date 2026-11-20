@@ -72,12 +72,10 @@ test('everyone can answer the shared auto quiz in plain chat; only the first cor
  assert.equal(closed.text,null);assert.equal(closed.suppressed,'quiz-closed');
  assert.equal(racing.engine.handle('room',event,{plainQuiz:true,followup:true}).duplicate,true);
 });
-test('the DJ, expired rounds, quiet mode and a disabled quiz never turn chat into answers',async()=>{
+test('expired rounds, quiet mode and a disabled quiz never turn chat into answers',async()=>{
  const dj=quizRoom();dj.sharedRound();
- assert.equal((await dj.say('간호사',{user:'dj',nickname:'DJ',isDj:true})).text,null);
- assert.equal((await dj.say('간호사',{user:'room',nickname:'DJ'})).text,null);   // 방 ID가 곧 DJ 계정 ID
- assert.ok(dj.load().autoQuizRound,'DJ의 일반 채팅으로 문제가 끝나지 않음');
- dj.advance(2000);assert.match((await dj.say('!정답 간호사',{user:'dj',nickname:'DJ',isDj:true})).text,/정답!/); // DJ는 명령어로만 참여
+  assert.match((await dj.say('간호사',{user:'dj',nickname:'DJ',isDj:true})).text,/정답!/); // DJ 본인도 정답과 똑같이 입력하면 인정(방 ID 계정도 같음)
+  assert.equal((await dj.say('잘 모르겠네',{user:'dj',nickname:'DJ',isDj:true})).text,null); // 정답이 아닌 말에는 DJ에게도 반응하지 않음
  const late=quizRoom();late.sharedRound({expiresAt:late.time()+1000});late.advance(2000);
  assert.equal((await late.say('간호사')).text,null);assert.ok(late.load().autoQuizRound);
  const quiet=quizRoom({quiet:true});quiet.sharedRound();assert.equal((await quiet.say('간호사')).text,null);assert.ok(quiet.load().autoQuizRound);

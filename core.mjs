@@ -214,10 +214,10 @@ export class Engine {
     }
     const text=normalizeCommand(event.message),promptKey=JSON.stringify([roomId,event.user?.id]);
     // 정답만 입력해도 인정합니다: "간호사"처럼 그냥 입력하거나 "!간호사"처럼 느낌표만 붙여도 됩니다. 진행 중인 문제의 정답과 같은 말만 정답 처리하고(대기시간에 걸려 놓치지 않음),
-    // 틀린 말이나 일반 대화에는 반응하지 않습니다. 느낌표를 붙인 말이 진짜 명령어·키워드 규칙·날씨/맛집 요청이면 그쪽이 우선입니다. 일반 채팅은 DJ 본인을 제외합니다(DJ는 !간호사·!정답 간호사로 참여).
+    // 틀린 말이나 일반 대화에는 반응하지 않습니다. 느낌표를 붙인 말이 진짜 명령어·키워드 규칙·날씨/맛집 요청이면 그쪽이 우선입니다. DJ 본인도 진행 중인 문제의 정답과 똑같이 입력하면 인정합니다(봇 답변이 DJ 계정으로 되돌아와도 정답과 완전히 같은 말은 아니라 안전).
     if(r&&event.user?.id){
       const bang=text.startsWith('!'),word=bang?text.slice(1).trim().split(/\s+/u)[0]:'',listener=event.isDj!==true&&String(event.user.id)!==String(roomId);
-      const answerLike=bang?!COMMAND_WORDS.has(word)&&!assistantRequest(text)&&!keywordMatches(r.settings,text):listener;
+      const answerLike=bang?!COMMAND_WORDS.has(word)&&!assistantRequest(text)&&!keywordMatches(r.settings,text):true;
       if(answerLike&&plainQuizAnswer(r,user,event.message,now)!==null)return this.handle(roomId,event,{plainQuiz:true,followup:true});
       // "!의사"처럼 느낌표를 붙인 틀린 한 낱말은, 본인이 !퀴즈로 받은 개인 문제가 진행 중일 때만 예전 "!정답 의사"와 같이 초성 힌트로 알려 줍니다(DJ 제외).
       // 모두 함께 푸는 자동 퀴즈 중이거나 일반 채팅의 틀린 말에는 답하지 않습니다(다른 봇용 명령어나 잡담에 끼어들지 않도록).
