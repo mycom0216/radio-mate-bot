@@ -25,7 +25,7 @@ test('daily forecast requests use explicit KST ranges and never convert missing 
 test('weekly national summaries and daily regional pages fit Spoon 200 characters and show source',async()=>{
  const service=new Lifestyle({now:()=>now,fetcher:async url=>({ok:true,json:async()=>fixture(url.searchParams.get('start_date'),url.searchParams.get('end_date'))})});
  for(const arg of ['이번주','이번주 2','다음주','내일','다음주 화요일','서울 다음주']){
-  const text=await service.answer({kind:arg.startsWith('서울')?'날씨':'전국날씨',arg});assert.ok(text.length<=200,text);assert.match(text,/Open-Meteo/);assert.match(text,/2026-11-/);
+  const text=await service.answer({kind:arg.startsWith('서울')?'날씨':'전국날씨',arg});assert.ok(text.length<=200,text);assert.match(text,/Open-Meteo/);assert.match(text,/11-\d\d/);
  }
  const data=await service.forecast('thisWeek'),text=forecastReply(data,parseWeatherQuery('이번주',now));assert.match(text,/전체 기온범위/);assert.match(text,/과거=모델자료/);
  const missing=await new Lifestyle({now:()=>now,fetcher:async url=>({ok:true,json:async()=>fixture(url.searchParams.get('start_date'),url.searchParams.get('end_date'),{missing:true})})}).forecast('nextWeek');assert.match(weatherHTML(missing),/예보 미제공/);assert.match(weatherHTML(missing),/weather-week-scroll/);assert.ok(!weatherHTML(missing).includes('null℃'));

@@ -1,5 +1,6 @@
 import {setAutomation} from './automation.mjs';
 import {assistantRequest} from './lifestyle.mjs';
+import {Conversation,squash} from './converse.mjs';
 import {diningQuery,diningPrompt,normalizeCommand} from './dining.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue,applySongAction} from './song-queue.mjs';
@@ -11,8 +12,8 @@ import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
 import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
-import {playQuiz} from './quiz.mjs';
-import {extraDefaults,normalizeExtras,validateExtras,keywordReply,playMiniGame} from './extras.mjs';
+import {playQuiz,plainQuizAnswer} from './quiz.mjs';
+import {extraDefaults,normalizeExtras,validateExtras,keywordReply,keywordMatches,playMiniGame} from './extras.mjs';
 import {parseSongRequest,songVideoId,groupKeeps,keepName,keepExpiryLabel} from './public/song-utils.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomInt, randomUUID,randomBytes } from 'node:crypto';
@@ -33,7 +34,7 @@ export function defaults() {
     pauseItems:false, cooldown:20, responseGap:3, quiet:false, fishing:false, odd:false,
     roulette:false, rouletteRewards:[{id:'miss',name:'꽝',weight:1,miss:true}],
     spoonNotice:DEFAULT_CHARGE_NOTICE,
-    introEnabled:true,introText:'🤖 Spoon Studio는 신청곡·출석·게임·킵 관리를 돕는 방송 도우미입니다. 명령어는 !도움말로 확인하세요.',
+    introEnabled:true,introText:'🤖 방송 도우미 메이트예요! 신청곡·출석·게임을 돕고, 명령어 없이 말을 걸어도 대답해요 ♡ 명령어는 !도움말로 확인하세요.',
     likeGreetingEnabled:true,likeGreeting:'{name}님, 좋아요 감사합니다 ♥',
     attendance:true, requests:true, duplicateSongs:false, requestMax:10,
     expPerCast:60, miss:0, payout:'random', goldenPolicy:'pending',
@@ -151,7 +152,7 @@ export class Store {
   logs(id){return this.db.prepare('SELECT * FROM audit WHERE room=? ORDER BY seq DESC LIMIT 200').all(id).map(r=>({...r,data:JSON.parse(r.data)}));}
 }
 export class Engine {
-  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1),region='kr',identityKey=randomBytes(32).toString('hex')}={}){this.store=store;this.now=now;this.int=int;this.region=region;this.identityKey=identityKey;this.diningPrompts=new Map();}
+  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1),region='kr',identityKey=randomBytes(32).toString('hex')}={}){this.store=store;this.now=now;this.int=int;this.region=region;this.identityKey=identityKey;this.diningPrompts=new Map();this.conversation=new Conversation({int});this.aiNotes=new Map();this.bulk=new Map();}
   deleteSong(r,event,input,scope,now){
     if(event.isDj!==true)fail('신청곡 삭제는 DJ 전용입니다. 본인 신청곡은 !신청취소를 사용하세요.');
     let result;try{result=deleteSongCommand(r,event.user.id,input,scope,now);}catch(error){fail(error.message);}
@@ -208,28 +209,39 @@ export class Engine {
       }catch{/* The request still works when search is unavailable; the player can retry. */}
     }
     const text=normalizeCommand(event.message),promptKey=JSON.stringify([roomId,event.user?.id]);
+    // 명령어 없이 정답만 입력해도 인정합니다. 진행 중인 문제의 정답과 같은 말만 정답 처리하고, 틀린 말이나 일반 대화에는 반응하지 않습니다(DJ는 !정답으로 참여).
+    if(r&&!text.startsWith('!')&&event.isDj!==true&&String(event.user?.id)!==String(roomId)&&plainQuizAnswer(r,user,event.message,now)!==null)return this.handle(roomId,event,{plainQuiz:true,followup:true});
     const pending=this.diningPrompts.get(promptKey);
     for(const [key,value] of this.diningPrompts)if(value.expires<=now)this.diningPrompts.delete(key);
     let request=assistantRequest(text),followup=false,cancel=false,expired=false;
     // A region reply belongs only to the listener and room that opened the prompt.
     // DJ song deletion keeps priority over plain text while its own prompt is active.
     if(pending&&(!text.startsWith('!')||/^!\s*취소$/u.test(text))&&!(event.isDj&&r.songDeletePrompt?.actor===event.user?.id)){
-      request={kind:pending.kind,arg:[pending.arg,text].filter(Boolean).join(' ')};followup=true;cancel=/^!?취소$/u.test(text);expired=pending.expires<=now;
+      // 지역을 묻는 중에 "취소"뿐 아니라 "아니", "됐어요"처럼 말해도 그만둔 것으로 봅니다.
+      request={kind:pending.kind,arg:[pending.arg,text].filter(Boolean).join(' ')};followup=true;cancel=/^!?(?:취소|아니(?:야|요)?|됐어(?:요)?|괜찮아(?:요)?|그만|패스)$/u.test(text);expired=pending.expires<=now;
     }
     if(request&&['맛집','카페'].includes(request.kind)&&request.arg==='취소')cancel=true;
     if(request){
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
-      const blocked=r.settings.quiet||(!followup&&!event.isDj&&(now-r.lastResponse<r.settings.responseGap*1000||user&&now-user.lastCommand<r.settings.cooldown*1000));
+      const bulk=this.bulkBlocked(roomId,event,now);
+      const blocked=r.settings.quiet||(!followup&&!event.isDj&&(now-r.lastResponse<r.settings.responseGap*1000||user&&now-user.lastCommand<r.settings.cooldown*1000))||bulk;
       const needsRegion=['맛집','카페'].includes(request.kind)&&!diningQuery(request.arg,request.kind).region;
-      let assistantText='';
+      let assistantText='',assistantMore=[];
       if(!blocked){
         if(cancel)assistantText='맛집·카페 지역 입력을 취소했어요.';
         else if(expired)assistantText='지역 입력 시간이 지났어요. !맛집추천 또는 !카페추천으로 다시 시작해주세요.';
         else if(needsRegion)assistantText=diningPrompt(request.kind);
-        else try{assistantText=this.lifestyle?await this.lifestyle.answer(request,{store:this.store,room:roomId,user:event.user?.id,channel:'spoon'}):'대화 도우미가 준비 중입니다.';}
+        else try{[assistantText,...assistantMore]=await this.assistantParts(request,this.chatContext(roomId,event,r.settings));if(assistantMore.length)this.markBulk(roomId,event,now,r.settings.cooldown);}
         catch{assistantText='검색·대화 서비스를 연결하지 못했어요. 잠시 후 같은 명령을 다시 입력해주세요.';}
       }
-      return this.handle(roomId,event,{assistantText,assistantRequest:request,followup,promptKey,needsRegion,cancel,expired});
+      return this.handle(roomId,event,{assistantText,assistantMore,assistantRequest:request,followup,promptKey,needsRegion,cancel,expired,bulk});
+    }
+    // 명령어(!)가 아닌 말: 방 설정이 허락하면 사람처럼 알아듣고 대답합니다(청취자의 날씨·맛집 질문, 인사, 부름, 이어 말하기).
+    // 대화 판단 중 어떤 오류가 나도 스푼 연결 루프가 끊기지 않도록 여기서 막고, 평소처럼 일반 채팅으로 처리합니다.
+    if(!text.startsWith('!')){
+      let natural=null;
+      try{natural=await this.naturalReply(roomId,event,r,text,now);}catch(error){this.noteAiProblem(roomId,'natural-chat: '+error.message,now);}
+      if(natural)return this.handle(roomId,event,natural);
     }
     const automatic=/^!\s*복권\s+자동\s*$/.test(String(event.message||'').trim());
     if(automatic&&user?.tickets>LOTTERY_CHUNK&&user.month===dates(now).month&&(event.isDj||now-r.lastResponse>=r.settings.responseGap*1000&&now-user.lastCommand>=r.settings.cooldown*1000)){
@@ -239,6 +251,68 @@ export class Engine {
       return this.handle(roomId,event,{count,counts,ticketRevision});
     }
     return this.handle(roomId,event);
+  }
+  plainQuizEvent(r,event,now){const answer=plainQuizAnswer(r,r.users[event.user?.id],event.message,now);return answer===null?null:{...event,message:'!정답 '+answer};}
+  // ───── 명령어 없는 대화 ─────
+  chatContext(roomId,event,settings,extra={}){return {store:this.store,room:roomId,user:event.user?.id,channel:'spoon',nickname:event.user?.nickname,botName:settings.chatName,persona:settings.chatPersona,int:this.int,...extra};}
+  async assistantParts(request,context){
+    if(!this.lifestyle)return ['대화 도우미가 준비 중입니다.'];
+    const parts=this.lifestyle.answerParts?await this.lifestyle.answerParts(request,context):[await this.lifestyle.answer(request,context)];
+    return parts.length?parts:[''];
+  }
+  // 한 사람이 여러 쪽짜리 답(예: 이번주 지역별 날씨)을 연달아 요청해 채팅을 도배하지 못하게 합니다. DJ는 제외합니다.
+  bulkBlocked(roomId,event,now){return event.isDj!==true&&(this.bulk.get(roomId+'|'+event.user?.id)??0)>now;}
+  markBulk(roomId,event,now,seconds){if(this.bulk.size>=2000)this.bulk.delete(this.bulk.keys().next().value);this.bulk.set(roomId+'|'+event.user?.id,now+Math.max(30,seconds||0)*1000);}
+  // 봇은 DJ 계정으로 채팅을 보내므로 자기 답변이 다시 들어올 수 있습니다. 방금 보낸 문구와 같으면 무시해 대화가 꼬리를 물지 않게 합니다.
+  isBotEcho(roomId,text,now){
+    const key=squash(text);
+    return this.store.db.prepare("SELECT text FROM outbox WHERE room=? AND status IN ('sent','sending','uncertain') AND created>? ORDER BY created DESC LIMIT 30").all(roomId,now-180000).some(row=>squash(row.text)===key);
+  }
+  // AI 호출이 막혀도 채팅방에는 오류 문구를 흘리지 않고(규칙 기반 대답으로 대체), 이유만 운영 기록에 10분에 한 번 남깁니다.
+  noteAiProblem(roomId,message,now){
+    if(now-(this.aiNotes.get(roomId)??0)<600000)return;
+    if(this.aiNotes.size>=500)this.aiNotes.delete(this.aiNotes.keys().next().value);
+    this.aiNotes.set(roomId,now);
+    try{this.store.log(roomId,'system','ai-chat-unavailable',{message:String(message||'').slice(0,120)},now);}catch{/* 기록 실패가 대화를 막지 않게 */}
+  }
+  // 대답할 말이면 {natural,assistantText,...}를, 가만히 있어야 하면 null을 돌려줍니다. 외부 호출(AI·날씨)은 DB 트랜잭션 밖에서 합니다.
+  async naturalReply(roomId,event,r,text,now){
+    const s=r?.settings,user=event.user?.id;
+    if(!this.lifestyle||!s||!user||!text||s.chatMode==='off'||typeof event.id!=='string')return null;
+    // DJ 본인과 봇이 DJ 계정으로 보낸 답변(되돌아온 것)에는 끼어들지 않습니다. 이미 처리한 이벤트도 다시 AI를 부르지 않습니다.
+    if(event.isDj===true||String(user)===String(roomId)||this.isBotEcho(roomId,text,now))return null;
+    if(keywordMatches(s,text))return null; // DJ가 만든 키워드 응답이 우선
+    if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return null;
+    const plan=this.conversation.plan({roomId,event,settings:s,now,isRegion:token=>!!this.lifestyle.resolveRegion?.(token),lastResponse:r.lastResponse});
+    if(!plan||plan.kind==='service'&&this.bulkBlocked(roomId,event,now))return null;
+    const context=this.chatContext(roomId,event,s,{natural:true,mayskip:plan.mayskip,song:r.current?.title}),promptKey=JSON.stringify([roomId,user]);
+    let parts,request={kind:'chat',arg:''},needsRegion=false;
+    if(plan.kind==='service'){
+      request=plan.request;needsRegion=['맛집','카페'].includes(request.kind)&&!diningQuery(request.arg,request.kind).region;
+      if(needsRegion)parts=[`어느 지역 ${request.kind}${request.kind==='카페'?'를':'을'} 찾아볼까요? "광주 동명동"처럼 말해 주세요 ♡ (2분 안에 답해주세요)`];
+      else try{parts=await this.assistantParts(request,context);}catch{parts=['지금은 알아오지 못했어요. 잠시 뒤에 다시 물어봐주세요 ♡'];}
+      if(parts.length>1)this.markBulk(roomId,event,now,s.cooldown);
+      if(this.lifestyle.ai?.configured)this.lifestyle.ai.remember?.(context,text,parts.join(' '));
+    }else{
+      const result=this.lifestyle.converse?await this.lifestyle.converse(plan.text,context):{text:null,reason:'unavailable'};
+      if(result.reason==='skipped'){this.conversation.record(roomId,user,now,text,{open:false});return null;} // AI가 "내게 한 말이 아니다"라고 판단
+      if(result.reason==='error')this.noteAiProblem(roomId,result.message,now);
+      const reply=result.text||plan.fallback;if(!reply)return null;parts=[reply];
+    }
+    this.conversation.record(roomId,user,now,text);
+    return {natural:true,trigger:plan.trigger,assistantRequest:request,assistantText:parts[0],assistantMore:parts.slice(1),promptKey,needsRegion};
+  }
+  naturalCommand(r,e,now,prepared){
+    if(r.settings.quiet)return {text:null,suppressed:'quiet'};
+    if(prepared.promptKey){
+      this.diningPrompts.delete(prepared.promptKey);
+      if(prepared.needsRegion){if(this.diningPrompts.size>=1000)this.diningPrompts.delete(this.diningPrompts.keys().next().value);this.diningPrompts.set(prepared.promptKey,{kind:prepared.assistantRequest.kind,arg:'',expires:now+120000});}
+    }
+    const [text,...more]=[prepared.assistantText,...(prepared.assistantMore||[])].map(part=>String(part||'').trim()).filter(Boolean);
+    if(!text)return {text:null};
+    r.lastResponse=now;
+    this.store.log(r.id,e.user.id,'natural-chat',{trigger:prepared.trigger,kind:prepared.assistantRequest.kind},now);
+    return {text:text.slice(0,200),...(more.length?{more:more.map(part=>part.slice(0,200))}:{})};
   }
   handle(roomId,event,preparedLottery=null){
     const now=this.now();
@@ -252,7 +326,9 @@ export class Engine {
       }
       let result;const checkpoint=JSON.stringify(r);
       this.store.db.exec('SAVEPOINT command_effects');
-      try{result=this.command(r,event,now,preparedLottery);this.store.db.exec('RELEASE command_effects');}
+      // 명령어 없이 입력한 정답은 트랜잭션 안에서 한 번 더 확인합니다(동시에 정답이 들어와 이미 끝난 문제라면 오류 문구 없이 조용히 넘어갑니다).
+      const commandEvent=preparedLottery?.plainQuiz?this.plainQuizEvent(r,event,now):event;
+      try{result=commandEvent?this.command(r,commandEvent,now,preparedLottery):{text:null,suppressed:'quiz-closed'};this.store.db.exec('RELEASE command_effects');}
       catch(e){
         if(!(e instanceof RuleError))throw e;
         const attempted=r.users[event.user?.id],commandTime=attempted?.lastCommand,commandName=attempted?.name;
@@ -265,13 +341,16 @@ export class Engine {
       }
       this.syncBuffs(r,now);
       if(result.text&&!preparedLottery?.assistantRequest&&normalizeCommand(event.message).startsWith('!'))this.diningPrompts.delete(JSON.stringify([roomId,event.user?.id]));
-      if(event.delivery&&result.text)new Outbox(this.store).enqueue(roomId,event.id,result.text,now);
+      if(event.delivery&&result.text){const outbox=new Outbox(this.store);outbox.enqueue(roomId,event.id,result.text,now);result.more?.forEach((part,i)=>outbox.enqueue(roomId,event.id+':'+(i+2),part,now));}
       this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(preparedLottery?.assistantRequest||assistantRequest(event.message)?{text:null,assistant:true}:result));
+      // 여러 쪽 답변은 전송 큐가 쪽마다 따로 보내고, 테스트 화면처럼 큐를 안 쓰는 곳에는 한 덩어리로 돌려줍니다.
+      if(result.more){const {more,...rest}=result;return {...rest,text:[result.text,...more].join('\n')};}
       return result;
     });
   }
   command(r,e,now,preparedLottery=null){
     const s=r.settings,text=normalizeCommand(e.message),request=preparedLottery?.assistantRequest||assistantRequest(text);
+    if(preparedLottery?.natural)return this.naturalCommand(r,e,now,preparedLottery);
     if(!text.startsWith('!')&&!request){
       if(e.isDj&&r.songDeletePrompt?.actor===e.user?.id){
         if(r.songDeletePrompt.expires<=now){delete r.songDeletePrompt;return {text:'삭제 선택 시간이 지났습니다. !삭제로 새 목록을 열어주세요.'};}
@@ -364,6 +443,7 @@ export class Engine {
     if(u){u.name=e.user.nickname||u.name;if(interactionKey)u[interactionKey]=now;else u.lastCommand=now;}
     if(request){
       if(s.quiet)return {text:null,suppressed:'quiet'};
+      if(preparedLottery?.bulk)return {text:null,suppressed:'bulk'}; // 여러 쪽 답을 연달아 요청하는 도배는 조용히 넘김
       if(preparedLottery?.promptKey){
         this.diningPrompts.delete(preparedLottery.promptKey);
         if(preparedLottery.needsRegion&&!preparedLottery.cancel&&!preparedLottery.expired){
@@ -371,9 +451,11 @@ export class Engine {
           this.diningPrompts.set(preparedLottery.promptKey,{kind:request.kind,arg:request.arg,expires:now+120000});
         }
       }
-      return answer(String(preparedLottery?.assistantText||'대화 도우미를 다시 요청해주세요.').slice(0,200));
+      const reply=answer(String(preparedLottery?.assistantText||'대화 도우미를 다시 요청해주세요.').slice(0,200));
+      if(preparedLottery?.assistantMore?.length)reply.more=preparedLottery.assistantMore.map(part=>String(part).slice(0,200));
+      return reply;
     }
-    if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
+    if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → 답만 입력':''}`);
     if(cmd==='채팅방')return answer(r.chat?.enabled&&r.chat.token?`우리 방송 대화방 ♡ ${this.publicUrl}/chat/${r.chat.token} (스푼과 별도 채팅방)`:'DJ가 아직 앱 채팅방을 열지 않았습니다.');
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));

@@ -75,7 +75,7 @@ test('program introduction sends only when live and due, pauses in quiet mode an
   f.store.transaction('a',r=>{r.live=false;r.introDueAt=due;});await spoon.tick();assert.equal(messages.length,0);
   f.store.transaction('a',r=>{r.live=true;r.settings.quiet=true;});await spoon.tick();assert.equal(messages.length,0);
   f.store.transaction('a',r=>r.settings.quiet=false);success=false;await spoon.tick();assert.equal(messages.length,1);assert.equal(f.store.load('a').introDueAt,due);
-  success=true;await spoon.tick();assert.equal(messages.length,2);assert.match(messages[1],/Spoon Studio/);assert.ok(f.store.load('a').introDueAt>=Date.now()+599000);
+  success=true;await spoon.tick();assert.equal(messages.length,2);assert.match(messages[1],/방송 도우미/);assert.match(messages[1],/명령어 없이/);assert.ok(f.store.load('a').introDueAt>=Date.now()+599000);
   await spoon.tick();assert.equal(messages.length,2);f.store.db.close();
 });
 test('overlapping scheduler ticks cannot send two program introductions',async()=>{

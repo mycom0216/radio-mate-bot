@@ -1,5 +1,5 @@
 import {defaultQuizQuestions} from './quiz.mjs';
-export function extraDefaults(){return {affinityNotices:true,listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.']};}
+export function extraDefaults(){return {affinityNotices:true,listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.'],chatMode:'auto',chatName:'메이트',chatPersona:''};}
 export function normalizeExtras(settings){const d=extraDefaults();for(const [key,value]of Object.entries(d))if(settings[key]===undefined)settings[key]=value;return settings;}
 export function validateExtras(s){
   normalizeExtras(s);
@@ -17,10 +17,20 @@ export function validateExtras(s){
   }
   if(!['sequential','random'].includes(s.autoChatMode)||!Number.isInteger(s.autoChatMinutes)||s.autoChatMinutes<1||s.autoChatMinutes>1440)throw Error('자동채팅 방식·간격(1~1440분)을 확인하세요.');
   if(!Array.isArray(s.autoChatMessages)||s.autoChatMessages.length>30||s.autoChatMessages.some(t=>typeof t!=='string'||!t.trim()||t.length>200)||s.autoChatEnabled&&!s.autoChatMessages.length)throw Error('자동채팅 문구는 각 1~200자, 최대 30개로 등록하세요.');
+  // 명령어 없는 대화: off=끄기 · call=이름을 부르거나 이어 말할 때만 · auto=인사·질문·날씨·맛집에도 먼저 대답
+  if(typeof s.chatName==='string')s.chatName=s.chatName.trim();
+  if(!['off','call','auto'].includes(s.chatMode))throw Error('대화 방식은 끄기·부르면 대답·자유 대화 중에서 선택하세요.');
+  if(typeof s.chatName!=='string'||!/^[^\s@!"'`<>]{2,12}$/u.test(s.chatName))throw Error('봇 이름은 공백 없이 2~12자로 입력하세요.');
+  if(typeof s.chatPersona!=='string'||[...s.chatPersona].length>200)throw Error('말투·분위기 설명은 200자 이하로 입력하세요.');
   if(!Array.isArray(s.autoReplies)||s.autoReplies.length>30)throw Error('키워드 응답은 최대 30개입니다.');
   const ids=new Set();for(const rule of s.autoReplies){if(typeof rule.id!=='string'||!/^[\w-]{1,64}$/.test(rule.id)||ids.has(rule.id)||typeof rule.keyword!=='string'||!rule.keyword.trim()||rule.keyword.length>50||typeof rule.text!=='string'||!rule.text.trim()||rule.text.length>200||!['exact','contains'].includes(rule.match)||typeof rule.enabled!=='boolean'||!Number.isInteger(rule.cooldown)||rule.cooldown<1||rule.cooldown>3600)throw Error('키워드·응답 문구·대기시간(1~3600초)을 확인하세요.');ids.add(rule.id);}
 }
 const normal=value=>String(value).normalize('NFKC').trim().toLocaleLowerCase('ko-KR');
+// DJ가 만든 키워드 규칙에 걸리는 말인지만 검사합니다(대기시간·기록 변경 없음). 걸리면 자동 대화는 끼어들지 않고 키워드 응답이 우선합니다.
+export function keywordMatches(settings,message){
+  const text=normal(message);
+  return (settings.autoReplies||[]).some(rule=>rule.enabled&&(rule.match==='exact'?text===normal(rule.keyword):text.includes(normal(rule.keyword))));
+}
 export function keywordReply(r,event,now){
   const s=r.settings;if(s.quiet||!event.user?.id||now-r.lastResponse<s.responseGap*1000)return {text:null};
   const message=normal(event.message);

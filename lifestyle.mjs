@@ -1,7 +1,8 @@
 import {createHmac} from 'node:crypto';
 import {diningRequest,diningQuery,diningPrompt,diningGuide,normalizeCommand} from './dining.mjs';
 import {foodTypes,cafeTypes} from './public/dining-guide.mjs';
-import {parseWeatherQuery,weatherRange,koreaDate,shiftDate,forecastReply} from './weather-periods.mjs';
+import {parseWeatherQuery,weatherRange,koreaDate,shiftDate,forecastReply,isRegionWeek,regionWeekPages} from './weather-periods.mjs';
+import {smallTalk,fallbackChat} from './converse.mjs';
 import {currentLine,hourlyReply,umbrellaReply,outfitReply,briefingReply,yesterdayReply,sunReply,weatherHelp} from './weather-extras.mjs';
 import {AirKorea,sidoOf,dustReply,dustShort,dustForecastReply} from './air-korea.mjs';
 import {KmaWarnings,warningReply,alertShort} from './weather-warnings.mjs';
@@ -219,8 +220,31 @@ export class Lifestyle {
   const range=weatherRange('current',now),day=(await this.kma.days(range,[loc])).get(loc.id)?.get(range.today);
   return outfitReply(loc.id,{temp:item.temperature,feels:item.feels,min:day?.min,max:day?.max});
  }
+ // 스푼 채팅은 한 번에 200자라서 긴 답은 여러 쪽이 됩니다. 이번주·다음주 "지역별" 날씨처럼 전체를 물으면 모든 쪽을 한 번에 돌려주고, 나머지는 기존 answer와 같은 한 건입니다.
+ async answerParts(request,context){
+  const {kind,arg}=request||{};
+  if(kind==='전국날씨'||kind==='날씨'){
+   let selection=null;try{selection=parseWeatherQuery(arg,this.now());}catch{/* 잘못된 입력은 answer가 안내 문구로 돌려줍니다 */}
+   if(selection&&!selection.pageGiven&&isRegionWeek(selection)){
+    try{return regionWeekPages(await this.forecast(selection.period,null),selection,{hint:false});}
+    catch(error){if(context?.strict)throw error;return [error.message];}
+   }
+  }
+  return [await this.answer(request,context)];
+ }
+ // 명령어 없는 자유 대화. 방송 채팅에 오류 문구가 흘러가지 않도록 예외 대신 결과 객체로 돌려줍니다(text가 null이면 답하지 않음).
+ async converse(text,context){
+  if(!this.ai?.configured)return {text:null,reason:'unconfigured'};
+  try{const answer=await this.ai.answer(text,{...context,natural:true});return answer?{text:answer}:{text:null,reason:'skipped'};}
+  catch(error){return {text:null,reason:'error',message:error.message};}
+ }
  async answer(request,context){try{
-  const {kind,arg}=request;if(kind==='greeting'&&this.ai&&context){if(arg==='초기화'){this.ai.reset(context);return 'AI 대화 기록을 초기화했어요 ♡';}return await this.ai.answer(arg,context);}if(kind==='greeting')return /안녕|반가/.test(arg)?'반가워요 ♡ 오늘도 함께해요! !날씨 서울 · !전국날씨 · !맛집 광주 점심 · !카페 동명동으로 물어보세요.':'방송 대화 도우미예요 ♡ 인사, 날씨, 맛집·카페를 안내해요. 예: !채팅 서울 날씨 / !맛집 부산 저녁. 자유로운 AI 대화는 아직 연결되지 않았어요.';
+  const {kind,arg}=request;
+  if(kind==='greeting'){
+   if(arg==='초기화'&&this.ai&&context){this.ai.reset(context);return 'AI 대화 기록을 초기화했어요 ♡';}
+   if(this.ai?.configured&&context)return await this.ai.answer(arg,context);
+   return smallTalk(arg,{name:context?.nickname,botName:context?.botName,hour:new Date(this.now()+32400000).getUTCHours(),int:context?.int})||fallbackChat;
+  }
   if(kind==='전국날씨'||kind==='날씨'){
    const selection=parseWeatherQuery(arg,this.now());let region=selection.region;
    if(selection.mode==='help')return weatherHelp;
@@ -231,6 +255,7 @@ export class Lifestyle {
    if(selection.mode)return await this.weatherExtra(selection,region);
    if(selection.period!=='current'){
     const forecast=await this.forecast(selection.period,region),data=region?{...forecast,items:forecast.items.filter(x=>x.region===region)}:forecast;
+    if(isRegionWeek(selection,region)){const pages=regionWeekPages(data,selection);return selection.page>pages.length?`날씨는 1~${pages.length}페이지입니다. !전국날씨 ${data.label} 1`:pages[selection.page-1];}
     return forecastReply(data,{...selection,region});
    }
    const data=await this.weather({region});let items=region?data.items.filter(x=>x.region===region):data.items,heading=region?selection.region+' 날씨':'전국 날씨';
