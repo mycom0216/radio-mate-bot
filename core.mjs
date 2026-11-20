@@ -1,5 +1,6 @@
 import {setAutomation} from './automation.mjs';
 import {assistantRequest} from './lifestyle.mjs';
+import {diningQuery,diningPrompt,normalizeCommand} from './dining.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue,applySongAction} from './song-queue.mjs';
 import {rewardListening} from './listening.mjs';
@@ -150,7 +151,7 @@ export class Store {
   logs(id){return this.db.prepare('SELECT * FROM audit WHERE room=? ORDER BY seq DESC LIMIT 200').all(id).map(r=>({...r,data:JSON.parse(r.data)}));}
 }
 export class Engine {
-  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1),region='kr',identityKey=randomBytes(32).toString('hex')}={}){this.store=store;this.now=now;this.int=int;this.region=region;this.identityKey=identityKey;}
+  constructor(store,{now=()=>Date.now(),int=(a,b)=>randomInt(a,b+1),region='kr',identityKey=randomBytes(32).toString('hex')}={}){this.store=store;this.now=now;this.int=int;this.region=region;this.identityKey=identityKey;this.diningPrompts=new Map();}
   deleteSong(r,event,input,scope,now){
     if(event.isDj!==true)fail('신청곡 삭제는 DJ 전용입니다. 본인 신청곡은 !신청취소를 사용하세요.');
     let result;try{result=deleteSongCommand(r,event.user.id,input,scope,now);}catch(error){fail(error.message);}
@@ -206,12 +207,29 @@ export class Engine {
         this.store.transaction(roomId,current=>{const song=[current.current,current.previous,...current.songs].find(song=>song?.id===target.id);if(song&&song.title===target.title&&!songVideoId(song)){song.videoId=videoId;rememberSongVideo(current,song,videoId);touchQueue(current);}});
       }catch{/* The request still works when search is unavailable; the player can retry. */}
     }
-    const request=assistantRequest(event.message);
+    const text=normalizeCommand(event.message),promptKey=JSON.stringify([roomId,event.user?.id]);
+    const pending=this.diningPrompts.get(promptKey);
+    for(const [key,value] of this.diningPrompts)if(value.expires<=now)this.diningPrompts.delete(key);
+    let request=assistantRequest(text),followup=false,cancel=false,expired=false;
+    // A region reply belongs only to the listener and room that opened the prompt.
+    // DJ song deletion keeps priority over plain text while its own prompt is active.
+    if(pending&&(!text.startsWith('!')||/^!\s*취소$/u.test(text))&&!(event.isDj&&r.songDeletePrompt?.actor===event.user?.id)){
+      request={kind:pending.kind,arg:[pending.arg,text].filter(Boolean).join(' ')};followup=true;cancel=/^!?취소$/u.test(text);expired=pending.expires<=now;
+    }
+    if(request&&['맛집','카페'].includes(request.kind)&&request.arg==='취소')cancel=true;
     if(request){
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
-      const blocked=r.settings.quiet||(!event.isDj&&(now-r.lastResponse<r.settings.responseGap*1000||user&&now-user.lastCommand<r.settings.cooldown*1000));
-      const assistantText=blocked?'':this.lifestyle?await this.lifestyle.answer(request,{store:this.store,room:roomId,user:event.user?.id,channel:'spoon'}):'대화 도우미가 준비 중입니다.';
-      return this.handle(roomId,event,{assistantText});
+      const blocked=r.settings.quiet||(!followup&&!event.isDj&&(now-r.lastResponse<r.settings.responseGap*1000||user&&now-user.lastCommand<r.settings.cooldown*1000));
+      const needsRegion=['맛집','카페'].includes(request.kind)&&!diningQuery(request.arg,request.kind).region;
+      let assistantText='';
+      if(!blocked){
+        if(cancel)assistantText='맛집·카페 지역 입력을 취소했어요.';
+        else if(expired)assistantText='지역 입력 시간이 지났어요. !맛집추천 또는 !카페추천으로 다시 시작해주세요.';
+        else if(needsRegion)assistantText=diningPrompt(request.kind);
+        else try{assistantText=this.lifestyle?await this.lifestyle.answer(request,{store:this.store,room:roomId,user:event.user?.id,channel:'spoon'}):'대화 도우미가 준비 중입니다.';}
+        catch{assistantText='검색·대화 서비스를 연결하지 못했어요. 잠시 후 같은 명령을 다시 입력해주세요.';}
+      }
+      return this.handle(roomId,event,{assistantText,assistantRequest:request,followup,promptKey,needsRegion,cancel,expired});
     }
     const automatic=/^!\s*복권\s+자동\s*$/.test(String(event.message||'').trim());
     if(automatic&&user?.tickets>LOTTERY_CHUNK&&user.month===dates(now).month&&(event.isDj||now-r.lastResponse>=r.settings.responseGap*1000&&now-user.lastCommand>=r.settings.cooldown*1000)){
@@ -246,14 +264,15 @@ export class Engine {
         result={text:e.message};
       }
       this.syncBuffs(r,now);
+      if(result.text&&!preparedLottery?.assistantRequest&&normalizeCommand(event.message).startsWith('!'))this.diningPrompts.delete(JSON.stringify([roomId,event.user?.id]));
       if(event.delivery&&result.text)new Outbox(this.store).enqueue(roomId,event.id,result.text,now);
-      this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(assistantRequest(event.message)?{text:null,assistant:true}:result));
+      this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,event.id,JSON.stringify(preparedLottery?.assistantRequest||assistantRequest(event.message)?{text:null,assistant:true}:result));
       return result;
     });
   }
   command(r,e,now,preparedLottery=null){
-    const s=r.settings,text=String(e.message??'').trim();
-    if(!text.startsWith('!')){
+    const s=r.settings,text=normalizeCommand(e.message),request=preparedLottery?.assistantRequest||assistantRequest(text);
+    if(!text.startsWith('!')&&!request){
       if(e.isDj&&r.songDeletePrompt?.actor===e.user?.id){
         if(r.songDeletePrompt.expires<=now){delete r.songDeletePrompt;return {text:'삭제 선택 시간이 지났습니다. !삭제로 새 목록을 열어주세요.'};}
         return this.deleteSong(r,e,text,undefined,now);
@@ -261,7 +280,7 @@ export class Engine {
       const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;
     }
     const bits=text.slice(1).trim().split(/\s+/);let cmd=bits.shift()||'';
-    const weatherAlias=assistantRequest(text);if(weatherAlias&&['날씨','전국날씨'].includes(weatherAlias.kind))cmd=weatherAlias.kind;
+    if(request)cmd=request.kind==='greeting'?'채팅':request.kind;
     if(cmd==='구매'){cmd='아이템';bits.unshift('구매');}
     const arg=bits.join(' ');
     const dj=e.isDj===true;
@@ -330,20 +349,30 @@ export class Engine {
 
     if(s.quiet&&['낚시','홀','짝','홀짝','복권','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답'].includes(cmd))return {text:null,suppressed:'quiet'};
     if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
-    if(!dj&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
+    if(!dj&&!preparedLottery?.followup&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
     const known=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
     if(!known.includes(cmd)){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
     let u=r.users[e.user.id];
     const interactionKey=cmd==='킵'?'lastKeepCommand':['아이템','가방','버프'].includes(cmd)?'lastItemCommand':null;
-    if(u&&!dj&&!interactionKey&&now-u.lastCommand<s.cooldown*1000)return {text:null,suppressed:'cooldown',retryAfterMs:Math.max(u.lastCommand+s.cooldown*1000-now,r.lastResponse+s.responseGap*1000-now)};
+    if(u&&!dj&&!preparedLottery?.followup&&!interactionKey&&now-u.lastCommand<s.cooldown*1000)return {text:null,suppressed:'cooldown',retryAfterMs:Math.max(u.lastCommand+s.cooldown*1000-now,r.lastResponse+s.responseGap*1000-now)};
     if(u&&!dj&&interactionKey&&now-(u[interactionKey]||0)<1000)return {text:null,suppressed:'cooldown',retryAfterMs:1000-(now-u[interactionKey])};
     if(cmd==='내정보'&&arg==='생성'){
       if(!u){u=freshUser(e.user.id,e.user.nickname||'청취자',dates(now).month);r.users[u.id]=u;this.reset(r);}
       u.lastCommand=now;return answer(`${u.name}님 프로필이 준비되었습니다. !출석으로 복권을 받으세요.`);
     }
     if(u){u.name=e.user.nickname||u.name;if(interactionKey)u[interactionKey]=now;else u.lastCommand=now;}
-    if(assistantRequest(text)){if(s.quiet)return {text:null,suppressed:'quiet'};return answer(String(preparedLottery?.assistantText||'대화 도우미를 다시 요청해주세요.').slice(0,200));}
+    if(request){
+      if(s.quiet)return {text:null,suppressed:'quiet'};
+      if(preparedLottery?.promptKey){
+        this.diningPrompts.delete(preparedLottery.promptKey);
+        if(preparedLottery.needsRegion&&!preparedLottery.cancel&&!preparedLottery.expired){
+          if(this.diningPrompts.size>=1000)this.diningPrompts.delete(this.diningPrompts.keys().next().value);
+          this.diningPrompts.set(preparedLottery.promptKey,{kind:request.kind,arg:request.arg,expires:now+120000});
+        }
+      }
+      return answer(String(preparedLottery?.assistantText||'대화 도우미를 다시 요청해주세요.').slice(0,200));
+    }
     if(cmd==='도움말')return answer(`시작 !내정보 (자동 생성) · !출석 | 신청곡 !신청곡 · !이전곡 · !현재곡 · !다음곡 · DJ !재생 !멈춤 !삭제 | 정보 !랭킹 · !킵 · !스푼 · !보이스카드 | 게임 !복권${s.fishing?' · !낚시':''}${s.odd?' · !홀/!짝':''}${s.roulette?' · !룰렛':''}${s.rps?' · !가위바위보':''}${s.dice?' · !주사위':''}${s.numberGuess?' · !숫자맞히기':''}${s.quiz?' · !퀴즈 → !정답 답안':''}`);
     if(cmd==='채팅방')return answer(r.chat?.enabled&&r.chat.token?`우리 방송 대화방 ♡ ${this.publicUrl}/chat/${r.chat.token} (스푼과 별도 채팅방)`:'DJ가 아직 앱 채팅방을 열지 않았습니다.');
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');

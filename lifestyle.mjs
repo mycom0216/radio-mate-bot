@@ -1,5 +1,6 @@
-import {foodTypes,cafeTypes,diningGuideReply} from './public/dining-guide.mjs';
 import {createHmac} from 'node:crypto';
+import {diningRequest,diningQuery,diningPrompt,diningGuide,normalizeCommand} from './dining.mjs';
+import {foodTypes,cafeTypes} from './public/dining-guide.mjs';
 import {parseWeatherQuery,weatherRange,koreaDate,shiftDate,forecastReply} from './weather-periods.mjs';
 import {currentLine,hourlyReply,umbrellaReply,outfitReply,briefingReply,yesterdayReply,sunReply,weatherHelp} from './weather-extras.mjs';
 import {AirKorea,sidoOf,dustReply,dustShort,dustForecastReply} from './air-korea.mjs';
@@ -16,6 +17,8 @@ const orderSources=list=>[...new Set(list)].sort((a,b)=>(a===KMA_LABEL?0:1)-(b==
 export function weatherName(code){return code===0?'맑음':[1,2].includes(code)?'구름 조금':code===3?'흐림':[45,48].includes(code)?'안개':[51,53,55,56,57].includes(code)?'이슬비':[61,63,65,66,67,80,81,82].includes(code)?'비':[71,73,75,77,85,86].includes(code)?'눈':[95,96,99].includes(code)?'뇌우':'확인 중';}
 export function cleanText(value){return String(value??'').replace(/<[^>]*>/g,'').replace(/&(amp|lt|gt|quot|#39);/g,(_,e)=>({amp:'&',lt:'<',gt:'>',quot:'"','#39':"'"}[e])).slice(0,300);}
 export function assistantRequest(message){
+ message=normalizeCommand(message);
+ const dining=diningRequest(message);if(dining)return dining;
  const body=String(message).trim().replace(/^!\s*/,'');
  if(String(message).trim().startsWith('!')&&/^(?:(?:이번\s*주|다음\s*주|내일|오늘|현재)\s*)*(?:전국\s*)?(?:(?:이번\s*주|다음\s*주|내일|오늘|현재)\s*)*날씨(?:\s|$)/u.test(body))return {kind:body.includes('전국')?'전국날씨':'날씨',arg:body.replace(/날씨/u,'').trim()};
  // 짧은 별칭: !우산 부산 → !날씨 부산 우산 (시간별·옷차림·일출·일몰도 같음). 엔진은 이 별칭을 날씨 명령으로 취급합니다.
@@ -144,22 +147,19 @@ export class Lifestyle {
  async places({region='',kind='맛집',meal='',foodType='',extended=false}={}){
   region=String(region).trim();if(!region||region.length>60||/[\r\n]/.test(region))throw Error('지역을 입력해주세요. 예: 광주 동명동');
   if(!['맛집','카페'].includes(kind)||!['','아침','점심','저녁'].includes(meal))throw Error('검색 종류와 식사 시간을 확인해주세요.');
-  if(typeof foodType!=='string'||foodType&&!([...foodTypes,...cafeTypes].includes(foodType)))throw Error('음식 종류를 목록에서 선택해주세요.');
-  if(typeof extended!=='boolean')throw Error('더 많은 장소 조회 설정을 확인해주세요.');
+  if(typeof extended!=='boolean')throw Error('확장 검색 설정을 확인해주세요.');
+  if(typeof foodType!=='string'||foodType&&!(kind==='카페'?cafeTypes:foodTypes).includes(foodType))throw Error('음식·카페 종류를 확인해주세요.');
   if(kind==='맛집'&&!meal){const hour=new Date(this.now()+32400000).getUTCHours();meal=hour<11?'아침':hour<17?'점심':'저녁';}
   const query=`${region} ${kind==='카페'?[foodType,'카페'].filter(Boolean).join(' '):[meal,'식사',foodType,'맛집'].filter(Boolean).join(' ')}`,searchUrl='https://map.naver.com/p/search/'+encodeURIComponent(query);
-  if(!this.configured)return {configured:false,query,searchUrl,items:[],message:'운영 PC에서 네이버 검색 API 키를 설정해주세요. 전국 지역 안내와 지도 검색은 바로 이용할 수 있습니다.'};
-  const alternatives=kind==='카페'?[`${region} ${foodType||'디저트'} 카페`,`${region} ${foodType||'베이커리'} 카페 추천`]:foodType?[`${region} ${foodType} 전문점`,`${region} ${foodType} 음식점`]:[`${region} 한식 맛집`,`${region} 식당`];
-  const queries=[...new Set([query,...(extended?alternatives:[])])];
-  return this.cached('places:'+JSON.stringify(queries),300000,async()=>{
-   const search=async q=>{const {url,headers}=naverSearchRequest({provider:this.provider,clientId:this.clientId,clientSecret:this.clientSecret,query:q});const data=await this.json(url,headers);if(!Array.isArray(data.items))throw Error('장소 검색 응답을 확인하지 못했습니다.');return data.items.slice(0,5).map(item=>({title:cleanText(item.title),category:cleanText(item.category),address:cleanText(item.roadAddress||item.address),originalUrl:/^https?:\/\//i.test(String(item.link||''))?String(item.link):'',url:'https://map.naver.com/p/search/'+encodeURIComponent(cleanText(item.title)+' '+cleanText(item.address)),matchedQuery:q})).filter(x=>x.title.trim());};
-   const first=await search(query); // Surface authentication/quota errors, rather than silently hiding them.
-   const more=await Promise.allSettled(queries.slice(1).map(search)),seen=new Set(),items=[];
-   for(const item of [first,...more.filter(x=>x.status==='fulfilled').map(x=>x.value)].flat()){
-    const key=(item.title+'|'+item.address).normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase('ko');
-    if(!seen.has(key)){seen.add(key);items.push(item);}
-   }
-   return {configured:true,source:'네이버 지역 검색',query,searchUrl,queries,items,expanded:extended,partial:more.some(x=>x.status==='rejected'),fetchedAt:new Date(this.now()).toISOString(),note:extended?'최대 3개 검색어의 결과를 합쳐 중복을 제외했습니다. 결과 수는 최대 15곳이며 통합 인기 순위가 아닙니다.':'네이버 검색 관련도 순입니다. 영업시간·가격은 방문 전 확인하세요.'};
+  if(!this.configured)return {configured:false,query,searchUrl,items:[],message:'운영 PC에서 네이버 검색 API 키를 설정해주세요. 지도 검색은 바로 이용할 수 있습니다.'};
+  return this.cached('places:'+JSON.stringify([this.provider,query,extended]),300000,async()=>{
+   const search=async matchedQuery=>{const {url,headers}=naverSearchRequest({provider:this.provider,clientId:this.clientId,clientSecret:this.clientSecret,query:matchedQuery});const data=await this.json(url,headers);if(!Array.isArray(data.items))throw Error('장소 검색 응답을 확인하지 못했습니다.');return data.items.slice(0,5).filter(item=>item&&typeof item.title==='string').map(item=>({title:cleanText(item.title),category:cleanText(item.category),address:cleanText(item.roadAddress||item.address),originalUrl:/^https?:\/\//i.test(String(item.link||''))?String(item.link):'',url:'https://map.naver.com/p/search/'+encodeURIComponent(cleanText(item.title)+' '+cleanText(item.address)),matchedQuery}));};
+   // Authenticate the primary search first; a denied key must not look like an empty result.
+   const alternatives=kind==='카페'?[`${region} ${foodType||'디저트'} 카페`,`${region} ${foodType||'베이커리'} 카페 추천`]:foodType?[`${region} ${foodType} 전문점`,`${region} ${foodType} 음식점`]:[`${region} 한식 맛집`,`${region} 식당`];
+   const queries=[...new Set([query,...(extended?alternatives:[])])];
+   const primary=await search(query),extra=await Promise.allSettled(queries.slice(1).map(search));
+   const items=[],seen=new Set();for(const item of [...primary,...extra.flatMap(result=>result.status==='fulfilled'?result.value:[])]){const key=(item.title+'|'+item.address).normalize('NFKC').replace(/\s/gu,'').toLocaleLowerCase('ko');if(item.title.trim()&&!seen.has(key)){seen.add(key);items.push(item);}}
+   return {configured:true,source:'네이버 지역 검색',query,searchUrl,queries,expanded:extended,fetchedAt:new Date(this.now()).toISOString(),items,partial:extra.some(result=>result.status==='rejected'),note:extended?'최대 3개 검색어의 결과를 합쳐 중복을 제외했습니다. 최대 15곳이며 통합 인기 순위가 아닙니다. 영업시간·가격은 방문 전 확인하세요.':'네이버 검색 관련도 순입니다. 영업시간·가격은 방문 전 확인하세요.'};
   });
  }
  // 현재 날씨를 여러 지역에 대해 한 줄로 비교합니다.
@@ -238,11 +238,12 @@ export class Lifestyle {
    return `${heading} · ${items[0].time.replace('T',' ')} KST\n${items.map(x=>currentLine(x,!!region)).join(' · ')}\n출처 ${data.source}${data.observed?' 실황':''} · 대표 지점`;
   }
 
-  if(kind==='맛집'&&(!arg.trim()||/^(전국|목록)(?:\s+\d+)?$/.test(arg.trim())))return diningGuideReply(Number(arg.trim().split(/\s+/)[1]||1));
-  const meal=/(아침|점심|저녁)/.exec(arg)?.[0]||'',region=arg.replace(/(아침|점심|저녁)/g,'').trim();const result=await this.places({region,kind,meal});if(!result.configured)return '네이버 검색 키 설정이 필요해요. '+result.searchUrl;
+  const guide=diningGuide(arg,kind);if(guide)return guide;
+  const query=diningQuery(arg,kind);if(!query.region)return diningPrompt(kind);
+  let result;try{result=await this.places({...query,kind});}catch(error){if(context?.strict)throw error;return '장소 검색을 완료하지 못했어요. '+error.message+'\n!'+kind+' '+query.region+' 으로 다시 시도해주세요.';}
+  if(!result.configured)return result.searchUrl.length<=160?'네이버 검색 키 설정이 필요해요. 지도에서 직접 찾아보세요.\n'+result.searchUrl:'네이버 검색 키 설정이 필요해요. 앱의 날씨·맛집 메뉴에서 지도 검색을 열어주세요. 검색어: '+result.query;
   if(!result.items.length)return '검색 결과가 없어요. 지역명을 조금 더 자세히 입력해주세요.';
-  if(result.searchUrl.length>130)return '지역명을 조금 짧게 입력해주세요. 예: !카페 동명동 (자세한 검색은 앱의 날씨·추천 메뉴를 이용해주세요.)';
-  const names=result.items.slice(0,2).map((x,i)=>`${i+1}. ${x.title} · ${x.address}`).join(' / '),prefix='네이버 지역 검색 · '+result.query+'\n',tail='\n'+result.searchUrl;
+  const names=result.items.slice(0,2).map((x,i)=>`${i+1}. ${x.title.slice(0,35)} · ${x.address.slice(0,35)}`).join(' / '),prefix='네이버 지역 검색 · '+result.query+'\n',tail='\n'+(result.searchUrl.length<=100?result.searchUrl:'지도·더 많은 결과: 앱의 날씨·맛집 메뉴');
   return prefix+names.slice(0,Math.max(0,200-prefix.length-tail.length))+tail;
 
  }catch(e){if(context?.strict)throw e;return e.message;}}
