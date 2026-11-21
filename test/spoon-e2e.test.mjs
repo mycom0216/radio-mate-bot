@@ -18,13 +18,16 @@ test('region selects the matching Spoon API host and rejects unknown regions', (
 
 test('OAuth login, SSE chat event and chat reply work end to end against a mock Spoon API', { timeout: 45000 }, async () => {
   const seen = { token: [], chat: [], me: 0, events: 0, revoked: [] };
+  // 실제 방송 대신 가짜 스푼 서버에서 채팅과 후원 알림을 보내 봇의 응답을 확인합니다.
   let stream;
   const emit = (id, event, data) => stream.write(`id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   const chat = (id, user, message) => emit(id, 'chat', {user, message, sentTime:Date.now()});
   async function expectReply(index, pattern) {
+    // 봇이 답을 보낼 때까지 잠깐씩 기다린 뒤, 원하는 순서에 원하는 문구가 왔는지 확인합니다.
     for(let i=0;i<60&&seen.chat.length<=index;i++)await new Promise(r=>setTimeout(r,100));
     assert.match(seen.chat[index]??'',pattern);
   }
+  // 봇은 채팅을 너무 자주 보내지 않도록 기본 3초를 기다립니다. 테스트도 그 간격을 지킵니다.
   const waitForSendGap = () => new Promise(resolve => setTimeout(resolve,3100));
   const mock = createServer((req, res) => {
     let body = '';
@@ -91,6 +94,7 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     assert.equal(room.connection, '방송 연결됨');
     const dj={id:'dj-e2e-12345',nickname:'DJ'};
     const listener={id:'u2',nickname:'후원자'};
+    // 청취자는 메뉴판을 바꿀 수 없고, DJ가 등록하면 청취자도 목록을 볼 수 있어야 합니다.
     await waitForSendGap();
     chat('menu-denied',listener,'!메뉴판 추가 10 잘못된 문구');
     await expectReply(1,/DJ 전용/);
@@ -100,6 +104,7 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     await waitForSendGap();
     chat('menu-list',listener,'!메뉴판');
     await expectReply(3,/10스푼 · 하트 💖/);
+    // 10스푼을 보내면 등록된 문구가 나오고, 항목을 지운 뒤에는 기본 감사 인사가 나와야 합니다.
     await waitForSendGap();
     emit('gift-10','donation',{user:listener,amount:10});
     await expectReply(4,/^하트 💖 후원자님 10스푼$/);

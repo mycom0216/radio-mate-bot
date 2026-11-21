@@ -41,6 +41,7 @@ export function defaults() {
     expPerCast:60, miss:0, payout:'random', goldenPolicy:'pending',
     betMin:100, betMax:50000, levelStep:10000,
     notice:'하트를 눌러주세요 ♥', welcome:'{name}님, 어서 오세요!',
+    // donation은 기본 감사 인사입니다. donationReactions에는 {"10": "하트 💖"}처럼 금액별 문구를 저장합니다.
     donation:'{name}님, {amount} 스푼 감사합니다!', donationReactions:{}, bannedWords:[],
     monthlyRank:'', monthlyRankMonth:'', playlistMode:false, playlistTitle:'플레이리스트 방송',
     fish:[
@@ -58,7 +59,9 @@ export function dates(ms=Date.now()) {
   return {day,month:day.slice(0,7)};
 }
 export function validateSettings(s) {
+  // 이 기능이 생기기 전에 저장한 설정에는 메뉴판이 없으므로 빈 메뉴판부터 시작합니다.
   s.donationReactions??={};
+  // 저장하거나 백업을 복원할 때도 채팅에서 등록할 때와 같은 개수, 금액, 문구 길이 제한을 확인합니다.
   if(!s.donationReactions||typeof s.donationReactions!=='object'||Array.isArray(s.donationReactions)||Object.keys(s.donationReactions).length>50||Object.entries(s.donationReactions).some(([amount,reaction])=>!validReactionAmount(amount)||typeof reaction!=='string'||!reaction.trim()||reaction.length>100||/[\r\n]/.test(reaction)))throw Error('메뉴판은 최대 50개이며, 각 항목은 양의 정수 스푼과 1~100자 한 줄 문구가 필요합니다.');
   validateExtras(s);s.pauseItems??=false;if(typeof s.pauseItems!=='boolean')throw Error('아이템 일시정지 설정을 확인하세요.');
   s.spoonNotice??=defaults().spoonNotice;if(typeof s.spoonNotice!=='string'||!s.spoonNotice.trim()||s.spoonNotice.length>200)throw Error('스푼 충전 안내는 1~200자로 입력하세요.');
@@ -106,8 +109,10 @@ const freshUser=(id,name,month)=>({id,name,month,exp:0,pt:0,tickets:0,attendance
 const n=x=>Number(x).toLocaleString('ko-KR');
 // 느낌표 뒤 첫 낱말이 이 목록에 있으면 진짜 명령어입니다. "!간호사"처럼 정답만 입력한 말과 구분하는 데 쓰며, 겹치면 명령어가 우선입니다.
 const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+// 느낌표로 시작하는 말 중에서 메뉴판을 봇이 알아듣는 명령 목록에 넣습니다.
 KNOWN_COMMANDS.push('메뉴판');
 const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','조용','게임','구매','포기','취소']);
+// 0, 음수, 소수는 받지 않습니다. 컴퓨터가 정확하게 기억할 수 있는 양의 정수만 허용합니다.
 const validReactionAmount=amount=>/^[1-9]\d*$/.test(amount)&&Number.isSafeInteger(Number(amount));
 export class Store {
   constructor(path=':memory:') {
@@ -379,11 +384,13 @@ export class Engine {
     if(cmd==='구매'){cmd='아이템';bits.unshift('구매');}
     if(cmd==='포기'){cmd='퀴즈';bits.unshift('포기');} // !포기 = !퀴즈 포기
     const arg=bits.join(' ');
+    // 실제 스푼 채팅에서는 보낸 사람의 계정 ID를 방송 주인의 ID와 비교해 메뉴판을 편집할 DJ인지 확인합니다.
     const dj=e.isDj===true||(cmd==='메뉴판'&&e.delivery===true&&String(e.user?.id)===String(r.id));
     if(dj&&r.songDeletePrompt?.actor===e.user?.id&&!['삭제','이전곡','다음곡'].includes(cmd))delete r.songDeletePrompt;
     const answer=t=>{r.lastResponse=now;return {text:t};};
     if(cmd==='메뉴판'&&['추가','삭제'].includes(bits[0])){
       if(!dj)fail('메뉴판 편집은 DJ 전용입니다.');
+      // 예를 들어 '추가 10 하트 리액션'을 받으면 할 일은 '추가', 금액은 '10', 문구는 '하트 리액션'입니다.
       const [action,amount,...words]=bits;
       const reaction=words.join(' ');
       if(!validReactionAmount(amount)||(action==='추가'?!reaction||reaction.length>100:words.length)){
@@ -391,12 +398,16 @@ export class Engine {
       }
       const reactions=s.donationReactions??={};
       const exists=Object.hasOwn(reactions,amount);
+      // 없는 항목은 지울 수 없습니다. 이미 있는 금액의 문구를 바꾸면 항목 수는 늘지 않습니다.
       if(action==='삭제'&&!exists)return answer(`${amount}스푼에 등록된 리액션이 없습니다.`);
       if(action==='추가'&&!exists&&Object.keys(reactions).length>=50)fail('메뉴판에는 리액션을 최대 50개 등록할 수 있습니다.');
+      // 잘못 바꿨을 때 돌아갈 수 있도록 편집하기 전에 현재 설정을 백업합니다.
       this.store.backup(r.id);
       if(action==='삭제')delete reactions[amount];
       else reactions[amount]=reaction;
+      // 설정 버전을 올리면 이전 설정을 열어 둔 화면에서 방금 편집한 내용을 덮어쓰는 일을 막을 수 있습니다.
       r.settingsRevision=(r.settingsRevision||0)+1;
+      // 나중에 확인할 수 있도록 누가 어떤 금액을 추가하거나 삭제했는지 기록합니다.
       this.store.log(r.id,e.user.id,'donation-menu-settings',{action,amount:Number(amount)},now);
       return answer(`${amount}스푼 리액션을 ${action==='삭제'?'삭제':exists?'수정':'등록'}했습니다.`);
     }
@@ -496,7 +507,9 @@ export class Engine {
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
     if(cmd==='공지')return answer(s.notice);
     if(cmd==='메뉴판'){
+      // 2스푼이 10스푼보다 앞에 오도록 글자 순서가 아닌 금액 순서로 정렬합니다.
       const entries=Object.entries(s.donationReactions??{}).sort(([a],[b])=>Number(a)-Number(b));
+      // 목록이 길면 여러 페이지로 나눕니다. '!메뉴판 2'를 입력하면 두 번째 페이지를 보여줍니다.
       return answer(chatPage('후원 메뉴판',entries.map(([amount,reaction])=>`${n(Number(amount))}스푼 · ${reaction}`),arg,cmd,'등록된 후원 리액션이 없습니다.'));
     }
     if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');

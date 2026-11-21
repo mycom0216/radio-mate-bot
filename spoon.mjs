@@ -88,13 +88,18 @@ export class Spoon {
               if(out.text&&await this.send(room,out.text))this.engine.recordLike(room,out.receipt);
             }else if(f.event==='donation'){
               const s=this.store.load(room).settings;
+              // 후원 금액 10을 메뉴판의 '10' 항목에서 찾습니다. 후원자 이름을 받지 못하면 '청취자'라고 부릅니다.
               const amount=String(f.data.amount),name=f.data.user?.nickname||'청취자';
               const reactions=s.donationReactions??{};
+              // 같은 금액에 등록된 문구가 있으면 그 문구를 고르고, 없으면 기본 감사 인사를 고릅니다.
               const template=Object.hasOwn(reactions,amount)?reactions[amount]:s.donation;
               if(template){
+                // '{name}'과 '{amount}' 자리에 실제 이름과 금액을 넣습니다.
                 const text=template.replace(/\{name\}|\{amount\}/g,token=>token==='{name}'?name:amount);
+                // 같은 후원 알림이 다시 들어와도 인사를 한 번만 보내도록 후원마다 구별되는 키를 만듭니다.
                 const key='donation:'+createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex');
                 this.outbox.enqueue(room,key,text);
+                // 조용 모드가 꺼져 있으면 전송 대기열에서 메시지를 꺼내 보내기를 시도합니다.
                 if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));
               }
             }
