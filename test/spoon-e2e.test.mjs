@@ -18,6 +18,14 @@ test('region selects the matching Spoon API host and rejects unknown regions', (
 
 test('OAuth login, SSE chat event and chat reply work end to end against a mock Spoon API', { timeout: 45000 }, async () => {
   const seen = { token: [], chat: [], me: 0, events: 0, revoked: [] };
+  let stream;
+  const emit = (id, event, data) => stream.write(`id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const chat = (id, user, message) => emit(id, 'chat', {user, message, sentTime:Date.now()});
+  async function expectReply(index, pattern) {
+    for(let i=0;i<60&&seen.chat.length<=index;i++)await new Promise(r=>setTimeout(r,100));
+    assert.match(seen.chat[index]??'',pattern);
+  }
+  const waitForSendGap = () => new Promise(resolve => setTimeout(resolve,3100));
   const mock = createServer((req, res) => {
     let body = '';
     req.on('data', c => body += c);
@@ -34,6 +42,7 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
         res.end(JSON.stringify({ userId: 'dj-e2e-12345' }));
       } else if (req.url === '/v1/live/events') {
         seen.events++;
+        stream=res;
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write(': hello\n\n');
         setTimeout(() => res.write(`id: e1\nevent: chat\ndata: ${JSON.stringify({ user: { id: 'u1', nickname: '청취자' }, message: '!내정보 생성', sentTime: Date.now() })}\n\n`), 500);
@@ -80,6 +89,26 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     assert.equal(res.status, 200);
     assert.equal(room.users.u1.name, '청취자');
     assert.equal(room.connection, '방송 연결됨');
+    const dj={id:'dj-e2e-12345',nickname:'DJ'};
+    const listener={id:'u2',nickname:'후원자'};
+    await waitForSendGap();
+    chat('menu-denied',listener,'!메뉴판 추가 10 잘못된 문구');
+    await expectReply(1,/DJ 전용/);
+    await waitForSendGap();
+    chat('menu-add',dj,'!메뉴판 추가 10 하트 💖 {name}님 {amount}스푼');
+    await expectReply(2,/10스푼 리액션을 등록/);
+    await waitForSendGap();
+    chat('menu-list',listener,'!메뉴판');
+    await expectReply(3,/10스푼 · 하트 💖/);
+    await waitForSendGap();
+    emit('gift-10','donation',{user:listener,amount:10});
+    await expectReply(4,/^하트 💖 후원자님 10스푼$/);
+    await waitForSendGap();
+    chat('menu-delete',dj,'!메뉴판 삭제 10');
+    await expectReply(5,/10스푼 리액션을 삭제/);
+    await waitForSendGap();
+    emit('gift-after-delete','donation',{user:listener,amount:10});
+    await expectReply(6,/^후원자님, 10 스푼 감사합니다!$/);
     // a replayed OAuth state must be refused
     res = await fetch(`${address}/oauth/callback?code=abc&state=${state}`, { redirect: 'manual', headers: { Cookie: oauthCookie } });
     assert.equal(res.status, 400);

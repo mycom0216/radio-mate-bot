@@ -41,7 +41,7 @@ export function defaults() {
     expPerCast:60, miss:0, payout:'random', goldenPolicy:'pending',
     betMin:100, betMax:50000, levelStep:10000,
     notice:'하트를 눌러주세요 ♥', welcome:'{name}님, 어서 오세요!',
-    donation:'{name}님, {amount} 스푼 감사합니다!', bannedWords:[],
+    donation:'{name}님, {amount} 스푼 감사합니다!', donationReactions:{}, bannedWords:[],
     monthlyRank:'', monthlyRankMonth:'', playlistMode:false, playlistTitle:'플레이리스트 방송',
     fish:[
       ['붕어',0,35,10,40],['피라미',0,25,5,15],['잉어',1,20,30,100],
@@ -58,6 +58,8 @@ export function dates(ms=Date.now()) {
   return {day,month:day.slice(0,7)};
 }
 export function validateSettings(s) {
+  s.donationReactions??={};
+  if(!s.donationReactions||typeof s.donationReactions!=='object'||Array.isArray(s.donationReactions)||Object.keys(s.donationReactions).length>50||Object.entries(s.donationReactions).some(([amount,reaction])=>!validReactionAmount(amount)||typeof reaction!=='string'||!reaction.trim()||reaction.length>100||/[\r\n]/.test(reaction)))throw Error('메뉴판은 최대 50개이며, 각 항목은 양의 정수 스푼과 1~100자 한 줄 문구가 필요합니다.');
   validateExtras(s);s.pauseItems??=false;if(typeof s.pauseItems!=='boolean')throw Error('아이템 일시정지 설정을 확인하세요.');
   s.spoonNotice??=defaults().spoonNotice;if(typeof s.spoonNotice!=='string'||!s.spoonNotice.trim()||s.spoonNotice.length>200)throw Error('스푼 충전 안내는 1~200자로 입력하세요.');
   s.introEnabled??=true;s.introText??=defaults().introText;if(typeof s.introEnabled!=='boolean'||typeof s.introText!=='string'||!s.introText.trim()||s.introText.length>200)throw Error('프로그램 소개 문구는 1~200자로 입력하세요.');
@@ -104,7 +106,9 @@ const freshUser=(id,name,month)=>({id,name,month,exp:0,pt:0,tickets:0,attendance
 const n=x=>Number(x).toLocaleString('ko-KR');
 // 느낌표 뒤 첫 낱말이 이 목록에 있으면 진짜 명령어입니다. "!간호사"처럼 정답만 입력한 말과 구분하는 데 쓰며, 겹치면 명령어가 우선입니다.
 const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+KNOWN_COMMANDS.push('메뉴판');
 const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','조용','게임','구매','포기','취소']);
+const validReactionAmount=amount=>/^[1-9]\d*$/.test(amount)&&Number.isSafeInteger(Number(amount));
 export class Store {
   constructor(path=':memory:') {
     this.db=new DatabaseSync(path);
@@ -375,9 +379,27 @@ export class Engine {
     if(cmd==='구매'){cmd='아이템';bits.unshift('구매');}
     if(cmd==='포기'){cmd='퀴즈';bits.unshift('포기');} // !포기 = !퀴즈 포기
     const arg=bits.join(' ');
-    const dj=e.isDj===true;
+    const dj=e.isDj===true||(cmd==='메뉴판'&&e.delivery===true&&String(e.user?.id)===String(r.id));
     if(dj&&r.songDeletePrompt?.actor===e.user?.id&&!['삭제','이전곡','다음곡'].includes(cmd))delete r.songDeletePrompt;
     const answer=t=>{r.lastResponse=now;return {text:t};};
+    if(cmd==='메뉴판'&&['추가','삭제'].includes(bits[0])){
+      if(!dj)fail('메뉴판 편집은 DJ 전용입니다.');
+      const [action,amount,...words]=bits;
+      const reaction=words.join(' ');
+      if(!validReactionAmount(amount)||(action==='추가'?!reaction||reaction.length>100:words.length)){
+        fail('사용법: !메뉴판 추가 10 하트 리액션 / !메뉴판 삭제 10 (문구 최대 100자)');
+      }
+      const reactions=s.donationReactions??={};
+      const exists=Object.hasOwn(reactions,amount);
+      if(action==='삭제'&&!exists)return answer(`${amount}스푼에 등록된 리액션이 없습니다.`);
+      if(action==='추가'&&!exists&&Object.keys(reactions).length>=50)fail('메뉴판에는 리액션을 최대 50개 등록할 수 있습니다.');
+      this.store.backup(r.id);
+      if(action==='삭제')delete reactions[amount];
+      else reactions[amount]=reaction;
+      r.settingsRevision=(r.settingsRevision||0)+1;
+      this.store.log(r.id,e.user.id,'donation-menu-settings',{action,amount:Number(amount)},now);
+      return answer(`${amount}스푼 리액션을 ${action==='삭제'?'삭제':exists?'수정':'등록'}했습니다.`);
+    }
     if(cmd==='자동운영'){
       if(!dj)fail('자동 운영 설정은 DJ 전용입니다.');
       if(arg==='상태')return answer('자동 운영 '+(r.automation?.enabled?'ON':'OFF')+' · 퀴즈 '+(s.autoQuizEnabled?s.autoQuizMinutes+'분':'OFF')+' · 청취 복권 '+(s.listenRewards?s.listenMinutes+'분마다 '+s.listenTickets+'장':'OFF'));
@@ -473,6 +495,10 @@ export class Engine {
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
     if(cmd==='공지')return answer(s.notice);
+    if(cmd==='메뉴판'){
+      const entries=Object.entries(s.donationReactions??{}).sort(([a],[b])=>Number(a)-Number(b));
+      return answer(chatPage('후원 메뉴판',entries.map(([amount,reaction])=>`${n(Number(amount))}스푼 · ${reaction}`),arg,cmd,'등록된 후원 리액션이 없습니다.'));
+    }
     if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');
     if(['랭킹','랭킹조회','애청랭킹'].includes(cmd))return answer(chatPage('애청지수 순위',affinityRank(r.users).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(affinityScore(v))}점`),arg,'랭킹','등록된 청취자가 없습니다.'));
     if(cmd==='경험치랭킹')return answer(chatPage('경험치 순위',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,cmd,'등록된 청취자가 없습니다.'));

@@ -87,7 +87,16 @@ export class Spoon {
               const out=this.engine.likeGreeting(room,{...f.data,id:f.id||`${f.data.time}:${f.data.user.id}`},{commit:false});
               if(out.text&&await this.send(room,out.text))this.engine.recordLike(room,out.receipt);
             }else if(f.event==='donation'){
-              const s=this.store.load(room).settings;if(s.donation){this.outbox.enqueue(room,'donation:'+createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex'),s.donation.replaceAll('{name}',f.data.user.nickname||'청취자').replaceAll('{amount}',String(f.data.amount)));if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));}
+              const s=this.store.load(room).settings;
+              const amount=String(f.data.amount),name=f.data.user?.nickname||'청취자';
+              const reactions=s.donationReactions??{};
+              const template=Object.hasOwn(reactions,amount)?reactions[amount]:s.donation;
+              if(template){
+                const text=template.replace(/\{name\}|\{amount\}/g,token=>token==='{name}'?name:amount);
+                const key='donation:'+createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex');
+                this.outbox.enqueue(room,key,text);
+                if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));
+              }
             }
           }
           this.setLive(room,false);
