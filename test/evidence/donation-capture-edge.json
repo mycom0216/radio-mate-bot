@@ -1,0 +1,58 @@
+{
+  "testedAt": "2026-11-22T20:33:08+09:00",
+  "extensionVersion": "1.1.2",
+  "browser": "Microsoft Edge on Windows",
+  "method": "Installed extension popup: manual five-frame test on an actual Spoon live URL",
+  "browserApisMocked": false,
+  "downloadCompletionObserved": true,
+  "pngSignatureVerified": true,
+  "savedImageVisuallyInspected": true,
+  "frames": [
+    {
+      "frame": 1,
+      "width": 921,
+      "height": 920,
+      "bytes": 420930,
+      "intervalMs": null,
+      "sha256": "bc19b69cecd39d079244d07a040be24e972e1b168075ec863fddc539ed9a4809"
+    },
+    {
+      "frame": 2,
+      "width": 921,
+      "height": 920,
+      "bytes": 420930,
+      "intervalMs": 861,
+      "sha256": "bc19b69cecd39d079244d07a040be24e972e1b168075ec863fddc539ed9a4809"
+    },
+    {
+      "frame": 3,
+      "width": 921,
+      "height": 920,
+      "bytes": 420930,
+      "intervalMs": 1010,
+      "sha256": "bc19b69cecd39d079244d07a040be24e972e1b168075ec863fddc539ed9a4809"
+    },
+    {
+      "frame": 4,
+      "width": 921,
+      "height": 920,
+      "bytes": 421435,
+      "intervalMs": 1000,
+      "sha256": "19a6959e4740565d71a9737a4cd1445e2f943ecfddbaa4c8272b64221e4c7c6a"
+    },
+    {
+      "frame": 5,
+      "width": 921,
+      "height": 920,
+      "bytes": 421610,
+      "intervalMs": 1000,
+      "sha256": "f0988684f0cbe468f0bbb1b6bfea3bbc8fda685da9917dcb21d67df242e434c2"
+    }
+  ],
+  "limitations": [
+    "Spoon was logged out and the saved viewport contained its login notice.",
+    "This proves browser screenshot and local download behavior, not an actual donation trigger or gift-animation frame.",
+    "Actual donation motion validation requires a logged-in broadcast and a new donation event for the connected DJ.",
+    "The screenshot files remain local and are not committed or uploaded."
+  ]
+}
