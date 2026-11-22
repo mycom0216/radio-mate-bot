@@ -16,6 +16,15 @@ export function parseTicketGrant(arg){
  const countText=bits.pop();if(!/^[+-]?\d+$/.test(countText))fail(bits.length>1?usage:'복권 수량은 정수로 입력해주세요.');
  return {target:bits.join(' '),countText};
 }
+// DJ가 연결하려는 스푼 프로필의 @아이디를 검사해 저장용 글자(앞의 @ 제거)로 돌려줍니다.
+// 웹 관리 화면의 '계정 ID 연결'과 채팅의 !계정연결 명령이 같은 규칙을 쓰도록 한곳에 모았습니다.
+// 글자·숫자·_ . - 만 1~100자까지 허용하고, 다른 청취자의 고유 ID·닉네임·연결한 아이디와 겹치면 거부합니다.
+export function cleanAccountAlias(users,user,raw){
+ const alias=String(raw||'').trim().replace(/^@/u,'');
+ const taken=Object.values(users).some(other=>other.id!==user.id&&(other.id===alias||nicknameKey(other.name)===nicknameKey(alias)||other.accountAlias&&nicknameKey(other.accountAlias)===nicknameKey(alias)));
+ if(!/^[\p{L}\p{N}_.-]{1,100}$/u.test(alias)||taken)fail('계정 ID가 중복되었거나 형식이 올바르지 않습니다.');
+ return alias;
+}
 export function resolveTarget(users,target,{identityKey='',room=''}={}){
  const value=unquote(String(target||'').trim()).replace(/^@/u,'');
  if(Object.hasOwn(users,value))return value;
@@ -29,5 +38,7 @@ export function resolveTarget(users,target,{identityKey='',room=''}={}){
  if(hits.length===1)return hits[0].id;
  const describe=user=>`${[...user.name].slice(0,14).join('')} → @${user.id}`;
  if(hits.length>1)fail(exact.length>1?`닉네임이 중복됩니다. 같은 닉네임은 대상을 고유 ID로 지정해주세요. ${hits.slice(0,2).map(describe).join(' / ')}`:`여러 명과 일치합니다. @닉네임을 더 길게 입력하세요. 후보: ${hits.slice(0,3).map(user=>'@'+[...user.name].slice(0,24).join('')).join(' / ')}`);
- fail('일치하는 청취자가 없습니다. 등록된 @닉네임 또는 일부를 입력하세요. 청취자가 !내정보를 입력하면 최신 닉네임이 등록됩니다.');
+ // @로 시작한 입력이면, 스푼 프로필의 @아이디는 먼저 연결해야 한다는 안내를 덧붙입니다.
+ const linkHint=String(target||'').trim().startsWith('@')?' 스푼 프로필의 @아이디는 먼저 !계정연결 닉네임 @아이디로 한 번 연결해야 합니다.':'';
+ fail('일치하는 청취자가 없습니다. 등록된 @닉네임 또는 일부를 입력하세요. 청취자가 !내정보를 입력하면 최신 닉네임이 등록됩니다.'+linkHint);
 }

@@ -44,4 +44,18 @@ export async function lotterySummaryAsync(count,int){
   if(count>100000){await yieldTurn();return aggregateLottery(count,int);}
   const counts=[0,0,0,0];for(let i=0;i<count;i++){addLotteryOutcome(counts,int(0,83));if((i+1)%LOTTERY_CHUNK===0)await yieldTurn();}return counts;
 }
-export const lotteryExp=counts=>counts[1]*50+counts[2]*150+counts[3]*300;
+// 복권 등수: 숫자 3개 중 맞힌 개수가 3개면 1등, 2개면 2등, 1개면 3등, 0개면 꽝입니다. (배열 번호 = 맞힌 개수)
+export const LOTTERY_RANKS=['꽝','3등','2등','1등'];
+// 설정(s)에 저장된 등수별 EXP·PT 보상을 '맞힌 개수'로 찾을 수 있는 표로 바꿉니다.
+export const lotteryRewardTable=s=>[
+  {exp:0,pt:0},
+  {exp:s.lotteryThirdExp,pt:s.lotteryThirdPt},
+  {exp:s.lotterySecondExp,pt:s.lotterySecondPt},
+  {exp:s.lotteryFirstExp,pt:s.lotteryFirstPt},
+];
+// 등수별 당첨 횟수(counts)에 보상 표를 곱해 총 EXP와 PT를 계산합니다.
+export function lotteryPrize(counts,table){
+  let exp=0,pt=0;
+  for(let matches=1;matches<=3;matches++){exp+=counts[matches]*table[matches].exp;pt+=counts[matches]*table[matches].pt;}
+  return {exp,pt};
+}

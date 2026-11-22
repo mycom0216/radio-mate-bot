@@ -45,6 +45,16 @@ test('HTTP login, CSRF, settings, DJ grant, backup ownership and logout',{timeou
     res=await request('/api/grant',{user:'a',kind:'tickets',amount:-4,reason:'초과 회수 거부'});assert.equal(res.status,400);
     res=await request('/api/grant',{user:'a',kind:'tickets',amount:0.5,reason:'소수 거부'});assert.equal(res.status,400);
     res=await fetch(address+'/api/room',{headers});assert.equal((await res.json()).users.a.tickets,3);
+    // 웹 관리 화면의 '전체 지급': 복권만·1~1,000장 양수만 허용하고, 성공하면 등록된 모든 청취자에게 같은 수를 지급합니다.
+    res=await fetch(address+'/api/room',{headers});const usersBeforeAll=(await res.json()).users;
+    res=await request('/api/grant',{all:true,kind:'pt',amount:1,reason:'전체 PT 거부'});assert.equal(res.status,400);
+    res=await request('/api/grant',{all:true,kind:'tickets',amount:-1,reason:'전체 회수 거부'});assert.equal(res.status,400);
+    res=await request('/api/grant',{all:true,kind:'tickets',amount:1001,reason:'전체 상한 거부'});assert.equal(res.status,400);
+    res=await request('/api/grant',{all:true,kind:'tickets',amount:2,reason:''});assert.equal(res.status,400);
+    res=await request('/api/grant',{all:true,kind:'tickets',amount:2,reason:'전체 지급 확인'});assert.equal(res.status,200);assert.equal((await res.json()).people,Object.keys(usersBeforeAll).length);
+    res=await fetch(address+'/api/room',{headers});const usersAfterAll=(await res.json()).users;
+    // 다음 검증에 영향이 없도록, 확인이 끝나면 한 명씩 2장씩 회수해 원래대로 돌려 놓습니다.
+    for(const id of Object.keys(usersBeforeAll)){assert.equal(usersAfterAll[id].tickets,usersBeforeAll[id].tickets+2);res=await request('/api/grant',{user:id,kind:'tickets',amount:-2,reason:'전체 지급 검증 원복'});assert.equal(res.status,200);}
 
     res=await request('/api/settings',{settings:r.settings},{...headers,'X-CSRF-Token':'wrong'});assert.equal(res.status,403);
     res=await request('/api/settings',{settings:r.settings},{...headers,Origin:'https://evil.example'});assert.equal(res.status,403);

@@ -16,7 +16,7 @@ test('region selects the matching Spoon API host and rejects unknown regions', (
   assert.throws(() => spoonRegion({ SPOON_REGION: 'us' }), /kr 또는 jp/);
 });
 
-test('OAuth login, SSE chat event and chat reply work end to end against a mock Spoon API', { timeout: 45000 }, async () => {
+test('OAuth login, SSE chat event and chat reply work end to end against a mock Spoon API', { timeout: 110000 }, async () => {
   const seen = { token: [], chat: [], me: 0, events: 0, revoked: [] };
   // 실제 방송 대신 가짜 스푼 서버에서 채팅과 후원 알림을 보내 봇의 응답을 확인합니다.
   let stream;
@@ -98,6 +98,10 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     assert.equal(room.connection, '방송 연결됨');
     const dj={id:'dj-e2e-12345',nickname:'DJ'};
     const listener={id:'u2',nickname:'후원자'};
+    // 이 시험의 앞부분은 메뉴판·감사 인사만 확인하므로, 후원자 복권 지급은 잠시 꺼 둡니다. (뒤에서 다시 켜서 확인합니다)
+    const csrfToken=(await (await fetch(address+'/api/session',{headers:{Cookie:session}})).json()).csrf;
+    res=await fetch(address+'/api/settings',{method:'POST',headers:{Cookie:session,'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({settings:{...room.settings,donationDonorTicketEnabled:false},expectedRevision:room.settingsRevision||0,name:room.name})});
+    assert.equal(res.status,200);
     // 청취자는 메뉴판을 바꿀 수 없고, DJ가 등록하면 청취자도 목록을 볼 수 있어야 합니다.
     await waitForSendGap();
     chat('menu-denied',listener,'!메뉴판 추가 10 잘못된 문구');
@@ -118,6 +122,42 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     await waitForSendGap();
     emit('gift-after-delete','donation',{user:listener,amount:10});
     await expectReply(6,/^후원자님, 10 스푼 감사합니다!$/);
+    // 큰 후원 복권 전체 지급: 설정에서 켠 뒤 기준(50스푼) 미만은 지급하지 않고, 기준 이상이면 모든 청취자에게 2장씩 지급해야 합니다.
+    const roomBeforeBonus=await (await fetch(address+'/api/room',{headers:{Cookie:session}})).json();
+    res=await fetch(address+'/api/settings',{method:'POST',headers:{Cookie:session,'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({settings:{...roomBeforeBonus.settings,donationTicketEnabled:true,donationTicketMin:50,donationTicketCount:2,donationExpEnabled:false},expectedRevision:roomBeforeBonus.settingsRevision||0,name:roomBeforeBonus.name})});
+    assert.equal(res.status,200);
+    const usersNow=async()=>(await (await fetch(address+'/api/room',{headers:{Cookie:session}})).json()).users;
+    await waitForSendGap();
+    emit('gift-small','donation',{user:listener,amount:30});
+    await expectReply(7,/^후원자님, 30 스푼 감사합니다!$/);
+    assert.equal((await usersNow()).u1.tickets,0,'기준 미만 후원은 복권을 지급하면 안 됩니다');
+    await waitForSendGap();
+    emit('gift-big','donation',{user:listener,amount:60});
+    await expectReply(8,/^후원자님, 60 스푼 감사합니다!$/);
+    // 복권 지급 안내는 감사 인사 다음 순서로 대기열에 들어가며, 봇의 전송 간격(몇 초) 때문에 잠시 뒤에 전송됩니다.
+    for(let i=0;i<200&&seen.chat.length<=9;i++)await new Promise(resolve=>setTimeout(resolve,100));
+    await expectReply(9,/모든 청취자 1명에게 복권 2장씩 지급/);
+    let grantedUsers=await usersNow();
+    assert.equal(grantedUsers.u1.tickets,2);
+    // 같은 후원 알림이 다시 들어와도 한 번만 지급합니다.
+    emit('gift-big','donation',{user:listener,amount:60});
+    await new Promise(resolve=>setTimeout(resolve,700));
+    grantedUsers=await usersNow();
+    assert.equal(grantedUsers.u1.tickets,2);
+    // 후원 레벨 보상: 켠 뒤 기준(20스푼) 이상 후원하면 후원자에게 EXP가 지급되고 레벨 안내가 와야 합니다. (복권 전체 지급은 끕니다)
+    const roomForExp=await (await fetch(address+'/api/room',{headers:{Cookie:session}})).json();
+    res=await fetch(address+'/api/settings',{method:'POST',headers:{Cookie:session,'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({settings:{...roomForExp.settings,donationExpEnabled:true,donationExpMin:20,donationExpPerSpoon:20,donationDonorTicketEnabled:true,donationDonorTicketMin:10,donationDonorTicketCount:3,donationTicketEnabled:false},expectedRevision:roomForExp.settingsRevision||0,name:roomForExp.name})});
+    assert.equal(res.status,200);
+    await waitForSendGap();
+    emit('gift-exp','donation',{user:listener,amount:25});
+    await expectReply(10,/^후원자님, 25 스푼 감사합니다!$/);
+    for(let i=0;i<200&&seen.chat.length<=11;i++)await new Promise(resolve=>setTimeout(resolve,100));
+    await expectReply(11,/후원자님 25스푼 후원! \+500 EXP · Lv\.1 \(다음 레벨까지 9,500 EXP\)/);
+    assert.equal((await usersNow()).u2.exp,500);
+    // 후원자 복권(3장)은 같은 메시지의 둘째 줄로 오고, 후원자 본인에게만 지급됩니다.
+    assert.match(seen.chat[11],/\n🎟️ 후원자님 25스푼 후원! 복권 3장 지급 \(보유 3장\)/);
+    assert.equal((await usersNow()).u2.tickets,3);
+    assert.equal((await usersNow()).u1.tickets,2,'다른 청취자에게는 지급되지 않아야 합니다');
     const joinedAt=Date.now();
     for(const [index,value] of [36.5,38.75].entries()){
       seen.stream.write(`id: temperature-${index}\nevent: presence\ndata: ${JSON.stringify({user:{id:'u1',nickname:'청취자'},type:'JOIN',favoriteTemperature:value,time:new Date(joinedAt+index*1000).toISOString()})}\n\n`);

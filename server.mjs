@@ -11,7 +11,7 @@ import {oauthCookieName,oauthCookieMatches,oauthProviderError,oauthFailurePage} 
 import {MobileLink} from './mobile-link.mjs';
 import {captureExtensionZip} from './capture-extension-zip.mjs';
 import {updateRequestedRules,RULES_VERSION} from './rules-update.mjs';
-import {emailAlias,nicknameKey} from './targets.mjs';
+import {emailAlias,nicknameKey,cleanAccountAlias} from './targets.mjs';
 import {YouTubeSearch} from './youtube-search.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {youtubeId} from './public/song-utils.mjs';
@@ -328,7 +328,8 @@ const server=createServer(async(req,res)=>{
           else if(b.action==='set'){
             const alias=String(b.alias||'').trim().replace(/^@/u,''),email=String(b.email||'').trim();
             if(!alias&&!email)throw Error('연결할 계정 ID 또는 이메일을 입력하세요.');
-            if(alias&&(!/^[\p{L}\p{N}_.-]{1,100}$/u.test(alias)||Object.values(r.users).some(other=>other.id!==user.id&&(other.id===alias||nicknameKey(other.name)===nicknameKey(alias)||other.accountAlias&&nicknameKey(other.accountAlias)===nicknameKey(alias)))))throw Error('계정 ID가 중복되었거나 형식이 올바르지 않습니다.');
+            // 형식·중복 검사는 채팅의 !계정연결과 같은 함수를 씁니다.
+            if(alias)cleanAccountAlias(r.users,user,alias);
             if(email){const hash=emailAlias(email,engine.identityKey,roomId);if(Object.values(r.users).some(other=>other.id!==user.id&&other.emailAlias===hash))throw Error('이미 다른 청취자에게 연결한 이메일입니다.');user.emailAlias=hash;}
             if(alias)user.accountAlias=alias;
           }else throw Error('연결 동작을 확인하세요.');
@@ -336,6 +337,14 @@ const server=createServer(async(req,res)=>{
         });reply(res,200,{ok:true});return;
       }
       if(path==='/api/grant'){
+        // 전체 지급: 체크박스를 켠 요청입니다. 복권만, 양수만 가능하며 모든 청취자에게 같은 수를 지급합니다.
+        if(b.all===true){
+          if(b.kind!=='tickets')throw Error('전체 지급은 복권만 가능합니다.');
+          if(typeof b.reason!=='string'||!b.reason.trim()||b.reason.length>200)throw Error('사유를 1~200자로 입력하세요.');
+          let people=0;
+          store.transaction(roomId,r=>{people=engine.grantTicketsToAll(r,b.amount,user=>store.log(roomId,user.id,'manual-adjust',{kind:'tickets',amount:b.amount,reason:b.reason,all:true}));});
+          reply(res,200,{ok:true,people});return;
+        }
         if(typeof b.target==='string'&&b.target.trim())b.user=engine.target(store.load(roomId),b.target);
         if(!Number.isSafeInteger(b.amount)||(b.amount===0&&b.kind!=='tickets')||Math.abs(b.amount)>100000000||!['pt','tickets'].includes(b.kind)||typeof b.reason!=='string'||!b.reason.trim())throw Error('지급 종류·금액·사유를 확인하세요.');
         store.transaction(roomId,r=>{engine.reset(r);const u=r.users[b.user];if(!u)throw Error('청취자를 찾을 수 없습니다.');const next=u[b.kind]+b.amount;if(next<0)throw Error('보유량보다 많이 회수할 수 없습니다.');if(!Number.isSafeInteger(next))throw Error('변경 후 보유량이 정확히 처리 가능한 정수 범위를 초과합니다.');u[b.kind]=next;if(b.kind==='tickets'&&b.amount!==0)u.ticketRevision=(u.ticketRevision||0)+1;store.log(roomId,u.id,'manual-adjust',{kind:b.kind,amount:b.amount,reason:b.reason});});reply(res,200,{ok:true});return;

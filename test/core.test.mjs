@@ -150,9 +150,10 @@ test('listeners enable games and attend; disabling games and sensitive commands 
 });
 
 test('automatic lottery picks 3 distinct numbers, spends one ticket and preserves all payout levels',()=>{
-  for(const [draw,expected]of [[[0,0,0],300],[[0,0,1],150],[[0,2,2],50],[[3,3,3],0]]){
+  // 기본 보상: 1등(3개 일치) 300 EXP+300 PT, 2등(2개) 150 EXP, 3등(1개) 50 PT, 꽝 없음
+  for(const [draw,expected,expectedPt]of [[[0,0,0],300,300],[[0,0,1],150,0],[[0,2,2],0,50],[[3,3,3],0,0]]){
     const f=setup();f.say('!내정보 생성');f.say('!출석');f.mutate((r,u)=>u.tickets=1);f.draw(0,0,0,...draw);
-    const result=f.say('!복권 자동');assert.match(result.text,/자동 선택 1 2 3/);assert.equal(f.user().tickets,0);assert.equal(f.user().exp,expected);
+    const result=f.say('!복권 자동');assert.match(result.text,/자동 선택 1 2 3/);assert.equal(f.user().tickets,0);assert.equal(f.user().exp,expected);assert.equal(f.user().pt,expectedPt);
     const log=f.store.logs('a').find(l=>l.type==='lottery');assert.equal(log.data.auto,true);assert.equal(new Set(log.data.input).size,3);assert.ok(log.data.input.every(n=>Number(n)>=1&&Number(n)<=9));assert.equal(new Set(log.data.draw).size,3);f.store.db.close();
   }
 });

@@ -6,14 +6,14 @@ import {travelKinds,travelQuery,travelPrompt} from './travel.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
 import {touchQueue,applySongAction} from './song-queue.mjs';
 import {rewardListening} from './listening.mjs';
-import {parseTicketGrant,resolveTarget} from './targets.mjs';
+import {parseTicketGrant,resolveTarget,cleanAccountAlias} from './targets.mjs';
 import {deleteSongCommand} from './song-deletion.mjs';
 import {affinityScore,affinityRank,creditChat,collectAffinityNotices} from './public/affinity.mjs';
 import {temperatureEvent,officialTemperature,temperatureSummary} from './public/affinity.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
-import {LOTTERY_CHUNK,lotterySummary,lotterySummaryAsync,lotteryExp} from './lottery.mjs';
+import {LOTTERY_CHUNK,LOTTERY_RANKS,lotterySummary,lotterySummaryAsync,lotteryPrize,lotteryRewardTable} from './lottery.mjs';
 import {playQuiz,plainQuizAnswer,activeQuizRound} from './quiz.mjs';
 import {extraDefaults,normalizeExtras,validateExtras,keywordReply,keywordMatches,playMiniGame} from './extras.mjs';
 import {parseSongRequest,songVideoId,groupKeeps,keepName,keepExpiryLabel} from './public/song-utils.mjs';
@@ -44,6 +44,18 @@ export function defaults() {
     notice:'하트를 눌러주세요 ♥', welcome:'{name}님, 어서 오세요!',
     // donation은 기본 감사 인사입니다. donationReactions에는 {"10": "하트 💖"}처럼 금액별 문구를 저장합니다.
     donation:'{name}님, {amount} 스푼 감사합니다!', donationReactions:{}, bannedWords:[],
+    // 큰 후원 복권 전체 지급: 기본은 꺼짐. 켜면 후원 스푼이 기준 이상일 때 등록된 모든 청취자에게 복권을 지급합니다.
+    donationTicketEnabled:false, donationTicketMin:100, donationTicketCount:1,
+    // 복권 등수별 보상: 1등(3개 일치)은 EXP+PT, 2등(2개)은 EXP만, 3등(1개)은 PT만 줍니다. 값은 관리 화면에서 바꿀 수 있습니다.
+    // 낚시 결과에 '누가 잡았는지' 표시하는 방식: both(닉네임+고유 ID) / nickname / id / off(표시 안 함)
+    fishingWho:'both',
+    // 낚시 행운 보너스(%): 고급 이상 물고기(황금주사위 제외)의 가중치를 이만큼 늘려 PT가 큰 물고기가 더 자주 나오게 합니다. 0이면 보너스 없음.
+    fishingLuck:100,
+    // 후원 레벨 보상: 한 번에 기준 스푼 이상 후원한 청취자에게 '스푼 수 × 스푼당 EXP'를 줘서 레벨이 오르게 합니다.
+    donationExpEnabled:true, donationExpMin:20, donationExpPerSpoon:20,
+    // 후원자 복권 지급: 한 번에 기준 스푼 이상 후원한 '후원자 본인'에게 복권을 줍니다. (모든 청취자에게 주는 donationTicket*과는 별개입니다)
+    donationDonorTicketEnabled:true, donationDonorTicketMin:10, donationDonorTicketCount:1,
+    lotteryFirstExp:300, lotteryFirstPt:300, lotterySecondExp:150, lotterySecondPt:0, lotteryThirdExp:0, lotteryThirdPt:50,
     monthlyRank:'', monthlyRankMonth:'', playlistMode:false, playlistTitle:'플레이리스트 방송',
     fish:[
       ['붕어',0,35,10,40],['피라미',0,25,5,15],['잉어',1,20,30,100],
@@ -64,6 +76,29 @@ export function validateSettings(s) {
   s.donationReactions??={};
   // 저장하거나 백업을 복원할 때도 채팅에서 등록할 때와 같은 개수, 금액, 문구 길이 제한을 확인합니다.
   if(!s.donationReactions||typeof s.donationReactions!=='object'||Array.isArray(s.donationReactions)||Object.keys(s.donationReactions).length>50||Object.entries(s.donationReactions).some(([amount,reaction])=>!validReactionAmount(amount)||typeof reaction!=='string'||!reaction.trim()||reaction.length>100||/[\r\n]/.test(reaction)))throw Error('메뉴판은 최대 50개이며, 각 항목은 양의 정수 스푼과 1~100자 한 줄 문구가 필요합니다.');
+  // 큰 후원 복권 전체 지급 설정입니다. 이 기능이 생기기 전에 저장한 설정에는 없으므로 꺼진 상태로 시작합니다.
+  s.donationTicketEnabled??=false;s.donationTicketMin??=100;s.donationTicketCount??=1;
+  if(typeof s.donationTicketEnabled!=='boolean'||!Number.isSafeInteger(s.donationTicketMin)||s.donationTicketMin<1||s.donationTicketMin>100000000||!Number.isSafeInteger(s.donationTicketCount)||s.donationTicketCount<1||s.donationTicketCount>ALL_TICKET_GRANT_MAX)throw Error(`큰 후원 복권 지급은 켜기/끄기, 기준 스푼(1 이상 정수), 복권 수(1~${ALL_TICKET_GRANT_MAX}장 정수)로 설정하세요.`);
+  // 낚시 결과 표시 방식은 정해진 네 가지 중 하나여야 합니다. 이전 설정에는 없으므로 기본값(닉네임+고유 ID)을 채웁니다.
+  if(s.fishingWho===undefined)s.fishingWho='both';
+  if(!['both','nickname','id','off'].includes(s.fishingWho))throw Error('낚시 결과 표시 방식은 닉네임+고유 ID, 닉네임만, 고유 ID만, 표시 안 함 중에서 고르세요.');
+  // 낚시 행운 보너스(0~1000%)와 후원 레벨 보상 설정입니다. 이전 설정에는 없으므로 값이 없을 때만 기본값을 채웁니다.
+  if(s.fishingLuck===undefined)s.fishingLuck=100;
+  if(s.donationExpEnabled===undefined)s.donationExpEnabled=true;
+  if(s.donationExpMin===undefined)s.donationExpMin=20;
+  if(s.donationExpPerSpoon===undefined)s.donationExpPerSpoon=20;
+  if(s.donationDonorTicketEnabled===undefined)s.donationDonorTicketEnabled=true;
+  if(s.donationDonorTicketMin===undefined)s.donationDonorTicketMin=10;
+  if(s.donationDonorTicketCount===undefined)s.donationDonorTicketCount=1;
+  if(typeof s.donationDonorTicketEnabled!=='boolean'||!Number.isSafeInteger(s.donationDonorTicketMin)||s.donationDonorTicketMin<1||s.donationDonorTicketMin>100000000||!Number.isSafeInteger(s.donationDonorTicketCount)||s.donationDonorTicketCount<1||s.donationDonorTicketCount>ALL_TICKET_GRANT_MAX)throw Error(`후원자 복권 지급은 켜기/끄기, 기준 스푼(1 이상 정수), 복권 수(1~${ALL_TICKET_GRANT_MAX}장 정수)로 설정하세요.`);
+  if(!Number.isSafeInteger(s.fishingLuck)||s.fishingLuck<0||s.fishingLuck>1000)throw Error('낚시 행운 보너스는 0~1000 사이의 정수(%)로 입력하세요.');
+  if(typeof s.donationExpEnabled!=='boolean'||!Number.isSafeInteger(s.donationExpMin)||s.donationExpMin<1||s.donationExpMin>100000000||!Number.isSafeInteger(s.donationExpPerSpoon)||s.donationExpPerSpoon<1||s.donationExpPerSpoon>100000)throw Error('후원 레벨 보상은 켜기/끄기, 기준 스푼(1 이상 정수), 스푼당 EXP(1~100,000 정수)로 설정하세요.');
+  // 복권 등수별 보상(EXP·PT)은 0~1,000,000 사이의 정수입니다. 이 기능이 생기기 전에 저장한 설정에는 기본값을 채웁니다.
+  for(const [key,fallback] of [['lotteryFirstExp',300],['lotteryFirstPt',300],['lotterySecondExp',150],['lotterySecondPt',0],['lotteryThirdExp',0],['lotteryThirdPt',50]]){
+    // 값이 아예 없을 때(이전 설정)만 기본값을 채웁니다. null이나 글자는 잘못된 값으로 거부합니다.
+    if(s[key]===undefined)s[key]=fallback;
+    if(!Number.isSafeInteger(s[key])||s[key]<0||s[key]>1000000)throw Error('복권 등수 보상은 0~1,000,000 사이의 정수로 입력하세요.');
+  }
   validateExtras(s);s.pauseItems??=false;if(typeof s.pauseItems!=='boolean')throw Error('아이템 일시정지 설정을 확인하세요.');
   s.spoonNotice??=defaults().spoonNotice;if(typeof s.spoonNotice!=='string'||!s.spoonNotice.trim()||s.spoonNotice.length>200)throw Error('스푼 충전 안내는 1~200자로 입력하세요.');
   s.introEnabled??=true;s.introText??=defaults().introText;if(typeof s.introEnabled!=='boolean'||typeof s.introText!=='string'||!s.introText.trim()||s.introText.length>200)throw Error('프로그램 소개 문구는 1~200자로 입력하세요.');
@@ -112,7 +147,7 @@ const n=x=>Number(x).toLocaleString('ko-KR');
 const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','애청온도','온도','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
 // 느낌표로 시작하는 말 중에서 메뉴판을 봇이 알아듣는 명령 목록에 넣습니다.
 KNOWN_COMMANDS.push('메뉴판');
-const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','조용','게임','구매','포기','취소']);
+const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','계정연결','조용','게임','구매','포기','취소']);
 // 0, 음수, 소수는 받지 않습니다. 컴퓨터가 정확하게 기억할 수 있는 양의 정수만 허용합니다.
 const validReactionAmount=amount=>/^[1-9]\d*$/.test(amount)&&Number.isSafeInteger(Number(amount));
 export class Store {
@@ -452,7 +487,29 @@ export class Engine {
     }
     if(dj){
       if(cmd==='조용'){if(!['on','off'].includes(arg))fail('사용법: !조용 on/off');s.quiet=arg==='on';r.settingsRevision=(r.settingsRevision||0)+1;return answer(`조용 모드 ${arg.toUpperCase()}`);}
+      // '!계정연결 닉네임 @스푼아이디' → 스푼 프로필에 보이는 @아이디를 그 청취자와 연결합니다.
+      // 연결해 두면 이후 '!복권지급 @스푼아이디 3'처럼 아이디로 지급할 수 있습니다. (스푼 공식 API는 @아이디를 알려 주지 않아 DJ가 한 번 연결합니다.)
+      if(cmd==='계정연결'){
+        const idText=bits.at(-1)||'',nameText=bits.slice(0,-1).join(' ');
+        // 마지막 낱말이 @로 시작하는 아이디여야 하고, 그 앞에는 대상 청취자의 닉네임(일부 가능)이나 고유 ID가 있어야 합니다.
+        if(!nameText||!idText.startsWith('@')||idText.length<2)fail('사용법: !계정연결 닉네임 @스푼아이디 (예: !계정연결 콰앙 @kwaang)');
+        const uid=this.target(r,nameText),user=r.users[uid];
+        let alias;try{alias=cleanAccountAlias(r.users,user,idText);}catch(error){fail(error.message);}
+        user.accountAlias=alias;
+        this.store.log(r.id,'dj','identity-alias',{user:uid,hasEmail:!!user.emailAlias,hasAccount:true,actor:e.user.id},now);
+        return answer(`${user.name}님에게 스푼 ID @${alias}를 연결했어요. 이제 !복권지급 @${alias} 3 처럼 아이디로 지급할 수 있어요.`);
+      }
       if(cmd==='복권지급'){
+        // '!복권지급 전체 3' → 등록된 모든 청취자에게 3장씩 지급합니다.
+        // 수량을 빼먹은 '!복권지급 전체'는 실수로 전원에게 지급되지 않도록 사용법만 알려 줍니다.
+        // 닉네임이 '전체'인 청취자는 '@전체'나 고유 ID로 지정하면 기존처럼 한 명에게만 지급됩니다.
+        const everyone=/^전체(?:\s+([+-]?\d+))?$/u.exec(String(arg||'').trim());
+        if(everyone){
+          if(everyone[1]===undefined)fail('사용법: !복권지급 전체 수량 (예: !복권지급 전체 3)');
+          const count=Number(everyone[1]);
+          const people=this.grantTicketsToAll(r,count,user=>this.store.log(r.id,user.id,'ticket-grant',{count,actor:e.user.id,balance:user.tickets,all:true},now));
+          return answer(`전체 ${n(people)}명에게 복권 ${n(count)}장씩 지급 · 총 ${n(people*count)}장`);
+        }
         let parsed;try{parsed=parseTicketGrant(arg);}catch(error){fail(error.message);}
         const {target,countText}=parsed;
         if(!/^[+-]?\d+$/.test(countText))fail('복권 수량은 정수로 입력해주세요.');
@@ -464,7 +521,7 @@ export class Engine {
         return answer(count===0?`${user.name}님 복권 수량 변경 없음 · 보유 ${n(next)}장`:`${user.name}님 복권 ${n(Math.abs(count))}장 ${count<0?'회수':'지급'} · 보유 ${n(next)}장`);
       }
     }
-    if(['조용','복권지급'].includes(cmd))fail('DJ 전용 명령어입니다.');
+    if(['조용','복권지급','계정연결'].includes(cmd))fail('DJ 전용 명령어입니다.');
 
     const gameToggle=['게임','낚시','홀짝'].includes(cmd)&&['on','off'].includes(arg),gameStatus=cmd==='게임'&&arg==='상태';
     if(gameToggle&&arg==='off'&&!dj)fail('게임을 끄는 OFF 명령은 DJ 전용입니다.');
@@ -578,29 +635,37 @@ export class Engine {
         const used=u.tickets;if(!Number.isSafeInteger(used))fail('복권 보유 수량을 확인해주세요.');
         if(preparedLottery&&(preparedLottery.count!==used||preparedLottery.ticketRevision!==(u.ticketRevision||0)))fail('추첨 준비 중 복권 수량이 변경되었습니다. 수량은 차감하지 않았으니 다시 입력해주세요.');
         if(used>LOTTERY_CHUNK&&!preparedLottery)fail('대량 복권은 비동기 처리로 실행해주세요.');
-        const counts=preparedLottery?.counts||lotterySummary(used,(min,max)=>this.int(min,max)),exp=lotteryExp(counts);
+        // 등수별 당첨 횟수에 설정한 보상(EXP·PT)을 곱해 총 보상을 계산합니다.
+        const counts=preparedLottery?.counts||lotterySummary(used,(min,max)=>this.int(min,max)),{exp,pt}=lotteryPrize(counts,lotteryRewardTable(s));
         if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
-        u.tickets=0;u.ticketRevision=(u.ticketRevision||0)+1;u.exp+=exp;this.store.log(r.id,u.id,'lottery',{auto:true,used,counts,exp,remaining:0},now);
-        return answer(`자동 복권 ${n(used)}장 사용 · 3개 일치 ${n(counts[3])}회 / 2개 ${n(counts[2])}회 / 1개 ${n(counts[1])}회 / 꽝 ${n(counts[0])}회 · +${n(exp)} EXP · 남은 복권 0장`);
+        if(!Number.isSafeInteger(u.pt+pt))fail('포인트가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
+        u.tickets=0;u.ticketRevision=(u.ticketRevision||0)+1;u.exp+=exp;u.pt+=pt;this.store.log(r.id,u.id,'lottery',{auto:true,used,counts,exp,pt,remaining:0},now);
+        return answer(`자동 복권 ${n(used)}장 사용 · 1등(3개 일치) ${n(counts[3])}회 / 2등(2개) ${n(counts[2])}회 / 3등(1개) ${n(counts[1])}회 / 꽝 ${n(counts[0])}회 · ${prizeText(exp,pt)} · 남은 복권 0장`);
       }
       if(auto&&preparedLottery&&(preparedLottery.count!==u.tickets||preparedLottery.ticketRevision!==(u.ticketRevision||0)))fail('추첨 준비 중 복권 수량이 변경되었습니다. 다시 입력해주세요.');
       const pick=()=>{const pool=[1,2,3,4,5,6,7,8,9],numbers=[];for(let i=0;i<3;i++)numbers.push(pool.splice(this.int(0,pool.length-1),1)[0]);return numbers;};
       const selected=auto?pick():bits.map(Number),draw=pick();
-      const matches=selected.filter(x=>draw.includes(x)).length,exp=[0,50,150,300][matches];
+      // 맞힌 개수(matches)로 등수를 정하고, 설정한 등수별 보상(EXP·PT)을 찾습니다.
+      const matches=selected.filter(x=>draw.includes(x)).length,{exp,pt}=lotteryRewardTable(s)[matches];
       if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
-      u.tickets--;u.ticketRevision=(u.ticketRevision||0)+1;u.exp+=exp;
-      this.store.log(r.id,u.id,'lottery',{draw,input:selected.map(String),auto,matches,exp,used:1,remaining:u.tickets},now);
-      return answer(`${auto?`자동 선택 ${selected.join(' ')} · `:''}당첨 숫자 ${draw.join(' ')} · ${matches}개 일치! +${exp} EXP${auto?` · 1장 사용 · 남은 복권 ${n(u.tickets)}장`:''}`);
+      if(!Number.isSafeInteger(u.pt+pt))fail('포인트가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
+      u.tickets--;u.ticketRevision=(u.ticketRevision||0)+1;u.exp+=exp;u.pt+=pt;
+      this.store.log(r.id,u.id,'lottery',{draw,input:selected.map(String),auto,matches,rank:LOTTERY_RANKS[matches],exp,pt,used:1,remaining:u.tickets},now);
+      return answer(`${auto?`자동 선택 ${selected.join(' ')} · `:''}당첨 숫자 ${draw.join(' ')} · ${matches}개 일치 · ${matches?`${LOTTERY_RANKS[matches]}! ${prizeText(exp,pt)}`:'꽝'}${auto?` · 1장 사용 · 남은 복권 ${n(u.tickets)}장`:''}`);
     }
     if(cmd==='낚시'){
       if(arg)fail('사용법: !낚시');
+      // 결과 맨 앞에 붙일 '누가 잡았는지' 표시입니다. (설정 fishingWho: 닉네임+고유 ID / 닉네임 / 고유 ID / 표시 안 함)
+      const fishWho=whoLabel(u,s.fishingWho);
       const exp=Math.min(LIMIT.exp-u.daily.fishExp,s.expPerCast*(active('exp')?2:1));
       if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다.');
       u.exp+=exp;u.daily.fishExp+=exp;
-      if(this.int(1,10000)<=s.miss*100){this.store.log(r.id,u.id,'fishing-miss',{exp},now);return answer(`이번엔 꽝! +${exp} EXP`);}
+      if(this.int(1,10000)<=s.miss*100){this.store.log(r.id,u.id,'fishing-miss',{exp},now);return answer(`${fishWho?fishWho+' · ':''}이번엔 꽝! +${exp} EXP`);}
       let list=s.fish;
       if(active('rare')){const rare=this.int(1,100)<=70;list=list.filter(f=>(f.rarity>=2)===rare);}
-      const f=this.weighted(list),size=this.int(f.minSize,f.maxSize),base=s.payout==='fixed'?f.minPt:this.int(f.minPt,f.maxPt);
+      // 행운 보너스: 고급 이상 물고기(황금주사위 제외)의 가중치를 (1 + 행운%)배로 늘려서 뽑습니다.
+      const luck=1+s.fishingLuck/100,odds=luck===1?list:list.map(x=>x.rarity>=1&&!x.golden?{...x,weight:x.weight*luck}:x);
+      const f=this.weighted(odds),size=this.int(f.minSize,f.maxSize),base=s.payout==='fixed'?f.minPt:this.int(f.minPt,f.maxPt);
       const key=`${f.id}:${f.rarity}`;u.book[key]??={name:f.name,rarity:f.rarity,count:0};u.book[key].count++;
       let die=0,wanted=base,source='fish',paid=0,held=false;
       if(f.golden){die=this.int(1,6);wanted=base*die;if(s.goldenPolicy==='pending')held=true;else if(s.goldenPolicy==='special')source='golden';}
@@ -608,7 +673,7 @@ export class Engine {
       else if(u.daily.fishPt>=LIMIT.fish&&f.rarity===4&&!f.golden)r.special.push({id:randomUUID(),user:u.id,name:u.name,fish:f.name,day:dates(now).day,time:now,amount:0,status:'pending'});
       else paid=this.credit(r,u,wanted,source);
       this.store.log(r.id,u.id,'fishing',{fish:f.name,rarity:f.rarity,size,exp,base,die,paid,held},now);
-      return answer(`🎣 ${f.name} (${RARITIES[f.rarity]}) ${size}cm\n+${exp} EXP · ${held?`🎲 ${base} × ${die} = ${wanted} PT (정책 미정·보류)`:`${die?`🎲 ${n(base)} × ${die} · `:''}+${n(paid)} PT`}`);
+      return answer(`🎣 ${fishWho?fishWho+' · ':''}${f.name} (${RARITIES[f.rarity]}) ${size}cm\n+${exp} EXP · ${held?`🎲 ${base} × ${die} = ${wanted} PT (정책 미정·보류)`:`${die?`🎲 ${n(base)} × ${die} · `:''}+${n(paid)} PT`}`);
     }
     if(['홀','짝','홀짝'].includes(cmd)){
       let side=cmd,stakeText=arg;if(cmd==='홀짝'){[side,stakeText]=bits;}
@@ -722,8 +787,149 @@ export class Engine {
   target(r,target){
     try{return resolveTarget(r.users,target,{identityKey:this.identityKey,room:r.id});}catch(error){fail(error.message);}
   }
+  // 한 번에 기준 스푼 이상 후원한 청취자에게 EXP를 주어 레벨이 오르게 합니다. (설정에서 켠 경우에만 동작합니다.)
+  // event: { id: 후원을 구별하는 값, amount: 후원 스푼 수, user: 후원자 { id, nickname } }
+  // 받는 EXP = 후원 스푼 수 × 스푼당 EXP. 같은 후원 알림이 다시 들어와도 한 번만 지급하고, 지급했을 때만 안내 문구를 돌려줍니다.
+  donationLevelUp(roomId,event){
+    const none={text:null};
+    const room=this.store.load(roomId),s=room?.settings;
+    if(!room||!s.donationExpEnabled)return none;
+    const amount=Number(event.amount),uid=event.user?.id;
+    // 후원 스푼이 기준보다 적거나, 후원자를 알 수 없으면 아무것도 하지 않습니다.
+    if(!event.id||uid===undefined||uid===null||String(uid)===''||!Number.isSafeInteger(amount)||amount<s.donationExpMin)return none;
+    const exp=amount*s.donationExpPerSpoon,eventId=`donation-exp:${event.id}`,now=this.now();
+    if(!Number.isSafeInteger(exp))return none;
+    let result=null;
+    try{
+      this.store.transaction(roomId,r=>{
+        // 이미 처리한 후원이면 다시 지급하지 않습니다.
+        if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,eventId))return;
+        this.reset(r);
+        const id=String(uid),nickname=typeof event.user.nickname==='string'&&event.user.nickname.trim()?event.user.nickname:'';
+        // 아직 프로필이 없는 후원자는 프로필을 만들어서 EXP를 받게 합니다.
+        let u=r.users[id];
+        if(!u){u=freshUser(id,nickname||'청취자',dates(now).month);r.users[id]=u;}
+        else if(nickname)u.name=nickname;
+        if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다.');
+        const levelBefore=Math.floor(u.exp/r.settings.levelStep)+1;
+        u.exp+=exp;
+        const levelAfter=Math.floor(u.exp/r.settings.levelStep)+1;
+        this.store.log(roomId,id,'donation-exp',{amount,exp,balance:u.exp,levelBefore,levelAfter},now);
+        this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,eventId,JSON.stringify({donationExp:true}));
+        result={name:[...u.name].slice(0,20).join(''),levelBefore,levelAfter,toNext:r.settings.levelStep-(u.exp%r.settings.levelStep)};
+      });
+    }catch(error){
+      // 후원 처리 전체를 막지 않도록 기록만 남기고 넘어갑니다.
+      this.store.log(roomId,'system','donation-exp-failed',{message:error.message},now);
+      return none;
+    }
+    if(!result)return none;
+    const head=`${result.name}님 ${n(amount)}스푼 후원! +${n(exp)} EXP`;
+    return {text:result.levelAfter>result.levelBefore?`🆙 ${head} · Lv.${result.levelBefore} → Lv.${result.levelAfter} 레벨 업!`:`✨ ${head} · Lv.${result.levelAfter} (다음 레벨까지 ${n(result.toNext)} EXP)`,exp,levelBefore:result.levelBefore,levelAfter:result.levelAfter};
+  }
+  // 한 번에 기준 스푼(기본 10) 이상 후원한 '후원자 본인'에게 복권을 지급합니다. (설정에서 켠 경우에만 동작합니다.)
+  // event: { id: 후원을 구별하는 값, amount: 후원 스푼 수, user: 후원자 { id, nickname } }
+  // 같은 후원 알림이 다시 들어와도 한 번만 지급하고, 지급했을 때만 안내 문구를 돌려줍니다.
+  donationDonorTickets(roomId,event){
+    const none={text:null};
+    const room=this.store.load(roomId),s=room?.settings;
+    if(!room||!s.donationDonorTicketEnabled)return none;
+    const amount=Number(event.amount),uid=event.user?.id;
+    // 후원 스푼이 기준보다 적거나, 후원자를 알 수 없으면 아무것도 하지 않습니다.
+    if(!event.id||uid===undefined||uid===null||String(uid)===''||!Number.isSafeInteger(amount)||amount<s.donationDonorTicketMin)return none;
+    const count=s.donationDonorTicketCount,eventId=`donation-donor-ticket:${event.id}`,now=this.now();
+    let result=null;
+    try{
+      this.store.transaction(roomId,r=>{
+        // 이미 처리한 후원이면 다시 지급하지 않습니다.
+        if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,eventId))return;
+        this.reset(r);
+        const id=String(uid),nickname=typeof event.user.nickname==='string'&&event.user.nickname.trim()?event.user.nickname:'';
+        // 아직 프로필이 없는 후원자는 프로필을 만들어서 복권을 받게 합니다.
+        let u=r.users[id];
+        if(!u){u=freshUser(id,nickname||'청취자',dates(now).month);r.users[id]=u;}
+        else if(nickname)u.name=nickname;
+        if(!Number.isSafeInteger(u.tickets+count))fail('복권 보유량이 처리 가능한 범위를 초과합니다.');
+        u.tickets+=count;u.ticketRevision=(u.ticketRevision||0)+1;
+        this.store.log(roomId,id,'ticket-grant',{count,balance:u.tickets,source:'donation',donor:true,amount},now);
+        this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,eventId,JSON.stringify({donationDonorTicket:true}));
+        result={name:[...u.name].slice(0,20).join(''),balance:u.tickets};
+      });
+    }catch(error){
+      // 후원 처리 전체를 막지 않도록 기록만 남기고 넘어갑니다.
+      this.store.log(roomId,'system','donation-donor-ticket-failed',{message:error.message},now);
+      return none;
+    }
+    if(!result)return none;
+    return {text:`🎟️ ${result.name}님 ${n(amount)}스푼 후원! 복권 ${n(count)}장 지급 (보유 ${n(result.balance)}장)`,count,balance:result.balance};
+  }
+  // 큰 후원이 들어오면 등록된 모든 청취자에게 복권을 지급합니다. (설정에서 켠 경우에만 동작합니다.)
+  // event: { id: 후원을 구별하는 값, amount: 후원 스푼 수, user: 후원자 }
+  // 같은 후원 알림이 다시 들어와도 한 번만 지급하고, 지급했을 때만 채팅에 보낼 안내 문구를 돌려줍니다.
+  donationTicketsToAll(roomId,event){
+    const none={text:null};
+    const room=this.store.load(roomId),s=room?.settings;
+    if(!room||!s.donationTicketEnabled)return none;
+    const amount=Number(event.amount);
+    // 후원 스푼이 기준보다 적으면 아무것도 하지 않습니다.
+    if(!event.id||!Number.isSafeInteger(amount)||amount<s.donationTicketMin)return none;
+    const eventId=`donation-tickets:${event.id}`,count=s.donationTicketCount;
+    let people=0;
+    try{
+      this.store.transaction(roomId,r=>{
+        // 이미 처리한 후원이면 다시 지급하지 않습니다.
+        if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,eventId))return;
+        people=this.grantTicketsToAll(r,count,user=>this.store.log(roomId,user.id,'ticket-grant',{count,balance:user.tickets,all:true,source:'donation',amount},this.now()));
+        // 지급이 끝난 뒤에 '처리함' 표시를 남깁니다. 지급 중 오류가 나면 표시도 지급도 모두 취소됩니다.
+        this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,eventId,JSON.stringify({donationTickets:true}));
+      });
+    }catch(error){
+      // 청취자가 없거나 보유 한도를 넘는 경우 등: 후원 처리 전체를 막지 않도록 기록만 남기고 넘어갑니다.
+      this.store.log(roomId,'system','donation-tickets-failed',{message:error.message},this.now());
+      return none;
+    }
+    if(!people)return none;
+    const name=[...String(event.user?.nickname||'청취자')].slice(0,20).join('');
+    return {text:`🎉 ${name}님의 ${n(amount)}스푼 후원! 모든 청취자 ${n(people)}명에게 복권 ${n(count)}장씩 지급했어요 🎟️`,people};
+  }
+  // 방에 등록된 모든 청취자에게 복권을 같은 수만큼 지급합니다. (채팅 명령과 웹 관리 화면이 함께 사용합니다.)
+  // - count: 한 사람에게 줄 복권 수. 실수 방지를 위해 1~1,000장의 양의 정수만 허용합니다(회수는 지원하지 않습니다).
+  // - record: 지급이 끝난 청취자마다 한 번씩 호출됩니다. 호출한 쪽이 자기 방식으로 기록(로그)을 남기는 데 씁니다.
+  // 한 명이라도 보유량 한도를 넘으면 아무에게도 지급하지 않고 오류를 냅니다. 지급한 인원 수를 돌려줍니다.
+  grantTicketsToAll(r,count,record){
+    if(!Number.isSafeInteger(count)||count<1||count>ALL_TICKET_GRANT_MAX)fail(`전체 지급은 1~${n(ALL_TICKET_GRANT_MAX)}장 사이의 양의 정수만 가능합니다.`);
+    // 달이 바뀌었으면 월간 초기화를 먼저 반영해야 지급한 복권이 바로 사라지지 않습니다.
+    this.reset(r);
+    const users=Object.values(r.users);
+    if(!users.length)fail('지급할 청취자가 없습니다. 청취자가 !내정보를 입력하면 등록됩니다.');
+    if(users.some(user=>!Number.isSafeInteger(user.tickets+count)))fail('복권 보유량이 처리 가능한 범위를 넘는 청취자가 있어 아무에게도 지급하지 않았습니다.');
+    for(const user of users){
+      user.tickets+=count;
+      user.ticketRevision=(user.ticketRevision||0)+1;
+      record(user);
+    }
+    return users.length;
+  }
 }
+// 전체 지급 때 한 사람에게 줄 수 있는 복권 수의 상한입니다. (한 번에 너무 많이 주는 실수를 막습니다.)
+const ALL_TICKET_GRANT_MAX=1000;
 class RuleError extends Error {}
 function fail(message){throw new RuleError(message);}
+// 낚시 결과에 붙일 '누가 잡았는지' 표시를 만듭니다. 닉네임은 길면 14자까지만 보여 줍니다.
+// mode: 'both' → 닉네임(@고유ID) / 'nickname' → 닉네임 / 'id' → @고유ID / 'off' → 표시 안 함(빈 글자)
+function whoLabel(u,mode='both'){
+  const nickname=[...String(u.name||'청취자')].slice(0,14).join('');
+  if(mode==='off')return '';
+  if(mode==='nickname')return nickname;
+  if(mode==='id')return `@${u.id}`;
+  return `${nickname}(@${u.id})`;
+}
+// 복권 보상 안내 문구입니다. 예: '+300 EXP +300 PT' / EXP·PT 모두 0이면 '보상 없음'
+function prizeText(exp,pt){
+  const parts=[];
+  if(exp>0)parts.push(`+${n(exp)} EXP`);
+  if(pt>0)parts.push(`+${n(pt)} PT`);
+  return parts.join(' ')||'보상 없음';
+}
 function positive(text,max){if(!/^[1-9]\d*$/.test(String(text)))fail('양의 정수를 입력해주세요.');const v=Number(text);if(!Number.isSafeInteger(v)||v>max)fail(`최대 ${n(max)}까지 가능합니다.`);return v;}
 
