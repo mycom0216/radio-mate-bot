@@ -134,6 +134,25 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     res=await fetch(address+'/api/room',{headers:{Cookie:appSession.split(';')[0]}});assert.equal(res.status,200);assert.equal((await res.json()).id,room.id);
     assert.equal((await exchange(verifier)).status,400,'one-time code cannot be replayed');
     const headers={Cookie:session,'Content-Type':'application/json','X-CSRF-Token':(await (await fetch(address+'/api/session',{headers:{Cookie:session}})).json()).csrf};
+    const callBot=()=>fetch(address+'/api/reconnect',{method:'POST',headers,body:'{}'});
+    async function waitForConnection(expected){
+      let status;
+      for(let attempt=0;attempt<40;attempt++){
+        status=await (await fetch(address+'/api/reconnect',{headers})).json();
+        if(status.connection===expected)return status;
+        await new Promise(resolve=>setTimeout(resolve,50));
+      }
+      assert.equal(status.connection,expected);
+    }
+    assert.equal((await waitForConnection('방송 연결됨')).live,true);
+    const eventsBeforeCall=seen.events;
+    assert.equal((await callBot()).status,200);
+    assert.equal(seen.events,eventsBeforeCall,'calling an already connected bot keeps the event stream');
+    emit('duplicate-stream','end',{reason:'DUPLICATE_CONNECTION'});
+    assert.equal((await waitForConnection('다른 서버가 연결됨 — 재연결 중지')).live,false);
+    assert.equal((await callBot()).status,200);
+    assert.equal((await waitForConnection('방송 연결됨')).live,true);
+    assert.equal(seen.events,eventsBeforeCall+1,'calling the bot connects to the broadcast already in progress');
     res=await fetch(address+'/api/account-delete',{method:'POST',headers,body:JSON.stringify({confirm:'wrong'})});assert.equal(res.status,400);
     res=await fetch(address+'/api/account-delete',{method:'POST',headers,body:JSON.stringify({confirm:'방송 데이터 영구 삭제'})});assert.equal(res.status,200);assert.equal((await res.json()).revoked,true);assert.match(seen.revoked[0],/token=RT/);
     res=await fetch(address+'/api/room',{headers:{Cookie:session}});assert.equal(res.status,401);

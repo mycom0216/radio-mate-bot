@@ -223,7 +223,7 @@ Node.js 24 이상이 필요합니다. 외부 npm 패키지는 사용하지 않�
 공식 연동 참고: [YouTube IFrame API](https://developers.google.com/youtube/iframe_api_reference), [스푼 좋아요 이벤트](https://developers.spooncast.net/docs/en/api-reference/live-events#like--hearts).
 청취 자동 보상은 [스푼 현재 청취자 목록 API](https://developers.spooncast.net/docs/en/api-reference/listeners)의 페이지와 `listeners.read` 권한을 사용합니다.
 
-공식 앱 내부 조작에는 제한이 있습니다. [공식 봇 API 목록](https://developers.spooncast.net/docs/en/api-reference/endpoints)에는 녹음창·충전창 실행, 방송 음악 송출, 이메일 조회, 다른 DJ의 동의 없는 방송 입장 기능이 없습니다. `!보이스카드`는 공용 HTTPS 녹음 페이지를 안내하며 `!스푼`은 `/스푼` 입력 방법과 공식 충전 링크·조건 확인 안내를 제공합니다. `!라디오메이트`·`!봇호출`은 연결 상태와 연결 방법을 알려줍니다. 새 DJ는 공용 화면에서 본인 스푼 계정으로 동의해야 하며 이후 방송 시작 시 봇이 자동 접속합니다. 현재 임시 HTTPS는 서버와 터널을 실행한 PC가 켜져 있는 동안만 사용할 수 있습니다. 상시 운영에는 별도 서버 배포가 필요합니다.
+공식 앱 내부 조작에는 제한이 있습니다. [공식 봇 API 목록](https://developers.spooncast.net/docs/en/api-reference/endpoints)에는 녹음창·충전창 실행, 방송 음악 송출, 이메일 조회, 다른 DJ의 동의 없는 방송 입장 기능이 없습니다. `!보이스카드`는 공용 HTTPS 녹음 페이지를 안내하며 `!스푼`은 `/스푼` 입력 방법과 공식 충전 링크·조건 확인 안내를 제공합니다. `!라디오메이트`·`!봇호출`은 연결 상태와 연결 방법을 알려줍니다. 새 DJ는 공용 화면에서 본인 스푼 계정으로 동의해야 합니다. 방송 중에는 대시보드의 「지금 방송에 봇 호출」로 접속을 요청하고 상태를 확인할 수 있습니다. 방송 전에는 봇이 대기하다 방송이 시작되면 자동 접속합니다. 현재 임시 HTTPS는 서버와 터널을 실행한 PC가 켜져 있는 동안만 사용할 수 있습니다. 상시 운영에는 별도 서버 배포가 필요합니다.
 
 정상 DJ 로그인은 기존 12시간 만료를 유지하면서 암호화 저장해 서버 재시작 후에도 유지합니다. 공개 테스트 로그인은 메모리에만 보관하여 재시작 시 초기화합니다. 세션 지속 기능 적용 전에 만들어진 로그인은 한 번 다시 연결해야 합니다. 초기 설계 문서보다 이 README와 최신 검증 기록의 운영 규칙이 우선합니다.
 

@@ -79,7 +79,8 @@ function checkSettingsRevision(room,expected){
   if(!Number.isSafeInteger(expected)||expected!==(room.settingsRevision||0))throw Object.assign(Error('다른 탭이나 채팅에서 설정이 변경되었습니다. 입력 내용을 확인하고 새로고침한 뒤 다시 수정해 주세요.'),{status:409});
 }
 function automationRuntime(){try{const data=JSON.parse(readFileSync(join(STATE_DIR,'automation-status.json'),'utf8'));return {enabled:data.enabled===true,localHealthy:data.localHealthy===true,tunnelHealthy:data.tunnelHealthy===true,gatewayHealthy:data.gatewayHealthy===true,checkedAt:Number(data.checkedAt)||0,lastError:data.lastError?'복구 또는 연결 확인 중':null};}catch{return {enabled:false};}}
-function safeRoom(room){const {store,spoon}=servicesFor(room);const r=store.load(room);return {...r,systemAutomation:isDemo(room)?{enabled:false}:automationRuntime(),id:isDemo(room)?'demo':r.id,connection:isDemo(room)?'테스트 모드 · 실제 방송 미연결':spoon.status.get(room)||'미연결',logs:store.logs(room),outbox:spoon.outbox.list(room),backups:store.db.prepare('SELECT id,time FROM backups WHERE room=? ORDER BY time DESC LIMIT 20').all(room)};}
+function safeConnection(room,spoon){return isDemo(room)?'테스트 모드 · 실제 방송 미연결':spoon.status.get(room)||'미연결';}
+function safeRoom(room){const {store,spoon}=servicesFor(room);const r=store.load(room);return {...r,systemAutomation:isDemo(room)?{enabled:false}:automationRuntime(),id:isDemo(room)?'demo':r.id,connection:safeConnection(room,spoon),logs:store.logs(room),outbox:spoon.outbox.list(room),backups:store.db.prepare('SELECT id,time FROM backups WHERE room=? ORDER BY time DESC LIMIT 20').all(room)};}
 const server=createServer(async(req,res)=>{
   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','DENY');
   res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; frame-src https://www.youtube.com https://www.youtube-nocookie.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
@@ -179,6 +180,10 @@ const server=createServer(async(req,res)=>{
         const data={version:1,exportedAt:Date.now(),room:store.load(roomId),logs:store.logs(roomId),voice:voice.list(roomId).map(card=>({...card,data:voice.file(roomId,card.id).data.toString('base64')}))};
         delete data.room.voiceInboxUrl;if(data.room.chat)delete data.room.chat.token;
         res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Disposition':'attachment; filename="radiomate-room.json"'});res.end(JSON.stringify(data));return;
+      }
+      if(req.method==='GET'&&path==='/api/reconnect'){
+        reply(res,200,{connection:safeConnection(roomId,spoon),live:!isDemo(roomId)&&store.load(roomId).live});
+        return;
       }
       if(req.method==='GET'&&path==='/api/room'){store.transaction(roomId,r=>engine.reset(r));reply(res,200,safeRoom(roomId));return;}
       if(req.method==='GET'&&path==='/api/voice-inbox'){
@@ -315,7 +320,18 @@ const server=createServer(async(req,res)=>{
         const backup=store.db.prepare('SELECT data FROM backups WHERE id=? AND room=?').get(b.id,roomId);if(!backup)throw Error('백업을 찾을 수 없습니다.');const settings=validateSettings(JSON.parse(backup.data));store.transaction(roomId,r=>{checkSettingsRevision(r,b.expectedRevision);store.backup(roomId);engine.syncBuffs(r);r.settings=settings;engine.syncBuffs(r);r.settingsRevision=(r.settingsRevision||0)+1;store.log(roomId,'dj','settings-restore',{id:b.id});});reply(res,200,{ok:true});return;
       }
       if(path==='/api/notice-draft'){const settings=b.settings?validateSettings(b.settings):store.load(roomId).settings;reply(res,200,{text:`🎵 ${settings.playlistTitle}입니다. ${settings.requests?'신청곡은 !신청곡 가수 - 제목으로 남겨주세요.':'지금은 신청곡을 받지 않아요.'} 하트로 함께해주세요 ♥`.slice(0,200)});return;}
-      if(path==='/api/reconnect'){if(!isDemo(roomId)){spoon.stop(roomId);spoon.start(roomId);}reply(res,200,{ok:true});return;}
+      if(path==='/api/reconnect'){
+        if(isDemo(roomId))throw Error('DJ 계정으로 연결한 뒤 봇을 호출해 주세요.');
+        if(!spoon.configured()||!store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(roomId)){
+          throw Error('스푼 계정을 다시 연결한 뒤 봇을 호출해 주세요.');
+        }
+        if(!store.load(roomId).live&&spoon.status.get(roomId)!=='방송 대기 / 연결 중'){
+          spoon.stop(roomId);
+          spoon.start(roomId);
+        }
+        reply(res,200,{ok:true});
+        return;
+      }
       throw Object.assign(Error('기능을 찾을 수 없습니다.'),{status:404});
     }
     const files={'/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/offline.html':'offline.html','/app-icon.svg':'app-icon.svg','/pwa.css':'pwa.css','/pwa.mjs':'pwa.mjs','/playback-position.mjs':'playback-position.mjs','/affinity.mjs':'affinity.mjs','/spoon-charge.mjs':'spoon-charge.mjs','/weather-ui.mjs':'weather-ui.mjs','/travel-ui.mjs':'travel-ui.mjs','/dining-ui.mjs':'dining-ui.mjs','/dining-guide.mjs':'dining-guide.mjs','/community.mjs':'community.mjs','/community.css':'community.css','/sugar.css':'sugar.css','/bloom.css':'bloom.css','/radio-bloom.webp':'radio-bloom.webp','/radio-bloom-mini.webp':'radio-bloom-mini.webp','/operations-ui.mjs':'operations-ui.mjs','/diagnostics-ui.mjs':'diagnostics-ui.mjs','/request-json.mjs':'request-json.mjs','/petal.css':'petal.css','/radio-petal.png':'radio-petal.png','/radio-mini.png':'radio-mini.png','/minimi.js':'minimi.js','/':'index.html','/player':'index.html','/app.js':'app.js','/studio-state.mjs':'studio-state.mjs','/style.css':'style.css','/workspace.css':'workspace.css','/song-utils.mjs':'song-utils.mjs','/playback.mjs':'playback.mjs','/youtube-player.mjs':'youtube-player.mjs','/voice.js':'voice.js','/extra-ui.mjs':'extra-ui.mjs','/studio.css':'studio.css','/studio-icons.mjs':'studio-icons.mjs'};if(req.method!=='GET'||!Object.hasOwn(files,path)){reply(res,404,{error:'페이지를 찾을 수 없습니다.'});return;}

@@ -515,7 +515,7 @@ export class Engine {
     if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');
     if(['랭킹','랭킹조회','애청랭킹'].includes(cmd))return answer(chatPage('애청지수 순위',affinityRank(r.users).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(affinityScore(v))}점`),arg,'랭킹','등록된 청취자가 없습니다.'));
     if(cmd==='경험치랭킹')return answer(chatPage('경험치 순위',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,cmd,'등록된 청취자가 없습니다.'));
-    if(['라디오메이트','봇호출'].includes(cmd))return answer('라디오메이트 명령 수신 중입니다. 다른 DJ 방송 연결은 라디오메이트 공용 HTTPS 화면에서 해당 DJ 계정으로 스푼 연결에 동의해 주세요. 방송이 시작되면 봇이 자동 접속합니다.');
+    if(['라디오메이트','봇호출'].includes(cmd))return answer('라디오메이트가 이 채팅에 응답하고 있어요. 다른 방송의 DJ는 라디오메이트에 본인 스푼 계정을 연결하고 대시보드에서 「지금 방송에 봇 호출」을 눌러 주세요.');
     if(cmd==='이전곡'){
       if(arg==='삭제'||arg.startsWith('삭제 '))return this.deleteSong(r,e,arg.slice(2).trim(),'previous',now);
       if(dj){delete r.songDeletePrompt;if(r.previous)r.songSelection={kind:'previous',id:r.previous.id,title:r.previous.title};else delete r.songSelection;}
