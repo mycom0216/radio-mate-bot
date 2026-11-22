@@ -9,6 +9,7 @@ import {Sessions} from './sessions.mjs';
 import {BotCall} from './bot-call.mjs';
 import {oauthCookieName,oauthCookieMatches,oauthProviderError,oauthFailurePage} from './oauth-flow.mjs';
 import {MobileLink} from './mobile-link.mjs';
+import {captureExtensionZip} from './capture-extension-zip.mjs';
 import {updateRequestedRules,RULES_VERSION} from './rules-update.mjs';
 import {emailAlias,nicknameKey} from './targets.mjs';
 import {YouTubeSearch} from './youtube-search.mjs';
@@ -91,6 +92,13 @@ const server=createServer(async(req,res)=>{
   try{
     req.clientIp=clientIp(req);
     const url=new URL(req.url,env.PUBLIC_URL),path=url.pathname;
+    if(path==='/api/screen-capture/events'){
+      if(req.method!=='GET')throw Object.assign(Error('허용되지 않은 요청입니다.'),{status:405});
+      const bearer=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization||''),room=bearer&&spoon.captures.resolve(bearer[1]);
+      if(!room)throw Object.assign(Error('캡처 연결이 만료되었거나 해제되었습니다. DJ 화면에서 다시 연결해주세요.'),{status:401});
+      const after=Number(url.searchParams.get('after')||0);if(!Number.isSafeInteger(after)||after<0)throw Error('조회 위치가 올바르지 않습니다.');
+      res.setHeader('Referrer-Policy','no-referrer');reply(res,200,spoon.captures.list(room,after));return;
+    }
     const callPage=/^\/call\/[A-Za-z0-9_-]{43}\/?$/.test(path),publicCall=/^\/api\/bot-call-public\/([A-Za-z0-9_-]{43})$/.exec(path);
     if(callPage){
       if(req.method!=='GET')throw Object.assign(Error('허용되지 않은 요청입니다.'),{status:405});
@@ -142,6 +150,9 @@ const server=createServer(async(req,res)=>{
     }
     if(path==='/privacy'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(readFileSync(join(ROOT,'public','privacy.html'),'utf8').replaceAll('{{VOICE_DAYS}}',voiceRetention?String(voiceRetention)+'일':'DJ가 삭제할 때까지'));return;}
     if(path==='/health'){reply(res,200,{ok:true});return;}
+    if(path==='/extensions/donation-capture.zip'&&req.method==='GET'){
+      res.writeHead(200,{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="radiomate-donation-capture.zip"','Cache-Control':'no-store'});res.end(captureExtensionZip(ROOT));return;
+    }
     if(path==='/android'&&req.method==='GET'){
       res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});res.end(readFileSync(join(ROOT,'public','android.html')));return;
     }
@@ -210,6 +221,7 @@ const server=createServer(async(req,res)=>{
     if(path.startsWith('/api/')){
       const s=requireSession(req),roomId=s.room;
       const {store,engine,spoon,voice}=servicesFor(roomId);
+      if(path==='/api/screen-capture'&&req.method==='GET'){reply(res,200,isDemo(roomId)?{enabled:false,preview:true}:spoon.captures.status(roomId));return;}
       if(req.method==='GET'&&path==='/api/ai'){
         const context={store,room:roomId,user:'dj',channel:'app'};reply(res,200,{configured:ai.configured&&!sandbox?.has(roomId),model:ai.model,history:ai.history(context),dailyLimit:ai.dailyLimit,used:store.load(roomId).aiUsage?.day===dates().day?store.load(roomId).aiUsage.count:0});return;
       }
@@ -238,6 +250,12 @@ const server=createServer(async(req,res)=>{
       if(req.method!=='POST')throw Object.assign(Error('지원하지 않는 요청입니다.'),{status:404});
       const key=digest(req.headers.cookie||'');const a=attempts.get(key)||{time:Date.now(),count:0};if(Date.now()-a.time>60000){a.time=Date.now();a.count=0;}if(++a.count>(sandbox?.has(roomId)?60:180))throw Object.assign(Error('요청이 너무 많습니다.'),{status:429});attempts.set(key,a);
       const b=await body(req);
+      if(path==='/api/screen-capture'){
+        if(isDemo(roomId))throw Error('후원 화면 캡처는 실제 DJ 계정에서 연결해주세요.');
+        if(b.action==='issue'){reply(res,200,{origin:env.PUBLIC_URL,...spoon.captures.issue(roomId)});return;}
+        if(b.action==='revoke'){spoon.captures.revoke(roomId);reply(res,200,{ok:true});return;}
+        throw Error('캡처 연결 동작을 확인해주세요.');
+      }
       if(path==='/api/automation'){store.transaction(roomId,r=>{checkSettingsRevision(r,b.expectedRevision);store.backup(roomId);setAutomation(r,b.enabled);store.log(roomId,'dj','automation-settings',{enabled:b.enabled});});reply(res,200,{ok:true});return;}
       if(path==='/api/ai-reset'){ai.reset({room:roomId,user:'dj',channel:'app'});reply(res,200,{ok:true});return;}
       if(path==='/api/ai-talk'){reply(res,200,{text:await ai.answer(b.text,{store,room:roomId,user:'dj',channel:'app'})});return;}
@@ -384,7 +402,7 @@ const server=createServer(async(req,res)=>{
 server.headersTimeout=15000;server.requestTimeout=120000;server.keepAliveTimeout=5000;
 for(const id of store.ids())if(id!==demoId){store.transaction(id,r=>{if(env.AUTO_OPERATIONS==='1'&&r.automation===undefined&&store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(id)){store.backup(id);setAutomation(r,true);}if((r.rulesVersion||0)<RULES_VERSION){store.backup(id);updateRequestedRules(r);}r.voiceInboxUrl=voice.url(id,env.PUBLIC_URL);if(r.settings.pauseItems){for(const u of Object.values(r.users)){u.buffPaused??={};for(const item of r.settings.items)u.buffPaused[item.id]??=r.itemCheckedAt||Date.now();}}r.live=false;r.listenerSnapshot={};engine.syncBuffs(r);});spoon.start(id);}
 const timer=setInterval(()=>spoon.tick().catch(e=>console.error('scheduler:',e.message)),5000);
-const cleanup=setInterval(()=>{sandbox?.expire();sandbox?.services.store.prune({eventsKeep:2000,backupsKeep:5,auditDays:1});androidAuth.prune();mobileLink.prune();const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t.expires<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
+const cleanup=setInterval(()=>{sandbox?.expire();sandbox?.services.store.prune({eventsKeep:2000,backupsKeep:5,auditDays:1});androidAuth.prune();mobileLink.prune();spoon.captures.prune();const now=Date.now();for(const [k,s] of sessions)if(s.expires<now)sessions.delete(k);for(const [k,t]of oauth)if(t.expires<now)oauth.delete(k);for(const [k,a]of attempts)if(now-a.time>60000)attempts.delete(k);},60000);
 server.listen(Number(env.PORT||4310),env.HOST||'127.0.0.1',()=>console.log(`Spoon Studio: http://${env.HOST||'127.0.0.1'}:${server.address().port} (${production?'production':'local demo'})`));
 const maintenance=setInterval(runMaintenance,6*3600000);
 function runMaintenance(){try{expireVoice(store,voice,voiceRetention);store.db.prepare("DELETE FROM outbox WHERE created<? AND status!='pending'").run(Date.now()-7*86400000);store.prune();store.snapshot(join(DATA,'backups'));

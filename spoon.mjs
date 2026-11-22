@@ -2,6 +2,7 @@ import {setAutomation} from './automation.mjs';
 import {Outbox} from './outbox.mjs';
 import {expireQuizRounds,autoQuizCandidate,autoQuizDelivered} from './quiz.mjs';
 import {autoChatCandidate} from './extras.mjs';
+import {ScreenCapture} from './screen-capture.mjs';
 import {expandWeatherTokens,hasWeatherTokens} from './weather-extras.mjs';
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 const REGIONS={kr:'https://kr-openapi.spooncast.net',jp:'https://jp-openapi.spooncast.net'};
@@ -16,7 +17,7 @@ export async function* frames(body){
   finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 export class Spoon {
-  constructor(store,engine,env){this.store=store;this.engine=engine;this.env=env;this.base=apiBase(env);this.outbox=new Outbox(store);this.store.db.exec("UPDATE outbox SET status='uncertain' WHERE status='sending'");this.running=new Map();this.status=new Map();this.refreshes=new Map();this.authEpochs=new Map();this.sendTimes=new Map();this.sendEpochs=new Map();this.greeted=new Set();this.timers=new Map();}
+  constructor(store,engine,env){this.store=store;this.engine=engine;this.env=env;this.base=apiBase(env);this.outbox=new Outbox(store);this.captures=new ScreenCapture(store);this.store.db.exec("UPDATE outbox SET status='uncertain' WHERE status='sending'");this.running=new Map();this.status=new Map();this.refreshes=new Map();this.authEpochs=new Map();this.sendTimes=new Map();this.sendEpochs=new Map();this.greeted=new Set();this.timers=new Map();}
   configured(){return !!(this.env.SPOON_CLIENT_ID&&this.env.SPOON_CLIENT_SECRET&&/^[a-fA-F0-9]{64}$/.test(this.env.TOKEN_KEY||''));}
   async tokenRequest(fields){const res=await fetch(`${this.base}/v1/oauth/token`,{method:'POST',headers:{Authorization:`Basic ${Buffer.from(`${this.env.SPOON_CLIENT_ID}:${this.env.SPOON_CLIENT_SECRET}`).toString('base64')}`,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(fields),signal:AbortSignal.timeout(15000)});if(!res.ok)throw Error(`Spoon 인증 실패 (${res.status}). 새로 연결해주세요.`);return {...await res.json(),expiresAt:Date.now()+3600000};}
   saveToken(room,t){t.region=spoonRegion(this.env);t.expiresAt=Date.now()+(t.expires_in||3600)*1000;this.store.db.prepare('INSERT INTO tokens VALUES(?,?) ON CONFLICT(room) DO UPDATE SET data=excluded.data').run(room,seal(t,this.env.TOKEN_KEY));this.refreshes.delete(room);}
@@ -31,7 +32,7 @@ export class Spoon {
     const row=this.store.db.prepare('SELECT data FROM tokens WHERE room=?').get(room);
     this.authEpochs.set(room,(this.authEpochs.get(room)||0)+1);this.stop(room);this.refreshes.delete(room);
     this.store.db.prepare('DELETE FROM tokens WHERE room=?').run(room);
-    if(this.store.load(room))this.store.transaction(room,r=>{delete r.botCall;});
+    if(this.store.load(room))this.store.transaction(room,r=>{delete r.botCall;delete r.screenCapture;});
     this.store.db.prepare("DELETE FROM outbox WHERE room=?").run(room);
     let revoked=!row;
     if(row)try{const t=unseal(row.data,this.env.TOKEN_KEY);const res=await fetch(this.base+'/v1/oauth/revoke',{method:'POST',headers:{Authorization:'Basic '+Buffer.from(this.env.SPOON_CLIENT_ID+':'+this.env.SPOON_CLIENT_SECRET).toString('base64'),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({token:t.refresh_token||t.access_token,token_type_hint:t.refresh_token?'refresh_token':'access_token'}),signal:AbortSignal.timeout(10000)});revoked=res.ok;}catch{}
@@ -96,6 +97,7 @@ export class Spoon {
               const out=this.engine.likeGreeting(room,{...f.data,id:f.id||`${f.data.time}:${f.data.user.id}`},{commit:false});
               if(out.text&&await this.send(room,out.text))this.engine.recordLike(room,out.receipt);
             }else if(f.event==='donation'){
+              this.captures.record(room,f);
               const s=this.store.load(room).settings;
               // 후원 금액 10을 메뉴판의 '10' 항목에서 찾습니다. 후원자 이름을 받지 못하면 '청취자'라고 부릅니다.
               const amount=String(f.data.amount),name=f.data.user?.nickname||'청취자';

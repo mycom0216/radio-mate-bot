@@ -1,0 +1,11 @@
+{
+ "manifest_version":3,
+ "name":"RadioMate 후원 순간 캡처",
+ "version":"1.1.1",
+ "minimum_chrome_version":"116",
+ "description":"연결한 스푼 방송 탭의 실제 보이는 화면을 후원 이벤트 수신 시 PC에 PNG로 저장합니다.",
+ "permissions":["activeTab","scripting","downloads","storage"],
+ "host_permissions":["https://radiomate-mycom0216.gallanttamarind4.chatgpt.site/*"],
+ "background":{"service_worker":"worker.mjs","type":"module"},
+ "action":{"default_popup":"popup.html","default_title":"후원 순간 캡처"}
+}
