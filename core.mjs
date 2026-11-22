@@ -9,6 +9,7 @@ import {rewardListening} from './listening.mjs';
 import {parseTicketGrant,resolveTarget} from './targets.mjs';
 import {deleteSongCommand} from './song-deletion.mjs';
 import {affinityScore,affinityRank,creditChat,collectAffinityNotices} from './public/affinity.mjs';
+import {temperatureEvent,officialTemperature,temperatureSummary} from './public/affinity.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
@@ -108,7 +109,7 @@ export function validateSettings(s) {
 const freshUser=(id,name,month)=>({id,name,month,exp:0,pt:0,tickets:0,attendance:'',daily:{day:'',fishExp:0,fishPt:0,oddPt:0,totalPt:0},bag:{},buffs:{},book:{},keeps:[],lastCommand:0});
 const n=x=>Number(x).toLocaleString('ko-KR');
 // 느낌표 뒤 첫 낱말이 이 목록에 있으면 진짜 명령어입니다. "!간호사"처럼 정답만 입력한 말과 구분하는 데 쓰며, 겹치면 명령어가 우선입니다.
-const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','애청온도','온도','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
 // 느낌표로 시작하는 말 중에서 메뉴판을 봇이 알아듣는 명령 목록에 넣습니다.
 KNOWN_COMMANDS.push('메뉴판');
 const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','조용','게임','구매','포기','취소']);
@@ -176,7 +177,16 @@ export class Engine {
     this.store.transaction(room,r=>{this.reset(r);const rewards=rewardListening(r,listeners,now,(id,name)=>freshUser(id,name,dates(now).month));for(const reward of rewards)this.store.log(room,reward.user,'listening-reward',reward,now);
       const notices=collectAffinityNotices(r,now),header='라디오메이트 자체 애청지수 상승',footer='※ 스푼 공식 애청온도와 별개';let lines=[],batch=0;
       const flush=()=>{if(lines.length)new Outbox(this.store).enqueue(room,'affinity-notice:'+now+':'+batch++,[header,...lines,footer].join('\n'),now);lines=[];};
-      for(const notice of notices){const line=[...notice.name].slice(0,14).join('')+'님 +'+notice.gain+'° → '+notice.total+'°';if([header,...lines,line,footer].join('\n').length>200)flush();lines.push(line);this.store.log(room,notice.user,'affinity-notice',{gain:notice.gain,total:notice.total},now);}flush();r.listeningStatus='청취자 목록 확인 중 · 1분 간격으로 접속 시간을 추정합니다.';});
+      for(const notice of notices){const line=[...notice.name].slice(0,14).join('')+'님 +'+notice.gain+'점 → '+notice.total+'점';if([header,...lines,line,footer].join('\n').length>200)flush();lines.push(line);this.store.log(room,notice.user,'affinity-notice',{gain:notice.gain,total:notice.total},now);}flush();r.listeningStatus='청취자 목록 확인 중 · 1분 간격으로 접속 시간을 추정합니다.';});
+  }
+  recordSpoonTemperature(room,data,now=this.now()){
+    const snapshot=temperatureEvent(data,now);if(!snapshot)return false;let updated=false;
+    this.store.transaction(room,r=>{
+      const id=data.user.id,existing=Object.hasOwn(r.users,id)?r.users[id]:null,previous=officialTemperature(existing);
+      if(previous&&snapshot.observedAt<=previous.observedAt)return;
+      const user=existing||freshUser(id,data.user.nickname||'청취자',dates(now).month);
+      user.spoonTemperature=snapshot;if(data.user.nickname)user.name=data.user.nickname;r.users[id]=user;updated=true;
+    });return updated;
   }
   syncBuffs(r,now=this.now()){
     r.itemCheckedAt=now;
@@ -505,6 +515,7 @@ export class Engine {
     if(cmd==='채팅방')return answer(r.chat?.enabled&&r.chat.token?`우리 방송 대화방 ♡ ${this.publicUrl}/chat/${r.chat.token} (스푼과 별도 채팅방)`:'DJ가 아직 앱 채팅방을 열지 않았습니다.');
     if(cmd==='보이스카드')return answer(r.voiceInboxUrl?`음성 보내기(링크를 눌러 녹음): ${r.voiceInboxUrl}\n휴대폰·PC에서 녹음·전송할 수 있습니다. 스푼 앱 내부 자동 녹음은 지원되지 않습니다.`:'DJ가 아직 음성메시지 접수를 열지 않았습니다.');
     if(cmd==='스푼')return answer(spoonChargeReply(s.spoonNotice,this.region));
+    if(cmd==='애청온도'||cmd==='온도')return answer(temperatureSummary(r.users[e.user.id])+'\n'+(officialTemperature(r.users[e.user.id])?'마지막 입장 시 스푼이 제공한 값입니다. 이후 변동은 다음 입장 이벤트 수신 시 갱신됩니다.':'events.presence 권한과 봇 매니저 지정 후 입장 이벤트 수신 시 표시합니다.'));
     if(cmd==='공지')return answer(s.notice);
     if(cmd==='메뉴판'){
       // 2스푼이 10스푼보다 앞에 오도록 글자 순서가 아닌 금액 순서로 정렬합니다.
@@ -552,8 +563,8 @@ export class Engine {
     const quiz=playQuiz(this,r,u,cmd,arg,now,fail);if(quiz!==null)return answer(quiz);
     const mini=playMiniGame(this,r,u,cmd,arg,now,fail);if(mini!==null)return answer(mini);
     const active=id=>u.buffPaused?.[id]===undefined&&(u.buffs[id]||0)>now;
-    if(cmd==='애청지수')return answer(u.name+'님 라디오메이트 애청지수 '+affinityScore(u)+'°\n최근 집계 상승분 +'+(u.affinityLastNotifiedGain||0)+'°\n청취 '+Math.floor((u.listeningMs||0)/60000)+'분 · 채팅 기여 '+(u.chatAffinityPoints||0)+'점\n자체 지수(1점=1°)이며 스푼 공식 애청온도와 별개입니다.');
-    if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n애청지수 ${affinityScore(u)}점 · 청취 ${Math.floor((u.listeningMs||0)/60000)}분 · 채팅 ${u.chatAffinityPoints||0}점\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
+    if(cmd==='애청지수')return answer(u.name+'님 라디오메이트 애청지수 '+affinityScore(u)+'점\n최근 집계 상승분 +'+(u.affinityLastNotifiedGain||0)+'점\n청취 '+Math.floor((u.listeningMs||0)/60000)+'분 · 채팅 기여 '+(u.chatAffinityPoints||0)+'점\n자체 지수이며 스푼 공식 애청온도와 별개입니다.');
+    if(cmd==='내정보')return answer(`${u.name} · Lv.${Math.floor(u.exp/s.levelStep)+1}\n${n(u.exp)} EXP / ${n(u.pt)} PT / 복권 ${n(u.tickets)}장\n${temperatureSummary(u)}\n자체 애청지수 ${affinityScore(u)}점 · 청취 ${Math.floor((u.listeningMs||0)/60000)}분 · 채팅 ${u.chatAffinityPoints||0}점\n다음 레벨까지 ${n(s.levelStep-u.exp%s.levelStep)} EXP`);
     if(cmd==='출석'){
       if(!s.attendance)fail('출석 기능이 꺼져 있습니다.');if(u.attendance===dates(now).day)fail('오늘은 이미 출석했습니다.');
       if(!Number.isSafeInteger(u.tickets+20))fail('복권 보유량이 정확히 처리 가능한 정수 범위를 초과합니다.');

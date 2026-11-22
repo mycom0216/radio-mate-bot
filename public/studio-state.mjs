@@ -3,6 +3,13 @@ export function levelProgress(exp,step){
   const current=exp%step;
   return {level:Math.floor(exp/step)+1,current,required:step,remaining:step-current,percent:Math.floor(current/step*100)};
 }
+export function sharedSettingsAction(current,next,{dirty=false,busy=false,editing=false}={}){
+  if(!current||!next)return 'none';
+  const changed=current.id!==next.id||current.name!==next.name||(current.settingsRevision||0)!==(next.settingsRevision||0)||JSON.stringify(current.settings)!==JSON.stringify(next.settings);
+  if(!changed)return 'none';
+  if(dirty)return 'conflict';
+  return busy||editing?'defer':'reload';
+}
 export function commandWait(room,userId,dj,now=Date.now()){
   if(dj)return 0;
   const user=Object.hasOwn(room.users,userId)?room.users[userId]:null,settings=room.settings;

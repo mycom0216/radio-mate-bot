@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {requestJSON} from '../public/request-json.mjs';
+
+test('timeout remains active while a response body stalls after headers arrive',async()=>{
+ await assert.rejects(()=>requestJSON('/api/room',undefined,{timeoutMs:10,fetchImpl:async(_path,{signal})=>new Response(new ReadableStream({start(controller){signal.addEventListener('abort',()=>controller.error(new DOMException('aborted','AbortError')));}}),{headers:{'Content-Type':'application/json'}})}),/시간이 초과/);
+});
+
+test('requests work without AbortSignal.timeout and still abort slow connections',async()=>{
+ const original=AbortSignal.timeout;AbortSignal.timeout=undefined;
+ try{
+  assert.deepEqual(await requestJSON('/api/session',undefined,{fetchImpl:async(_path,options)=>{assert.equal(options.cache,'no-store');assert.equal(options.credentials,'same-origin');return Response.json({ok:true});}}),{ok:true});
+  await assert.rejects(()=>requestJSON('/api/room',undefined,{timeoutMs:5,fetchImpl:async(_path,{signal})=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))))}),/시간이 초과/);
+ }finally{AbortSignal.timeout=original;}
+});
 test('JSON requests preserve conflict errors and expose session expiry without retrying mutations',async()=>{
  let calls=0,expired=0;
  const fetchImpl=async(path,options)=>{calls++;assert.equal(options.method,'POST');assert.equal(options.headers['X-CSRF-Token'],'csrf');assert.ok(options.signal instanceof AbortSignal);return new Response(JSON.stringify({error:'설정 버전 충돌'}),{status:409});};

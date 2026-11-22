@@ -12,10 +12,10 @@ test('five minute notice shows listening and hourly chat gains and total without
  const f=fixture(t),list=[{id:'u',nickname:'콰앙'}];f.snapshot(list);
  f.engine.handle('r',{id:'chat',message:'안녕하세요',user:{id:'u',nickname:'콰앙'}});
  for(let i=0;i<4;i++){f.advance(60000);f.snapshot(list);}assert.equal(f.messages().length,0);
- f.advance(60000);f.snapshot(list);assert.equal(f.messages().length,1);assert.match(f.messages()[0],/콰앙님 \+10° → 10°/);assert.match(f.messages()[0],/스푼 공식 애청온도와 별개/);
+ f.advance(60000);f.snapshot(list);assert.equal(f.messages().length,1);assert.match(f.messages()[0],/콰앙님 \+10점 → 10점/);assert.match(f.messages()[0],/스푼 공식 애청온도와 별개/);
  f.snapshot(list);assert.equal(f.messages().length,1);assert.equal(f.store.load('r').users.u.tickets,1);
- for(let i=0;i<5;i++){f.advance(60000);f.snapshot(list);}assert.equal(f.store.load('r').users.u.tickets,1);assert.match(f.messages()[1],/\+5° → 15°/);
- f.advance(3100);const query=f.engine.handle('r',{id:'query',message:'!애청지수',user:{id:'u',nickname:'콰앙'},isDj:true});assert.match(query.text,/애청지수 15°/);assert.match(query.text,/최근 집계 상승분 \+5°/);
+ for(let i=0;i<5;i++){f.advance(60000);f.snapshot(list);}assert.equal(f.store.load('r').users.u.tickets,1);assert.match(f.messages()[1],/\+5점 → 15점/);
+ f.advance(3100);const query=f.engine.handle('r',{id:'query',message:'!애청지수',user:{id:'u',nickname:'콰앙'},isDj:true});assert.match(query.text,/애청지수 15점/);assert.match(query.text,/최근 집계 상승분 \+5점/);
 });
 
 test('quiet, disabled and offline states do not send notices or credit connection gaps',t=>{
@@ -31,6 +31,6 @@ test('many long Unicode nicknames are batched within Spoon limits while preservi
  for(let i=0;i<5;i++){f.advance(60000);f.snapshot([...list,...list]);}
  const messages=f.messages();assert.ok(messages.length>1);assert.ok(messages.length<25);
  for(const message of messages)assert.ok(message.length<=200);
- assert.equal(messages.join('\n').match(/\+5° → 5°/g).length,25);
+ assert.equal(messages.join('\n').match(/\+5점 → 5점/g).length,25);
  f.snapshot(list);assert.equal(f.messages().length,messages.length);
 });

@@ -46,6 +46,7 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
       } else if (req.url === '/v1/live/events') {
         seen.events++;
         stream=res;
+        seen.stream=res;
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.write(': hello\n\n');
         setTimeout(() => res.write(`id: e1\nevent: chat\ndata: ${JSON.stringify({ user: { id: 'u1', nickname: '청취자' }, message: '!내정보 생성', sentTime: Date.now() })}\n\n`), 500);
@@ -77,7 +78,10 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     assert.match(location.searchParams.get('scope'), /chat\.send/);
     const state = location.searchParams.get('state');
     const oauthCookie = res.headers.get('set-cookie').split(';')[0];
-    res = await fetch(`${address}/oauth/callback?code=abc&state=${state}`, { redirect: 'manual', headers: { Cookie: oauthCookie } });
+    const parallel=await fetch(address+'/oauth/start',{redirect:'manual'}),parallelCookie=parallel.headers.get('set-cookie').split(';')[0],parallelState=new URL(parallel.headers.get('location')).searchParams.get('state');
+    assert.notEqual(oauthCookie.split('=')[0],parallelCookie.split('=')[0],'opening a second login tab must not overwrite the first login cookie');
+    const browserCookies=oauthCookie+'; '+parallelCookie;
+    res = await fetch(`${address}/oauth/callback?code=abc&state=${state}`, { redirect: 'manual', headers: { Cookie: browserCookies } });
     assert.equal(res.status, 302);
     const session = res.headers.get('set-cookie').split(';')[0];
     assert.equal(seen.token.length, 1);
@@ -114,6 +118,14 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     await waitForSendGap();
     emit('gift-after-delete','donation',{user:listener,amount:10});
     await expectReply(6,/^후원자님, 10 스푼 감사합니다!$/);
+    const joinedAt=Date.now();
+    for(const [index,value] of [36.5,38.75].entries()){
+      seen.stream.write(`id: temperature-${index}\nevent: presence\ndata: ${JSON.stringify({user:{id:'u1',nickname:'청취자'},type:'JOIN',favoriteTemperature:value,time:new Date(joinedAt+index*1000).toISOString()})}\n\n`);
+      let snapshot;for(let i=0;i<40;i++){snapshot=await(await fetch(address+'/api/room',{headers:{Cookie:session}})).json();if(snapshot.users.u1.spoonTemperature?.value===value)break;await new Promise(resolve=>setTimeout(resolve,25));}
+      assert.equal(snapshot.users.u1.spoonTemperature.value,value,'every reentry must refresh official temperature even when welcome greeting is deduplicated');
+    }
+    res=await fetch(`${address}/oauth/callback?error=invalid_scope&state=${parallelState}`,{redirect:'manual',headers:{Cookie:browserCookies}});
+    assert.equal(res.status,400);assert.match(res.headers.get('content-type'),/text\/html/);assert.match(await res.text(),/승인된 권한/);
     // a replayed OAuth state must be refused
     res = await fetch(`${address}/oauth/callback?code=abc&state=${state}`, { redirect: 'manual', headers: { Cookie: oauthCookie } });
     assert.equal(res.status, 400);

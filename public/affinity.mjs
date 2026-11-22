@@ -18,3 +18,22 @@ export function collectAffinityNotices(room,now){
  }
  return notices;
 }
+
+export function temperatureEvent(data,receivedAt=Date.now()){
+ if(data?.type!=='JOIN'||typeof data.user?.id!=='string'||!data.user.id||data.user.id.length>100||!Object.hasOwn(data,'favoriteTemperature'))return null;
+ const value=data.favoriteTemperature;if(value!==null&&(typeof value!=='number'||!Number.isFinite(value)||value<0))return null;
+ const observedAt=Date.parse(data.time);if(!Number.isFinite(observedAt)||!Number.isFinite(receivedAt))return null;
+ return {value,observedAt,receivedAt};
+}
+export function officialTemperature(user){
+ const data=user?.spoonTemperature;if(!data||!Number.isFinite(data.observedAt)||!Number.isFinite(data.receivedAt)||!Number.isFinite(new Date(data.receivedAt).getTime()))return null;
+ if(data.value!==null&&(typeof data.value!=='number'||!Number.isFinite(data.value)||data.value<0))return null;
+ return data;
+}
+export function temperatureLabel(user){const data=officialTemperature(user);return !data?'미수신':data.value===null?'스푼 미제공':String(data.value)+'°';}
+export function temperatureReceivedTime(user){const data=officialTemperature(user);return data?new Date(data.receivedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'';}
+export function temperatureSummary(user){const data=officialTemperature(user);return '스푼 애청온도 '+temperatureLabel(user)+(data?' · 수신 '+temperatureReceivedTime(user)+' (입장값)':'');}
+export function temperatureRank(users){
+ const value=user=>{const data=officialTemperature(user);return data?.value??-Infinity;};
+ return Object.values(users).sort((a,b)=>{const av=value(a),bv=value(b);return av===bv?a.id.localeCompare(b.id):av>bv?-1:1;});
+}

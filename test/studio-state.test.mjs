@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {levelProgress,commandWait,suppressionMessage,parseTestHistory} from '../public/studio-state.mjs';
+import {levelProgress,commandWait,suppressionMessage,parseTestHistory,sharedSettingsAction} from '../public/studio-state.mjs';
+
+test('shared settings refresh across devices without replacing drafts or focused controls',()=>{
+ const current={id:'dj',name:'Radio',settingsRevision:1,settings:{quiet:false,cooldown:20}},next={...current,settingsRevision:2,settings:{quiet:true,cooldown:5}};
+ assert.equal(sharedSettingsAction(current,next),'reload');assert.equal(sharedSettingsAction(current,next,{dirty:true}),'conflict');assert.equal(sharedSettingsAction(current,next,{editing:true}),'defer');assert.equal(sharedSettingsAction(current,next,{busy:true}),'defer');
+ assert.equal(sharedSettingsAction(current,structuredClone(current)),'none');
+ assert.equal(sharedSettingsAction(current,{...current,settings:{...current.settings,quiet:true}}),'reload','chat-command changes without a revision must also synchronize');
+ assert.equal(sharedSettingsAction(current,{...current,name:'New radio'}),'reload');
+ assert.equal(current.settings.quiet,false,'the local draft object must not be mutated');
+});
 test('level progress handles level boundaries and large safe balances',()=>{
   assert.deepEqual(levelProgress(100,100),{level:2,current:0,required:100,remaining:100,percent:0});
   assert.equal(levelProgress(199,100).remaining,1);assert.equal(levelProgress(199,100).percent,99);
