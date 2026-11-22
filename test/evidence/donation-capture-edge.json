@@ -54,5 +54,62 @@
     "This proves browser screenshot and local download behavior, not an actual donation trigger or gift-animation frame.",
     "Actual donation motion validation requires a logged-in broadcast and a new donation event for the connected DJ.",
     "The screenshot files remain local and are not committed or uploaded."
-  ]
+  ],
+  "loggedInRetest": {
+    "testedAt": "2026-11-22T20:38:50+09:00",
+    "extensionVersion": "1.1.2",
+    "method": "Manual five-frame test from installed Edge extension on a signed-in Spoon broadcast tab",
+    "loggedIn": true,
+    "browserApisMocked": false,
+    "downloadCompletionObserved": true,
+    "pngSignatureVerified": true,
+    "frames": [
+      {
+        "frame": 1,
+        "width": 921,
+        "height": 920,
+        "bytes": 773968,
+        "intervalMs": null,
+        "sha256": "357f5abecbf5f854cc2b6400c84b946cd3171c654c278baed08a46f7690238cb"
+      },
+      {
+        "frame": 2,
+        "width": 921,
+        "height": 920,
+        "bytes": 764715,
+        "intervalMs": 958,
+        "sha256": "5582467c4cfaf424b1c6d5b457351cfcefe3574f69883b9d44e07572afc9a95e"
+      },
+      {
+        "frame": 3,
+        "width": 921,
+        "height": 920,
+        "bytes": 763468,
+        "intervalMs": 978,
+        "sha256": "715eb3a401bc53f22a33c4e8cf940ae2811d7d859841f1b8cae902b8b021a0cb"
+      },
+      {
+        "frame": 4,
+        "width": 921,
+        "height": 920,
+        "bytes": 763468,
+        "intervalMs": 1001,
+        "sha256": "715eb3a401bc53f22a33c4e8cf940ae2811d7d859841f1b8cae902b8b021a0cb"
+      },
+      {
+        "frame": 5,
+        "width": 921,
+        "height": 920,
+        "bytes": 763468,
+        "intervalMs": 998,
+        "sha256": "715eb3a401bc53f22a33c4e8cf940ae2811d7d859841f1b8cae902b8b021a0cb"
+      }
+    ],
+    "automaticDonationCaptureVerified": false,
+    "blockers": [
+      "Extension popup reported no connected broadcast binding.",
+      "Both registered DJ integrations reported waiting for broadcast and no capture grant.",
+      "Signing in to Spoon as a listener does not connect the broadcast DJ to the official donation event relay."
+    ]
+  }
 }
