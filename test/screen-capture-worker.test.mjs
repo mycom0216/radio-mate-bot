@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ORIGIN} from '../extensions/donation-capture/policy.mjs';
 
-test('extension worker relays a new donation batch into five real browser captures and completed downloads',{timeout:15000},async()=>{
+test('extension worker routes manual tests and donation batches through mocked browser capture and download APIs',{timeout:15000},async()=>{
  const originalChrome=globalThis.chrome,originalFetch=globalThis.fetch,state={},downloads=[],captured=[];
  let listener,relayCalls=0;
  const eventSource=()=>({addListener(){}}),url='https://www.spooncast.net/kr/live/@test';
+ let queryUrl=url;
  globalThis.chrome={
-  tabs:{onActivated:eventSource(),onUpdated:eventSource(),onRemoved:eventSource(),query:async()=>[{id:1,windowId:2,url}],get:async()=>({id:1,windowId:2,url,active:true}),captureVisibleTab:async(windowId,options)=>{assert.equal(windowId,2);assert.equal(options.format,'png');captured.push(Date.now());return 'data:image/png;base64,REAL_FRAME_'+captured.length;}},
+  tabs:{onActivated:eventSource(),onUpdated:eventSource(),onRemoved:eventSource(),query:async()=>[{id:1,windowId:2,url:queryUrl}],get:async()=>({id:1,windowId:2,url,active:true}),captureVisibleTab:async(windowId,options)=>{assert.equal(windowId,2);assert.equal(options.format,'png');captured.push(Date.now());return 'data:image/png;base64,MOCK_FRAME_'+captured.length;}},
   windows:{get:async()=>({state:'normal'})},
   storage:{local:{setAccessLevel:async()=>{},get:async()=>structuredClone(state),set:async update=>Object.assign(state,structuredClone(update)),remove:async key=>{delete state[key];}}},
   scripting:{executeScript:async()=>[]},
@@ -22,11 +23,20 @@ test('extension worker relays a new donation batch into five real browser captur
  try{
   await import('../extensions/donation-capture/worker.mjs');
   const send=(message,sender)=>new Promise(resolve=>listener(message,{id:'test-extension',...sender},resolve));
+  assert.equal((await send({type:'test'},{tab:{id:1},url})).ok,false,'web content cannot request manual capture');
+  queryUrl='https://www.spooncast.net/kr/live';
+  assert.equal((await send({type:'test'},{url:chrome.runtime.getURL('popup.html')})).ok,false,'listing pages are not broadcast tabs');
+  assert.equal(downloads.length,0);queryUrl=url;
+  const manual=await send({type:'test'},{url:chrome.runtime.getURL('popup.html')});
+  assert.equal(manual.ok,true);assert.equal(manual.frames,5);assert.equal(downloads.length,5);
+  assert.equal(state.binding,undefined,'manual screenshot test does not grant automatic donation access');
+  assert.equal(relayCalls,0,'manual screenshot test needs no DJ credential or relay request');
+  downloads.length=0;captured.length=0;
   const connected=await send({type:'connect',confirmed:true,config:{origin:ORIGIN,token:'A'.repeat(43)}},{url:chrome.runtime.getURL('popup.html')});
   assert.equal(connected.ok,true);assert.equal(state.binding.cursor,20);assert.equal(downloads.length,0,'old events are baselined on attach');
   assert.equal((await send({type:'capture-tick'},{tab:{id:1}})).ok,true);
   assert.equal(downloads.length,5);assert.equal(state.binding.cursor,22);assert.match(state.report.text,/PNG 저장 완료/);assert.equal(state.report.triggerCount,2);
-  downloads.forEach((item,index)=>{assert.equal(item.url,'data:image/png;base64,REAL_FRAME_'+(index+1));assert.match(item.filename,new RegExp('_frame0'+(index+1)+'\\.png$'));assert.match(item.filename,/두번째_30spoon/);});
+  downloads.forEach((item,index)=>{assert.equal(item.url,'data:image/png;base64,MOCK_FRAME_'+(index+1));assert.match(item.filename,new RegExp('_frame0'+(index+1)+'\\.png$'));assert.match(item.filename,/두번째_30spoon/);});
   for(let i=1;i<captured.length;i++)assert.ok(captured[i]-captured[i-1]>=550,'captures obey the Chrome quota');
   await send({type:'capture-tick'},{tab:{id:1}});assert.equal(downloads.length,5,'claimed donation cursor is not replayed');
   // Reattaching the same grant must invalidate in-flight work from the old tab.

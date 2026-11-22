@@ -1,5 +1,5 @@
 import {ORIGIN,liveUrl,captureMotion} from './policy.mjs';
-let busy=false,lastCapture=0;
+let busy=false,lastCapture=0,manualTestEpoch=0;
 const tabEpoch=new Map(),windowEpoch=new Map();
 chrome.tabs.onActivated.addListener(({windowId})=>windowEpoch.set(windowId,(windowEpoch.get(windowId)||0)+1));
 chrome.tabs.onUpdated.addListener((tabId,change)=>{if(change.url||change.status==='loading')tabEpoch.set(tabId,(tabEpoch.get(tabId)||0)+1);});
@@ -14,6 +14,7 @@ function installTicks(){
  async function tick(){if(!window.__radiomateCaptureTicks)return;try{if(!document.hidden){const result=await chrome.runtime.sendMessage({type:'capture-tick'});if(result?.stop){window.__radiomateCaptureTicks=false;return;}}}catch{window.__radiomateCaptureTicks=false;return;}setTimeout(tick,1000);}void tick();
 }
 async function attach(config){
+ manualTestEpoch++;
  if(config?.origin!==ORIGIN||!/^[A-Za-z0-9_-]{43}$/.test(config.token||''))throw Error('DJ 화면에서 복사한 연결 정보 전체를 붙여넣으세요.');
  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab?.id||!liveUrl(tab.url))throw Error('먼저 PC 스푼 웹의 해당 DJ 방송 탭을 열어주세요.');
  const initial=await relay({token:config.token,cursor:0}),binding={instanceId:crypto.randomUUID(),origin:ORIGIN,token:config.token,tabId:tab.id,windowId:tab.windowId,spoonUrl:tab.url,dj:initial.dj,cursor:initial.cursor,expiresAt:initial.expiresAt};
@@ -48,8 +49,25 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   if(!popup)throw Error('허용되지 않은 요청입니다.');
   if(message.type==='state'){const {binding,report}=await read();return {binding:binding?{dj:binding.dj,url:binding.spoonUrl,expiresAt:binding.expiresAt}:null,report};}
   if(message.type==='connect'){if(!message.confirmed)throw Error('대상 DJ 방송 탭인지 확인해주세요.');return attach(message.config);}
-  if(message.type==='stop'){await chrome.storage.local.remove('binding');await chrome.storage.local.set({report:{text:'이 PC의 자동 캡처를 중지했습니다.'}});return {};}
-  if(message.type==='test'){if(busy)throw Error('후원 화면 처리 중입니다. 잠시 후 다시 시도해주세요.');busy=true;try{const {binding}=await read();if(!binding)throw Error('먼저 방송 탭을 연결해주세요.');const wait=Math.max(0,550-(Date.now()-lastCapture));if(wait)await new Promise(resolve=>setTimeout(resolve,wait));const results=await captureMotion([{id:'TEST-'+Date.now(),time:Date.now(),nickname:'캡처테스트',amount:0}],binding,io,{active:async()=>(await read()).binding?.instanceId===binding.instanceId,onResult:async result=>{if((await read()).binding?.instanceId!==binding.instanceId)return;await chrome.storage.local.set({report:{...result,text:result.reason||`테스트 연속 캡처 ${result.frame}/5 · PNG 저장 요청`}});if(result.downloadId!==undefined)await settleDownload(result.downloadId);}});return {frames:results.length};}finally{busy=false;}}
+  if(message.type==='stop'){manualTestEpoch++;await chrome.storage.local.remove('binding');await chrome.storage.local.set({report:{text:'이 PC의 자동 캡처를 중지했습니다.'}});return {};}
+  if(message.type==='test'){
+   if(busy)throw Error('후원 화면 처리 중입니다. 잠시 후 다시 시도해주세요.');busy=true;
+   try{
+    let {binding}=await read();const epoch=++manualTestEpoch,linked=!!binding?.instanceId;
+    if(!linked){
+     const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+     if(!tab?.id||!liveUrl(tab.url))throw Error('PC 스푼 웹의 실제 방송 탭에서 확장 아이콘을 눌러 테스트해주세요.');
+     binding={tabId:tab.id,windowId:tab.windowId,spoonUrl:tab.url,dj:'수동테스트'};
+    }
+    const active=async()=>epoch===manualTestEpoch&&(linked?(await read()).binding?.instanceId===binding.instanceId:!(await read()).binding);
+    const results=await captureMotion([{id:'TEST-'+Date.now(),time:Date.now(),nickname:'캡처테스트',amount:0}],binding,io,{active,onResult:async result=>{
+     if(!await active())return;
+     await chrome.storage.local.set({report:{...result,text:result.reason||('테스트 연속 캡처 '+result.frame+'/5 · PNG 저장 요청')}});
+     if(result.downloadId!==undefined)await settleDownload(result.downloadId);
+    }});
+    return {frames:results.filter(result=>result.kind==='download-started').length};
+   }finally{busy=false;}
+  }
   throw Error('요청을 확인해주세요.');
  })().then(result=>respond({ok:true,...result}),error=>respond({ok:false,error:error.message}));return true;
 });
