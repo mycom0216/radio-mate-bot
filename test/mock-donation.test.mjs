@@ -32,9 +32,10 @@ test('모의 후원으로 후원 보상·메뉴판·큰 후원·지급·후원 �
   log('청취자 프로필 생성',await chat(A,'!내정보 생성'));await chat(B,'!내정보 생성');
 
   // 1) 후원 보상
-  let d=await donate(A,9);assert.equal(d.messages.length,1);assert.match(d.messages[0],/시험청취자님, 9 스푼 감사합니다!/);log('9스푼 모의 후원 (기준 미만)',d.messages.join('\n'));
-  d=await donate(A,10);assert.equal(d.messages.length,2);assert.match(d.messages[1],/🎟️ 시험청취자님 10스푼 후원! 복권 1장 지급 \(보유 1장\)/);log('10스푼 모의 후원',d.messages.join('\n'));
-  d=await donate(A,20);assert.match(d.messages[1],/✨ 시험청취자님 20스푼 후원! \+400 EXP · Lv\.1 \(다음 레벨까지 9,600 EXP\)\n🎟️ .*복권 1장 지급 \(보유 2장\)/);log('20스푼 모의 후원',d.messages.join('\n'));
+  // 후원할 때마다 복권을 주므로 9스푼도 감사 인사 + 복권 안내가 나갑니다. (기준 스푼 이상일 때만 주려면 설정에서 「후원할 때마다」를 끕니다)
+  let d=await donate(A,9);assert.equal(d.messages.length,2);assert.match(d.messages[0],/시험청취자님, 9 스푼 감사합니다!/);assert.match(d.messages[1],/🎟️ 시험청취자님 9스푼 후원! 복권 1장 지급 \(보유 1장\)/);log('9스푼 모의 후원 (후원할 때마다 복권)',d.messages.join('\n'));
+  d=await donate(A,10);assert.equal(d.messages.length,2);assert.match(d.messages[1],/🎟️ 시험청취자님 10스푼 후원! 복권 1장 지급 \(보유 2장\)/);log('10스푼 모의 후원',d.messages.join('\n'));
+  d=await donate(A,20);assert.match(d.messages[1],/✨ 시험청취자님 20스푼 후원! \+400 EXP · Lv\.1 \(다음 레벨까지 9,600 EXP\)\n🎟️ .*복권 1장 지급 \(보유 3장\)/);log('20스푼 모의 후원',d.messages.join('\n'));
 
   // 2) 메뉴판 문구가 감사 인사보다 우선
   assert.match(await chat(DJ,'!메뉴판 추가 50 불꽃 {name}님 {amount}스푼'),/50스푼 리액션을 등록/);

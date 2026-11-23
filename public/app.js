@@ -157,7 +157,7 @@ function donationExpPanel(){
 // 후원자 복권 지급 설정 카드입니다. 기준 스푼 이상 후원한 '후원자 본인'에게 복권을 줍니다.
 function donationDonorTicketPanel(){
   const s=room.settings;
-  return card('후원 시 복권 · 후원자',`${toggle('donationDonorTicketEnabled','기준 스푼 이상 후원하면 후원자에게 복권 지급')}${field('후원 기준 (스푼 이상, 한 번에)','donationDonorTicketMin')}${field('지급 복권 (장, 1~1,000)','donationDonorTicketCount')}<p class="small">DJ에게 한 번에 기준 스푼 이상 후원하면 후원자 본인에게 복권을 지급하고 채팅으로 알립니다. 지금 설정: ${s.donationDonorTicketEnabled?`${num(s.donationDonorTicketMin)}스푼 이상 → ${num(s.donationDonorTicketCount)}장`:'꺼짐'}. 아직 프로필이 없는 후원자는 프로필이 자동으로 만들어지고, 같은 후원은 한 번만 지급됩니다. 모든 청취자에게 주려면 아래 「큰 후원 · 복권 전체 지급」을 사용하세요. 방송 연결이 끊긴 사이의 후원은 지급되지 않을 수 있습니다.</p>${saveButton()}`);
+  return card('후원 시 복권 · 후원자',`${toggle('donationDonorTicketEnabled','DJ에게 후원하면 후원자에게 복권 지급')}${toggle('donationDonorTicketEvery','후원할 때마다 지급 (스푼 수와 상관없이, 1스푼도 지급)')}${field('후원 기준 (스푼 이상, 한 번에) — 위 「후원할 때마다」를 끄면 적용','donationDonorTicketMin')}${field('지급 복권 (장, 1~1,000)','donationDonorTicketCount')}<p class="small">DJ에게 후원할 때마다 후원자 본인에게 복권을 지급하고 채팅으로 알립니다. 별도의 명령이나 아이디(@) 입력이 필요 없고, 후원 알림의 후원자에게 바로 지급됩니다. 지금 설정: ${s.donationDonorTicketEnabled?(s.donationDonorTicketEvery?`후원할 때마다 ${num(s.donationDonorTicketCount)}장`:`${num(s.donationDonorTicketMin)}스푼 이상 → ${num(s.donationDonorTicketCount)}장`):'꺼짐'}. 아직 프로필이 없는 후원자는 프로필이 자동으로 만들어지고, 같은 후원은 한 번만 지급됩니다. 모든 청취자에게 주려면 아래 「큰 후원 · 복권 전체 지급」을 사용하세요. 방송 연결이 끊긴 사이의 후원은 지급되지 않을 수 있습니다.</p>${saveButton()}`);
 }
 // 후원 대결 설정 카드입니다. !대결로 참가한 사람들이 정해진 시간 동안 DJ에게 후원한 스푼 합계로 1·2·3등을 겨룹니다.
 function battlePanel(){

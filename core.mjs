@@ -61,6 +61,8 @@ export function defaults() {
     donationExpEnabled:true, donationExpMin:20, donationExpPerSpoon:20,
     // 후원자 복권 지급: 한 번에 기준 스푼 이상 후원한 '후원자 본인'에게 복권을 줍니다. (모든 청취자에게 주는 donationTicket*과는 별개입니다)
     donationDonorTicketEnabled:true, donationDonorTicketMin:10, donationDonorTicketCount:1,
+    // 후원할 때마다 지급(기본 켜짐): 켜면 후원 스푼 수와 상관없이 DJ에게 후원할 때마다 후원자에게 복권을 줍니다. 끄면 위 기준 스푼 이상일 때만 줍니다.
+    donationDonorTicketEvery:true,
     // 후원 대결: !대결로 참가한 사람들이 정해진 시간 동안 DJ에게 후원한 스푼 합계로 1·2·3등을 겨룹니다. 순위별 보상(PT·EXP)은 자동 지급하고,
     // 실제 스푼 선물(battleGiftSpoons, 0이면 안내 없음)은 봇이 옮길 수 없어서 채팅으로 안내만 합니다.
     battleEnabled:true, battleMinutes:5, battleGiftSpoons:10,
@@ -135,6 +137,8 @@ export function validateSettings(s) {
   if(s.donationDonorTicketEnabled===undefined)s.donationDonorTicketEnabled=true;
   if(s.donationDonorTicketMin===undefined)s.donationDonorTicketMin=10;
   if(s.donationDonorTicketCount===undefined)s.donationDonorTicketCount=1;
+  if(s.donationDonorTicketEvery===undefined)s.donationDonorTicketEvery=true;
+  if(typeof s.donationDonorTicketEvery!=='boolean')throw Error('후원할 때마다 복권 지급 설정은 켬/끔이어야 합니다.');
   if(typeof s.donationDonorTicketEnabled!=='boolean'||!Number.isSafeInteger(s.donationDonorTicketMin)||s.donationDonorTicketMin<1||s.donationDonorTicketMin>100000000||!Number.isSafeInteger(s.donationDonorTicketCount)||s.donationDonorTicketCount<1||s.donationDonorTicketCount>ALL_TICKET_GRANT_MAX)throw Error(`후원자 복권 지급은 켜기/끄기, 기준 스푼(1 이상 정수), 복권 수(1~${ALL_TICKET_GRANT_MAX}장 정수)로 설정하세요.`);
   if(!Number.isSafeInteger(s.fishingLuck)||s.fishingLuck<0||s.fishingLuck>1000)throw Error('낚시 행운 보너스는 0~1000 사이의 정수(%)로 입력하세요.');
   if(typeof s.donationExpEnabled!=='boolean'||!Number.isSafeInteger(s.donationExpMin)||s.donationExpMin<1||s.donationExpMin>100000000||!Number.isSafeInteger(s.donationExpPerSpoon)||s.donationExpPerSpoon<1||s.donationExpPerSpoon>100000)throw Error('후원 레벨 보상은 켜기/끄기, 기준 스푼(1 이상 정수), 스푼당 EXP(1~100,000 정수)로 설정하세요.');
@@ -194,7 +198,7 @@ const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채
 KNOWN_COMMANDS.push('메뉴판');
 // 아래 설정은 해당 기능이 생기기 전에 저장된 방에는 없습니다. Store.load가 없는 값을 기본값으로 채워서,
 // 웹 관리 화면에서 설정을 한 번 저장하기 전에도 기능이 정상 동작하게 합니다.
-const NEW_SETTING_KEYS=['djRankDaily','djRankDailyDate','djRankMonthly','djRankMonthlyMonth','choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut','choiceMonth','battleTargetSpoons','battleTeamGiftSpoons','screenCaptureMin','fishingWho','fishingLuck','donationTicketEnabled','donationTicketMin','donationTicketCount','donationExpEnabled','donationExpMin','donationExpPerSpoon','donationDonorTicketEnabled','donationDonorTicketMin','donationDonorTicketCount','lotteryFirstExp','lotteryFirstPt','lotterySecondExp','lotterySecondPt','lotteryThirdExp','lotteryThirdPt','battleEnabled','battleMinutes','battleGiftSpoons','battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'];
+const NEW_SETTING_KEYS=['donationDonorTicketEvery','djRankDaily','djRankDailyDate','djRankMonthly','djRankMonthlyMonth','choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut','choiceMonth','battleTargetSpoons','battleTeamGiftSpoons','screenCaptureMin','fishingWho','fishingLuck','donationTicketEnabled','donationTicketMin','donationTicketCount','donationExpEnabled','donationExpMin','donationExpPerSpoon','donationDonorTicketEnabled','donationDonorTicketMin','donationDonorTicketCount','lotteryFirstExp','lotteryFirstPt','lotterySecondExp','lotterySecondPt','lotteryThirdExp','lotteryThirdPt','battleEnabled','battleMinutes','battleGiftSpoons','battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'];
 const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','계정연결','대결','조용','게임','구매','포기','취소']);
 // 0, 음수, 소수는 받지 않습니다. 컴퓨터가 정확하게 기억할 수 있는 양의 정수만 허용합니다.
 const validReactionAmount=amount=>/^[1-9]\d*$/.test(amount)&&Number.isSafeInteger(Number(amount));
@@ -338,7 +342,9 @@ export class Engine {
     if(request){
       if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
       const bulk=this.bulkBlocked(roomId,event,now);
-      const blocked=r.settings.quiet||(!followup&&!event.isDj&&(now-r.lastResponse<r.settings.responseGap*1000||user&&now-user.lastCommand<r.settings.cooldown*1000))||bulk;
+      // 스푼 채팅(delivery)은 응답 간격에 걸려도 버리지 않고 대기열로 보내므로, 대기열이 가득 찼을 때만 막습니다.
+      const gapBlocked=event.delivery?this.replyQueueFull(roomId):now-r.lastResponse<r.settings.responseGap*1000;
+      const blocked=r.settings.quiet||(!followup&&!event.isDj&&(gapBlocked||user&&now-user.lastCommand<r.settings.cooldown*1000))||bulk;
       let needsRegion;try{needsRegion=travelKinds.has(request.kind)?!travelQuery(request.arg,now).region:['맛집','카페'].includes(request.kind)&&!diningQuery(request.arg,request.kind).region;}catch(error){return this.handle(roomId,event,{assistantRequest:request,assistantText:error.message,promptKey});}
       let assistantText='',assistantMore=[];
       if(!blocked){
@@ -597,7 +603,8 @@ export class Engine {
 
     if(s.quiet&&['낚시','홀','짝','홀짝','복권','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답'].includes(cmd))return {text:null,suppressed:'quiet'};
     if(cmd==='낚시'&&!s.fishing||['홀','짝','홀짝'].includes(cmd)&&!s.odd)return {text:null,suppressed:'disabled'};
-    if(!dj&&!preparedLottery?.followup&&now-r.lastResponse<s.responseGap*1000)return {text:null,suppressed:'cooldown',retryAfterMs:r.lastResponse+s.responseGap*1000-now};
+    // 스푼 채팅(delivery)은 응답 간격 안에 들어온 명령도 버리지 않고 대기열에서 차례로 보냅니다. (대기열이 가득 찼을 때만 건너뜀)
+    if(!dj&&!preparedLottery?.followup&&(e.delivery?this.replyQueueFull(r.id):now-r.lastResponse<s.responseGap*1000))return {text:null,suppressed:'cooldown',retryAfterMs:Math.max(0,r.lastResponse+s.responseGap*1000-now)};
     const known=KNOWN_COMMANDS;
     if(!known.includes(cmd)&&!request){const out=keywordReply(r,e,now);if(out.text)this.store.log(r.id,e.user.id,'keyword-reply',{ruleId:out.ruleId},now);return out;}
     if(!e.user?.id)fail('청취자 식별 정보가 없습니다.');
@@ -908,6 +915,13 @@ export class Engine {
     const head=`${result.name}님 ${n(amount)}스푼 후원! +${n(exp)} EXP`;
     return {text:result.levelAfter>result.levelBefore?`🆙 ${head} · Lv.${result.levelBefore} → Lv.${result.levelAfter} 레벨 업!`:`✨ ${head} · Lv.${result.levelAfter} (다음 레벨까지 ${n(result.toNext)} EXP)`,exp,levelBefore:result.levelBefore,levelAfter:result.levelAfter};
   }
+  // 방송 채팅 답장 대기열에 보내지 못한 메시지가 이미 8개 이상 쌓였는지 확인합니다.
+  // 스푼 채팅의 명령은 '응답 간격(기본 3초)' 안에 들어와도 버리지 않고 대기열에 쌓아 간격을 지키며 차례로 보내는데,
+  // 한꺼번에 몰려 너무 많이 밀리면(8개 이상) 새 명령은 잠시 무시해 도배를 막습니다.
+  replyQueueFull(roomId){
+    // 2분이 넘은 오래된 항목은 세지 않습니다. (보내다 멈춘 항목 때문에 새 명령이 계속 막히는 일을 방지)
+    return this.store.db.prepare("SELECT COUNT(*) n FROM outbox WHERE room=? AND status IN ('pending','sending') AND created>?").get(roomId,Date.now()-120000).n>=8;
+  }
   // ── DJ 랭킹 · 넥스트초이스 레벨 ──
   // 이 방송 DJ의 일라디(일간)·월라디(월간) 순위와 넥스트초이스 레벨을 한 번에 보여 줍니다. (방마다 따로 저장되므로 그 DJ 것만 나옵니다)
   // 순서: 일라디 → 월라디 → 이전 초이스 레벨 → 현재 레벨 → 다음 레벨까지 남은 등수
@@ -1154,7 +1168,9 @@ export class Engine {
     if(!room||!s.donationDonorTicketEnabled)return none;
     const amount=Number(event.amount),uid=event.user?.id;
     // 후원 스푼이 기준보다 적거나, 후원자를 알 수 없으면 아무것도 하지 않습니다.
-    if(!event.id||uid===undefined||uid===null||String(uid)===''||!Number.isSafeInteger(amount)||amount<s.donationDonorTicketMin)return none;
+    // '후원할 때마다' 지급이 켜져 있으면 1스푼 후원도 대상이고, 꺼져 있으면 기준 스푼 이상일 때만 지급합니다.
+    const minimum=s.donationDonorTicketEvery?1:s.donationDonorTicketMin;
+    if(!event.id||uid===undefined||uid===null||String(uid)===''||!Number.isSafeInteger(amount)||amount<minimum)return none;
     const count=s.donationDonorTicketCount,eventId=`donation-donor-ticket:${event.id}`,now=this.now();
     let result=null;
     try{

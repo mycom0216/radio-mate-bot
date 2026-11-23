@@ -1,4 +1,4 @@
-// 한 번에 기준 스푼(기본 10스푼) 이상 후원하면 후원자 본인에게 복권을 주는 기능을 검사하는 테스트입니다.
+// DJ에게 후원할 때마다(기본) 후원자 본인에게 복권을 주고, '후원할 때마다'를 끄면 기준 스푼(기본 10스푼) 이상일 때만 주는 기능을 검사하는 테스트입니다.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -21,13 +21,26 @@ function setup() {
 }
 const gift = (id, amount, user = { id: 'u1', nickname: '가' }) => ({ id, amount, user });
 
-test('기본값: 켜짐, 10스푼 이상, 복권 1장', () => {
+test('기본값: 켜짐, 후원할 때마다, 복권 1장 (끄면 기준 10스푼)', () => {
   const s = defaults();
-  assert.deepEqual([s.donationDonorTicketEnabled, s.donationDonorTicketMin, s.donationDonorTicketCount], [true, 10, 1]);
+  assert.deepEqual([s.donationDonorTicketEnabled, s.donationDonorTicketEvery, s.donationDonorTicketMin, s.donationDonorTicketCount], [true, true, 10, 1]);
 });
 
-test('10스푼 미만은 지급하지 않고, 10스푼 이상이면 후원자 본인에게만 복권 1장을 줍니다', () => {
+test('기본값에서는 후원할 때마다 지급합니다 (1스푼도 지급, 같은 후원은 한 번만)', () => {
   const f = setup();
+  assert.equal(f.engine.donationDonorTickets('a', gift('e1', 1)).text, '🎟️ 가님 1스푼 후원! 복권 1장 지급 (보유 1장)');
+  assert.match(f.engine.donationDonorTickets('a', gift('e2', 5)).text, /5스푼 후원! 복권 1장 지급 \(보유 2장\)/);
+  assert.equal(f.engine.donationDonorTickets('a', gift('e2', 5)).text, null);
+  assert.equal(f.user('u1').tickets, 2);
+  assert.equal(f.user('u2').tickets, 0);
+  // 모의 후원 처리에서도 후원마다 안내 메시지가 붙습니다.
+  const result = f.engine.processDonation('a', { id: 'e3', data: { amount: 3, user: { id: 'u2', nickname: '나' } } });
+  assert.ok(result.messages.some(m => /🎟️ 나님 3스푼 후원! 복권 1장 지급/.test(m.text)));
+});
+
+test('「후원할 때마다」를 끄면 10스푼 미만은 지급하지 않고, 10스푼 이상이면 후원자 본인에게만 복권 1장을 줍니다', () => {
+  const f = setup();
+  f.setSettings({ donationDonorTicketEvery: false });
   assert.equal(f.engine.donationDonorTickets('a', gift('d1', 9)).text, null);
   assert.equal(f.user('u1').tickets, 0);
   // 정확히 10스푼도 대상입니다.
@@ -62,7 +75,7 @@ test('프로필이 없는 후원자는 프로필을 만들어 복권을 줍니�
 
 test('설정을 바꾸면 기준과 복권 수가 바뀌고, 끄면 지급하지 않습니다', () => {
   const f = setup();
-  f.setSettings({ donationDonorTicketMin: 100, donationDonorTicketCount: 3 });
+  f.setSettings({ donationDonorTicketEvery: false, donationDonorTicketMin: 100, donationDonorTicketCount: 3 });
   assert.equal(f.engine.donationDonorTickets('a', gift('d1', 99)).text, null);
   assert.match(f.engine.donationDonorTickets('a', gift('d2', 100)).text, /복권 3장 지급 \(보유 3장\)/);
   f.setSettings({ donationDonorTicketEnabled: false });
@@ -110,4 +123,12 @@ test('웹 관리 화면의 후원자 복권 카드가 현재 설정을 보여 �
   assert.ok(on.includes('후원 시 복권 · 후원자') && on.includes('[toggle:donationDonorTicketEnabled]') && on.includes('[field:donationDonorTicketMin]') && on.includes('[field:donationDonorTicketCount]') && on.includes('[save]'));
   assert.ok(on.includes('10스푼 이상 → 1장'));
   assert.ok(render({ donationDonorTicketEnabled: false, donationDonorTicketMin: 10, donationDonorTicketCount: 1 }).includes('지금 설정: 꺼짐'));
+});
+
+test('「후원할 때마다」 설정 값 검사와 이전 설정 불러오기', () => {
+  const base = () => structuredClone(defaults());
+  assert.equal(validateSettings(Object.assign(base(), { donationDonorTicketEvery: false })).donationDonorTicketEvery, false);
+  for (const bad of ['yes', 1, null]) assert.throws(() => validateSettings(Object.assign(base(), { donationDonorTicketEvery: bad })), /후원할 때마다 복권/, String(bad));
+  const old = base(); delete old.donationDonorTicketEvery;
+  assert.equal(validateSettings(old).donationDonorTicketEvery, true, '이전에 저장된 설정도 후원할 때마다 지급으로 동작');
 });

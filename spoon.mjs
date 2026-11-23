@@ -49,10 +49,19 @@ export class Spoon {
     if(this.running.has(room)&&this.store.load(room)?.live)return {connected:true};
     this.stop(room);this.start(room);return {connected:false};
   }
-  async sendDetailed(room,message){
+  // 전송 대기열을 기다리지 않고 비우기 시작합니다. 이벤트 처리를 막지 않으려고 await 없이 두며, 쌓인 메시지는 간격을 지키며 이어서 보냅니다.
+  kickOutbox(room){void this.outbox.flush(room,text=>this.sendDetailed(room,text,{wait:true}),Date.now(),{max:8}).catch(()=>{});}
+  // wait가 true이면 앞 메시지와의 최소 간격(응답 간격)이 지날 때까지 잠깐 기다렸다가 보냅니다. (쌓인 답장을 버리거나 5초씩 미루지 않고 바로 이어서 내보내기 위해)
+  async sendDetailed(room,message,{wait=false}={}){
     if(!message)return {kind:'failed'};
-    const now=Date.now(),r=this.store.load(room);if(!r?.live)return {kind:'deferred'};
-    if(now-(this.sendTimes.get(room)||0)<r.settings.responseGap*1000){this.store.log(room,'system','chat-suppressed',{reason:'response-gap'});return {kind:'deferred'};}
+    let now=Date.now(),r;
+    for(let guard=0;guard<6;guard++){
+      now=Date.now();r=this.store.load(room);if(!r?.live)return {kind:'deferred'};
+      const remain=(this.sendTimes.get(room)||0)+r.settings.responseGap*1000-now;
+      if(remain<=0)break;
+      if(!wait||remain>10000||guard===5){this.store.log(room,'system','chat-suppressed',{reason:'response-gap'});return {kind:'deferred'};}
+      await new Promise(resolve=>setTimeout(resolve,remain+15));
+    }
     this.sendTimes.set(room,now);
     const epoch=this.sendEpochs.get(room)||0;
     // A single concise message; never flood a room to paginate a long result.
@@ -89,10 +98,10 @@ export class Spoon {
               const {data}=f;const cfg=this.store.load(room).settings;
               const banned=cfg.bannedWords.some(w=>String(data.message).includes(w));
               if(banned)this.store.log(room,data.user.id,'banned-word',{message:data.message});
-              if(!banned){const out=await this.engine.handleAsync(room,{...data,id:createHash('sha256').update(f.id||`${data.sentTime}:${data.user.id}:${data.message}`).digest('hex'),delivery:true});if(out.text)await this.outbox.flush(room,text=>this.sendDetailed(room,text));}
+              if(!banned){const out=await this.engine.handleAsync(room,{...data,id:createHash('sha256').update(f.id||`${data.sentTime}:${data.user.id}:${data.message}`).digest('hex'),delivery:true});if(out.text)this.kickOutbox(room);}
             }else if(f.event==='presence'){
               this.engine.recordSpoonTemperature(room,f.data);
-              const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome){this.outbox.enqueue(room,'presence:'+createHash('sha256').update(f.id||`${f.data.time}:${f.data.user.id}`).digest('hex'),s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));}}
+              const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome){this.outbox.enqueue(room,'presence:'+createHash('sha256').update(f.id||`${f.data.time}:${f.data.user.id}`).digest('hex'),s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));if(!s.quiet)this.kickOutbox(room);}}
             }else if(f.event==='like'){
               const out=this.engine.likeGreeting(room,{...f.data,id:f.id||`${f.data.time}:${f.data.user.id}`},{commit:false});
               if(out.text&&await this.send(room,out.text))this.engine.recordLike(room,out.receipt);
@@ -101,11 +110,9 @@ export class Spoon {
               const s=this.store.load(room).settings;
               // 후원 한 건의 처리(대결 합산·감사 인사·후원 보상·큰 후원 복권)는 로컬 테스트의 '모의 후원'과 같은 코드(engine.processDonation)를 씁니다.
               const result=this.engine.processDonation(room,{id:f.id,data:f.data});
-              for(const message of result.messages){
-                this.outbox.enqueue(room,message.key,message.text);
-                // 조용 모드가 꺼져 있으면 전송 대기열에서 메시지를 꺼내 보내기를 시도합니다.
-                if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));
-              }
+              for(const message of result.messages)this.outbox.enqueue(room,message.key,message.text);
+              // 조용 모드가 꺼져 있으면 쌓인 메시지를 간격을 지키며 이어서 보냅니다. (기다리지 않아 다음 이벤트 처리를 막지 않음)
+              if(!s.quiet&&result.messages.length)this.kickOutbox(room);
             }
           }
           if(signal.aborted)return;
@@ -153,7 +160,7 @@ export class Spoon {
           if(a.enabled&&Date.now()-last>=a.minutes*60000){notice=a.text;announcement={key,id:a.id,text:a.text,minutes:a.minutes};break;}
         }
       });
-      const current=this.store.load(id);if(current?.live&&!current.settings.quiet)await this.outbox.flush(id,text=>this.sendDetailed(id,text));
+      const current=this.store.load(id);if(current?.live&&!current.settings.quiet)this.kickOutbox(id);
       if(quiz){let result;try{result=await this.sendDetailed(id,quiz.text);}catch{result={kind:'ambiguous'};}this.store.transaction(id,r=>autoQuizDelivered(this.engine,r,quiz,result.kind,Date.now()));}
       if(notice){const text=hasWeatherTokens(notice)?await expandWeatherTokens(notice,request=>this.engine.lifestyle?.answer(request,{strict:true})):notice,sent=text?await this.send(id,text):true;/* 날씨 문구가 전부 비면 보내지 않고 다음 순서로 넘어갑니다 */if(announcement&&sent)this.store.transaction(id,r=>{const current=r.settings.announcements.find(a=>a.id===announcement.id);if(current?.enabled&&current.text===announcement.text&&current.minutes===announcement.minutes){this.timers.set(announcement.key,Date.now());r.lastResponse=Date.now();this.store.log(id,'system','announcement',{id:announcement.id});}});if(autoChat&&sent)this.store.transaction(id,r=>{if(r.autoChat?.signature===autoChat.signature){r.autoChat.index=autoChat.index+1;r.autoChat.dueAt=Date.now()+r.settings.autoChatMinutes*60000;r.lastResponse=Date.now();this.store.log(id,'system','auto-chat',{index:autoChat.index});}});if(isIntro&&sent)this.store.transaction(id,r=>{r.introDueAt=Date.now()+600000;r.lastResponse=Date.now();this.store.log(id,'system','program-intro',{});});}
     }}finally{this.ticking=false;}
