@@ -15,8 +15,13 @@ export async function captureEvent(event,binding,io,now=Date.now){
  // Re-check after capture; never save a screenshot if navigation raced the request.
  const after=await io.tab(binding.tabId);if(captureDecision(event,binding,after,await io.window(binding.windowId),now())||io.epoch?.(binding)!==epoch||(io.allowed&&!await io.allowed()))return {kind:'skipped',reason:'캡처 도중 탭 상태나 연결이 바뀌어 이미지를 저장하지 않았습니다.'};
  if(typeof image!=='string'||!image.startsWith('data:image/png;base64,'))throw Error('브라우저가 PNG 화면을 반환하지 않았습니다.');
- const filename=captureFilename(event,binding.dj),downloadId=await io.download({url:image,filename,saveAs:false,conflictAction:'uniquify'});
- return {kind:'download-started',downloadId,filename};
+ const filename=captureFilename(event,binding.dj);
+ // 이 PC에 저장(io.local이 false가 아닐 때)하고, 서버 업로드(io.upload)가 있으면 기다리지 않고 시작합니다.
+ // (업로드가 오래 걸려도 1초 간격 연속 촬영이 늦어지지 않도록, 업로드 결과는 result.upload(Promise)로 따로 돌려줍니다)
+ let downloadId;if(io.local!==false)downloadId=await io.download({url:image,filename,saveAs:false,conflictAction:'uniquify'});
+ const result=downloadId===undefined?{kind:'captured',filename}:{kind:'download-started',downloadId,filename};
+ if(io.upload)result.upload=io.upload({image,event,binding,filename});
+ return result;
 }
 
 // Capture several real frames: donation SSE can arrive before the web animation renders.
@@ -36,7 +41,7 @@ export async function captureMotion(events,binding,io,{now=Date.now,sleep=ms=>ne
   // latest event; report records the number of triggers covered by that frame.
   let result;try{result=await captureEvent({...current.at(-1),frame:index+1},binding,{...io,allowed:active},now);}catch(error){result={kind:'failed',reason:error.message};}
   result={...result,frame:index+1,triggerCount:current.length};results.push(result);await onResult(result);
-  if(result.kind!=='download-started')break;
+  if(!['download-started','captured'].includes(result.kind))break;
  }
  return results;
 }

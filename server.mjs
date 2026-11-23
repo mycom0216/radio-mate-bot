@@ -16,7 +16,7 @@ import {YouTubeSearch} from './youtube-search.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {youtubeId} from './public/song-utils.mjs';
 import {PublicSandbox} from './sandbox.mjs';
-import {readJSON,publicOrigin} from './http-utils.mjs';
+import {readJSON,readBytes,publicOrigin} from './http-utils.mjs';
 import {fullBackup} from './backup.mjs';
 import {renameSync,rmSync,readdirSync} from 'node:fs';
 import {deleteRoom,deleteListener,expireVoice} from './privacy.mjs';
@@ -50,6 +50,8 @@ const lockHandle=openSync(lockFile,'wx',0o600);writeFileSync(lockHandle,String(p
 process.on('exit',()=>{try{if(readFileSync(lockFile,'utf8')===String(process.pid))unlinkSync(lockFile);}catch{}});
 const voiceRetention=Number(env.VOICE_RETENTION_DAYS||0);if(!Number.isSafeInteger(voiceRetention)||voiceRetention<0||voiceRetention>3650)throw Error('VOICE_RETENTION_DAYS는 0~3650 정수여야 합니다.');
 const store=new Store(join(DATA,'studio.sqlite')),engine=new Engine(store,{region:spoonRegion(env),identityKey:env.TOKEN_KEY}),spoon=new Spoon(store,engine,env);
+// 후원 순간 캡처를 서버에 보관할 폴더와 한도(환경변수로 조절): 기본 data/captures · 방마다 최근 30일 · 1000장 · 3GB
+spoon.captures.configure({dir:join(DATA,'captures'),maxFiles:Math.max(50,Math.min(100000,Number(env.CAPTURE_MAX_FILES)||1000)),retentionDays:Math.max(1,Math.min(3650,Number(env.CAPTURE_RETENTION_DAYS)||30)),maxBytes:Math.max(50*1024**2,(Number(env.CAPTURE_MAX_GB)||3)*1024**3)});
 const botCall=new BotCall(store,spoon);
 const voice=new VoiceInbox(store.db,join(DATA,'voice'));
 const publicDemo=env.PUBLIC_DEMO==='1'||env.PUBLIC_DEMO==='true';
@@ -98,6 +100,17 @@ const server=createServer(async(req,res)=>{
       if(!room)throw Object.assign(Error('캡처 연결이 만료되었거나 해제되었습니다. DJ 화면에서 다시 연결해주세요.'),{status:401});
       const after=Number(url.searchParams.get('after')||0);if(!Number.isSafeInteger(after)||after<0)throw Error('조회 위치가 올바르지 않습니다.');
       res.setHeader('Referrer-Policy','no-referrer');reply(res,200,spoon.captures.list(room,after));return;
+    }
+    if(path==='/api/screen-capture/upload'){
+      // 확장 기능이 찍은 PNG 한 장을 올립니다. 로그인 쿠키가 아니라 캡처 연결 토큰으로만 인증하므로 다른 사이트가 대신 보낼 수 없습니다.
+      if(req.method!=='POST')throw Object.assign(Error('허용되지 않은 요청입니다.'),{status:405});
+      const bearer=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization||''),room=bearer&&spoon.captures.resolve(bearer[1]);
+      if(!room)throw Object.assign(Error('캡처 연결이 만료되었거나 해제되었습니다. DJ 화면에서 다시 연결해주세요.'),{status:401});
+      if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='image/png')throw Object.assign(Error('PNG 이미지(Content-Type: image/png)만 올릴 수 있습니다.'),{status:415});
+      const header=name=>String(req.headers[name]||''),decode=value=>{try{return decodeURIComponent(value).slice(0,200);}catch{return '';}};
+      const bytes=await readBytes(req,{limit:8*1024*1024});
+      res.setHeader('Referrer-Policy','no-referrer');
+      reply(res,201,spoon.captures.save(room,{eventId:header('x-capture-event'),frame:Number(header('x-capture-frame')),amount:Number(header('x-capture-amount')),time:Number(header('x-capture-time')),nickname:decode(header('x-capture-nick'))},bytes));return;
     }
     const callPage=/^\/call\/[A-Za-z0-9_-]{43}\/?$/.test(path),publicCall=/^\/api\/bot-call-public\/([A-Za-z0-9_-]{43})$/.exec(path);
     if(callPage){
@@ -221,6 +234,27 @@ const server=createServer(async(req,res)=>{
     if(path.startsWith('/api/')){
       const s=requireSession(req),roomId=s.room;
       const {store,engine,spoon,voice}=servicesFor(roomId);
+      // 서버에 보관된 후원 캡처: 목록·이미지 보기/내려받기·후원 한 건 ZIP·삭제. 로그인한 DJ 본인 방의 것만 다룹니다. (공개 체험 방에는 없음)
+      if(path==='/api/screen-capture/files'&&req.method==='GET'){reply(res,200,isDemo(roomId)?{files:[],usage:{count:0,bytes:0},limits:null}:{files:spoon.captures.files(roomId),usage:spoon.captures.usage(roomId),limits:{maxFiles:spoon.captures.maxFiles,retentionDays:spoon.captures.retentionDays}});return;}
+      const captureFile=/^\/api\/screen-capture\/files\/([a-f0-9]{24})$/.exec(path);
+      if(captureFile&&req.method==='GET'){
+        if(isDemo(roomId))throw Object.assign(Error('공개 체험에는 보관된 캡처가 없습니다.'),{status:404});
+        const {data,row}=spoon.captures.file(roomId,captureFile[1]),name=`RadioMate_${row.amount}spoon_frame${String(row.frame).padStart(2,'0')}_${new Date(row.created+9*3600000).toISOString().slice(0,19).replace(/[-:T]/g,'')}.png`;
+        res.writeHead(200,{'Content-Type':'image/png','Content-Length':data.length,'Cache-Control':'private, no-store','Content-Disposition':`${url.searchParams.get('download')==='1'?'attachment':'inline'}; filename="${name}"`,'X-Content-Type-Options':'nosniff'});res.end(data);return;
+      }
+      const captureZip=/^\/api\/screen-capture\/zip\/([A-Za-z0-9_-]{1,80})$/.exec(path);
+      if(captureZip&&req.method==='GET'){
+        if(isDemo(roomId))throw Object.assign(Error('공개 체험에는 보관된 캡처가 없습니다.'),{status:404});
+        const {data,name}=spoon.captures.zip(roomId,captureZip[1]);
+        res.writeHead(200,{'Content-Type':'application/zip','Content-Length':data.length,'Cache-Control':'private, no-store','Content-Disposition':`attachment; filename="${name}"`,'X-Content-Type-Options':'nosniff'});res.end(data);return;
+      }
+      if(path==='/api/screen-capture/files/delete'&&req.method==='POST'){
+        if(isDemo(roomId))throw Object.assign(Error('공개 체험에서는 지울 캡처가 없습니다.'),{status:404});
+        const body=await readJSON(req,{limit:64000});
+        if(body.all===true){reply(res,200,{removed:spoon.captures.remove(roomId,null)});return;}
+        if(!Array.isArray(body.ids)||!body.ids.length||body.ids.length>1000)throw Object.assign(Error('지울 캡처를 선택해주세요.'),{status:400});
+        reply(res,200,{removed:spoon.captures.remove(roomId,body.ids)});return;
+      }
       if(path==='/api/screen-capture'&&req.method==='GET'){reply(res,200,isDemo(roomId)?{enabled:false,preview:true}:spoon.captures.status(roomId));return;}
       if(req.method==='GET'&&path==='/api/ai'){
         const context={store,room:roomId,user:'dj',channel:'app'};reply(res,200,{configured:ai.configured&&!sandbox?.has(roomId),model:ai.model,history:ai.history(context),dailyLimit:ai.dailyLimit,used:store.load(roomId).aiUsage?.day===dates().day?store.load(roomId).aiUsage.count:0});return;
@@ -282,7 +316,7 @@ const server=createServer(async(req,res)=>{
       if(path==='/api/account-delete'){
         if(b.confirm!=='방송 데이터 영구 삭제')throw Error('삭제 확인 문구가 일치하지 않습니다.');
         if(isDemo(roomId))throw Error('테스트 방송은 계정 삭제 대상이 아닙니다.');
-        mobileLink.revoke(roomId);const result=await spoon.disconnect(roomId);deleteRoom(store,voice,roomId);
+        mobileLink.revoke(roomId);const result=await spoon.disconnect(roomId);spoon.captures.remove(roomId,null);deleteRoom(store,voice,roomId); // 서버에 보관된 후원 캡처도 함께 삭제
         for(const [key,value] of sessions)if(value.room===roomId)sessions.delete(key);
         res.setHeader('Set-Cookie','studio=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');reply(res,200,{ok:true,...result});return;
       }

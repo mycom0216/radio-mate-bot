@@ -7,6 +7,20 @@ export function publicOrigin(value,{production=false}={}){
   return url.origin;
 }
 
+// 이미지처럼 JSON이 아닌 원본 바이트 본문을 읽습니다. limit(바이트)을 넘으면 413으로 거절합니다.
+export async function readBytes(req,{limit=8*1024*1024}={}){
+  const declared=Number(req.headers?.['content-length']);
+  if(Number.isFinite(declared)&&declared>limit)throw invalid('요청이 너무 큽니다.',413);
+  const chunks=[];let size=0;
+  const iterator=req.iterator?req.iterator({destroyOnReturn:false}):req;
+  for await(const chunk of iterator){
+    const bytes=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk);
+    size+=bytes.length;if(size>limit)throw invalid('요청이 너무 큽니다.',413);
+    chunks.push(bytes);
+  }
+  return Buffer.concat(chunks,size);
+}
+
 export async function readJSON(req,{limit=256000}={}){
   const declared=Number(req.headers?.['content-length']);
   if(Number.isFinite(declared)&&declared>limit)throw invalid('요청이 너무 큽니다.',413);

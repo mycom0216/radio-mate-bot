@@ -16,6 +16,9 @@ test('extension worker routes manual tests and donation batches through mocked b
   runtime:{id:'test-extension',getURL:path=>'chrome-extension://test-extension/'+path,onMessage:{addListener:handler=>{listener=handler;}}}
  };
  globalThis.fetch=async(request,options)=>{
+  // 서버 업로드(1.2.0): 찍은 화면(data URL)을 읽고 업로드 주소로 보냅니다. 이 시험은 업로드 자체는 다른 파일에서 자세히 검사합니다.
+  if(request.startsWith('data:'))return {blob:async()=>new Blob(['png'])};
+  if(request===ORIGIN+'/api/screen-capture/upload')return {ok:true,status:201};
   assert.ok(request.startsWith(ORIGIN+'/api/screen-capture/events?after='));assert.equal(options.credentials,'omit');assert.match(options.headers.Authorization,/^Bearer A{43}$/);
   relayCalls++;
   return {ok:true,json:async()=>({dj:'DJ',expiresAt:Date.now()+3600000,cursor:relayCalls===1?20:22,events:relayCalls===2?[{id:'event-a',sequence:21,time:Date.now(),nickname:'첫번째',amount:10},{id:'event-b',sequence:22,time:Date.now(),nickname:'두번째',amount:30}]:[]})};
