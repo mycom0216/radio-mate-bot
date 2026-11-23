@@ -1,5 +1,5 @@
 import {defaultQuizQuestions} from './quiz.mjs';
-export function extraDefaults(){return {affinityNotices:true,listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.'],chatMode:'all',chatAllApplied:true,chatName:'메이트',chatPersona:''};}
+export function extraDefaults(){return {affinityNotices:true,listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.'],chatMode:'all',chatAllApplied:true,chatDjCall:true,chatName:'메이트',chatPersona:''};}
 export function normalizeExtras(settings){
   // 이 기능이 생기기 전에 저장된 방은 한 번만 '모든 채팅에 대답'으로 바꿉니다. (이후에 DJ가 고른 방식은 그대로 유지)
   if(settings.chatAllApplied===undefined){if(settings.chatMode===undefined||settings.chatMode==='auto')settings.chatMode='all';settings.chatAllApplied=true;}
@@ -24,6 +24,7 @@ export function validateExtras(s){
   if(typeof s.chatName==='string')s.chatName=s.chatName.trim();
   if(!['off','call','auto','all'].includes(s.chatMode))throw Error('대화 방식은 끄기·부르면 대답·자유 대화·모든 채팅에 대답 중에서 선택하세요.');
   if(typeof s.chatAllApplied!=='boolean')throw Error('대화 방식 이전 설정 값이 올바르지 않습니다.');
+  if(typeof s.chatDjCall!=='boolean')throw Error('DJ가 봇 이름을 부르면 대답하는 설정은 켬/끔이어야 합니다.');
   if(typeof s.chatName!=='string'||!/^[^\s@!"'`<>]{2,12}$/u.test(s.chatName))throw Error('봇 이름은 공백 없이 2~12자로 입력하세요.');
   if(typeof s.chatPersona!=='string'||[...s.chatPersona].length>200)throw Error('말투·분위기 설명은 200자 이하로 입력하세요.');
   if(!Array.isArray(s.autoReplies)||s.autoReplies.length>30)throw Error('키워드 응답은 최대 30개입니다.');

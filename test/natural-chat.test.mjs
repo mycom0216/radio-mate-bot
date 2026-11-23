@@ -312,3 +312,45 @@ test('old rooms move to all chats once; later choices are kept',()=>{
  assert.equal(validateSettings({...defaults(),chatMode:'all'}).chatMode,'all');
  assert.throws(()=>validateSettings({...defaults(),chatAllApplied:'yes'}),/대화 방식/);
 });
+
+// ───── DJ가 봇 이름을 부르면 대답 ─────
+test('the DJ gets an answer only when calling the bot by name; plain DJ chat, long text and the off switch stay silent',async()=>{
+ const t=chatRoom({chatMode:'all'});
+ const dj=(message,extra={})=>t.say(message,{user:'dj',nickname:'DJ',isDj:true,...extra});
+ // 화면 캡처처럼 DJ가 이름 없이 말한 것(야, 반응, 말)에는 대답하지 않습니다.
+ for(const plain of ['야','반응','말','야야야야야야']){t.advance(10000);assert.equal((await dj(plain)).text,null,plain);}
+ // 봇 이름(메이트·라메·라디오메이트)을 부르면 대답합니다. 방 주인 계정(user가 방 ID)도 같습니다.
+ for(const [message,user] of [['메이트야 안녕','dj'],['라메','room'],['라메야 오늘 뭐해?','room'],['라디오메이트 반가워','dj']]){t.advance(10000);const out=await dj(message,{user});assert.equal(out.text,'네, 들었어요!',message);}
+ // 이름을 불러도 100자가 넘는 긴 글에는 대답하지 않습니다.
+ t.advance(10000);assert.equal((await dj('메이트야 '+'가'.repeat(101))).text,null);
+ // 설정에서 끄면 DJ가 불러도 대답하지 않습니다.
+ t.store.transaction('room',r=>{r.settings.chatDjCall=false;});
+ t.advance(10000);assert.equal((await dj('메이트야 안녕')).text,null);
+ // 봇 이름을 직접 바꿔도 그 이름으로 부르면 대답합니다.
+ t.store.transaction('room',r=>{r.settings.chatDjCall=true;r.settings.chatName='봄이';});
+ t.advance(10000);assert.equal((await dj('봄이야 안녕')).text,'네, 들었어요!');
+});
+
+test('the bot never answers its own reply coming back through the DJ account, even when the reply contains its name',async()=>{
+ const t=chatRoom({chatMode:'all'});
+ const echo='저는 메이트예요! DJ님 방송에서 수다도 떨어요';
+ const outbox=new Outbox(t.store);outbox.enqueue('room','k1',echo,t.time());
+ t.store.db.prepare("UPDATE outbox SET status='sent' WHERE room='room'").run();
+ t.advance(5000);
+ const out=await t.say(echo,{user:'room',nickname:'DJ'});
+ assert.equal(out.text,null);assert.equal(t.calls.converse.length,0,'AI도 부르지 않음');
+ // 같은 문구를 DJ가 직접 쓴 것과 구별할 수 없으므로, 보낸 지 3분이 지나면 다시 대답할 수 있습니다.
+ t.advance(181000);
+ assert.equal((await t.say(echo,{user:'room',nickname:'DJ'})).text,'네, 들었어요!');
+});
+
+test('DJ call setting defaults on, validates and fills old rooms',()=>{
+ assert.equal(defaults().chatDjCall,true);
+ assert.throws(()=>validateSettings({...defaults(),chatDjCall:'yes'}),/DJ가 봇 이름을 부르면/);
+ assert.equal(validateSettings({...defaults(),chatDjCall:false}).chatDjCall,false);
+ const store=new Store();store.create('old','옛 방송');
+ store.db.prepare('UPDATE rooms SET data=? WHERE id=?').run(JSON.stringify((()=>{const r=store.load('old');delete r.settings.chatDjCall;return r;})()),'old');
+ assert.equal(store.load('old').settings.chatDjCall,true,'예전에 저장된 방도 DJ 호출 대답이 켜진 상태');
+ const html=createExtraUI({card:(title,body)=>body,toggle:(key,label)=>`[toggle:${key}:${label}]`,field:()=>'',saveButton:()=>'',table:()=>'',empty:()=>'',esc:v=>String(v??'')}).autoChat({...defaults()});
+ assert.match(html,/\[toggle:chatDjCall:DJ 본인이 봇 이름을 부르면 대답/);
+});

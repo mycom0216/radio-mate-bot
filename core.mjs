@@ -1,6 +1,6 @@
 import {setAutomation} from './automation.mjs';
 import {assistantRequest} from './lifestyle.mjs';
-import {Conversation,squash} from './converse.mjs';
+import {Conversation,squash,callsBot,botNames} from './converse.mjs';
 import {diningQuery,diningPrompt,normalizeCommand} from './dining.mjs';
 import {travelKinds,travelQuery,travelPrompt} from './travel.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
@@ -421,8 +421,11 @@ export class Engine {
   async naturalReply(roomId,event,r,text,now){
     const s=r?.settings,user=event.user?.id;
     if(!this.lifestyle||!s||!user||!text||s.chatMode==='off'||typeof event.id!=='string')return null;
-    // DJ 본인과 봇이 DJ 계정으로 보낸 답변(되돌아온 것)에는 끼어들지 않습니다. 이미 처리한 이벤트도 다시 AI를 부르지 않습니다.
-    if(event.isDj===true||String(user)===String(roomId)||this.isBotEcho(roomId,text,now))return null;
+    // DJ 본인과 봇이 DJ 계정으로 보낸 답변(되돌아온 것)에는 기본적으로 끼어들지 않습니다. (봇 답변이 DJ 계정으로 되돌아오기 때문에, 막지 않으면 봇이 자기 말에 계속 대답할 수 있음)
+    // 다만 DJ가 봇 이름을 직접 부른 짧은 말(예: "라메야 안녕")에는 대답합니다. (설정 chatDjCall, 기본 켜짐) 이미 처리한 이벤트도 다시 AI를 부르지 않습니다.
+    const fromDj=event.isDj===true||String(user)===String(roomId);
+    if(fromDj&&!(s.chatDjCall&&[...text].length<=100&&callsBot(squash(text).toLowerCase(),botNames(s))))return null;
+    if(this.isBotEcho(roomId,text,now))return null; // 방금 봇이 보낸 문구와 같으면(되돌아온 답변) 무시
     if(keywordMatches(s,text))return null; // DJ가 만든 키워드 응답이 우선
     // 스푼 채팅은 답장이 8개 이상 밀려 있으면 AI도 부르지 않고 건너뜁니다. (쓸모없는 호출과 도배 방지)
     if(event.delivery&&this.replyQueueFull(roomId))return null;
