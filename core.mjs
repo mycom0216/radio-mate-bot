@@ -408,7 +408,13 @@ export class Engine {
   // 봇은 DJ 계정으로 채팅을 보내므로 자기 답변이 다시 들어올 수 있습니다. 방금 보낸 문구와 같으면 무시해 대화가 꼬리를 물지 않게 합니다.
   isBotEcho(roomId,text,now){
     const key=squash(text);
-    return this.store.db.prepare("SELECT text FROM outbox WHERE room=? AND status IN ('sent','sending','uncertain') AND created>? ORDER BY created DESC LIMIT 30").all(roomId,now-180000).some(row=>squash(row.text)===key);
+    // 같은 문구이거나, 스푼이 끝을 자르거나 다듬어 돌려준 경우(앞 20글자 이상이 같음)도 되돌아온 답변으로 봅니다.
+    const same=(a,b)=>a===b||([...a].length>=20&&[...b].length>=20&&(a.startsWith([...b].slice(0,20).join(''))||b.startsWith([...a].slice(0,20).join(''))));
+    return this.store.db.prepare("SELECT text FROM outbox WHERE room=? AND status IN ('sent','sending','uncertain') AND created>? ORDER BY created DESC LIMIT 30").all(roomId,now-180000).some(row=>same(squash(row.text),key));
+  }
+  // 최근 ms 안에 봇이 이 방에 보냈거나 보내는 중인 메시지가 있는지 확인합니다. (DJ 계정으로 되돌아오는 답변을 거르는 보조 장치)
+  botSpokeRecently(roomId,now,ms){
+    return !!this.store.db.prepare("SELECT 1 FROM outbox WHERE room=? AND status IN ('sent','sending','uncertain') AND created>? LIMIT 1").get(roomId,now-ms);
   }
   // AI 호출이 막혀도 채팅방에는 오류 문구를 흘리지 않고(규칙 기반 대답으로 대체), 이유만 운영 기록에 10분에 한 번 남깁니다.
   noteAiProblem(roomId,message,now){
@@ -423,8 +429,14 @@ export class Engine {
     if(!this.lifestyle||!s||!user||!text||s.chatMode==='off'||typeof event.id!=='string')return null;
     // DJ 본인과 봇이 DJ 계정으로 보낸 답변(되돌아온 것)에는 기본적으로 끼어들지 않습니다. (봇 답변이 DJ 계정으로 되돌아오기 때문에, 막지 않으면 봇이 자기 말에 계속 대답할 수 있음)
     // 다만 DJ가 봇 이름을 직접 부른 짧은 말(예: "라메야 안녕")에는 대답합니다. (설정 chatDjCall, 기본 켜짐) 이미 처리한 이벤트도 다시 AI를 부르지 않습니다.
+    // 설정 chatDjAll(DJ 본인의 모든 채팅에도 대답, 기본 켜짐)이면 이름을 부르지 않은 평범한 말에도 대답합니다. 둘 다 100자 이하의 짧은 말만 대상입니다.
     const fromDj=event.isDj===true||String(user)===String(roomId);
-    if(fromDj&&!(s.chatDjCall&&[...text].length<=100&&callsBot(squash(text).toLowerCase(),botNames(s))))return null;
+    if(fromDj){
+      const short=[...text].length<=100,called=s.chatDjCall&&callsBot(squash(text).toLowerCase(),botNames(s));
+      if(!short||!(s.chatDjAll||called))return null;
+      // DJ 계정은 봇 답변이 되돌아오는 길이므로 더 엄격하게 거릅니다: 방금(4초 안에) 봇이 보낸 메시지가 있으면 되돌아온 것일 수 있어 건너뜁니다.
+      if(this.botSpokeRecently(roomId,now,4000))return null;
+    }
     if(this.isBotEcho(roomId,text,now))return null; // 방금 봇이 보낸 문구와 같으면(되돌아온 답변) 무시
     if(keywordMatches(s,text))return null; // DJ가 만든 키워드 응답이 우선
     // 스푼 채팅은 답장이 8개 이상 밀려 있으면 AI도 부르지 않고 건너뜁니다. (쓸모없는 호출과 도배 방지)

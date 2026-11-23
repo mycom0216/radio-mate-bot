@@ -114,14 +114,11 @@ test('실제 흐름: 명령 3개가 동시에 와도 모두 답하고, 후원 �
     emit('g1', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: '!복권지급 구경꾼 2', sentTime: Date.now() });
     for (let i = 0; i < 80 && !chats.some(c => /구경꾼.*복권 2장 지급/.test(c.text)); i++) await sleep(100);
     assert.ok(chats.some(c => /🌙구경꾼ღ님 복권 2장 지급 · 보유 2장/.test(c.text)), JSON.stringify(chats.map(c => c.text)));
-    // 4) DJ 본인 계정의 채팅: 봇 이름을 부르면 대답하고, 이름 없이 말한 것에는 가만히 있습니다. (봇 답변이 DJ 계정으로 되돌아와도 꼬리를 물지 않음)
-    await sleep(1300); chats.length = 0;
-    emit('dj-plain', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: '반응', sentTime: Date.now() });
-    await sleep(1800);
-    assert.equal(chats.length, 0, 'DJ가 이름 없이 한 말에는 대답하지 않음');
-    emit('dj-call', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: '라메야 안녕하세요', sentTime: Date.now() });
+    // 4) DJ 본인 계정의 채팅: 이름 없이 인사해도(기본 설정) 대답합니다. 단, 봇이 방금 보낸 메시지가 DJ 계정으로 되돌아오는 것일 수 있어 4초 안의 채팅은 건너뜁니다.
+    await sleep(4500); chats.length = 0;
+    emit('dj-call', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: '안녕하세요', sentTime: Date.now() });
     for (let i = 0; i < 60 && !chats.length; i++) await sleep(100);
-    assert.equal(chats.length, 1, 'DJ가 봇 이름을 부르면 대답');
+    assert.equal(chats.length, 1, 'DJ 본인의 평범한 인사에도 대답');
     assert.match(chats[0].text, /반가|안녕|어서/);
     // 봇의 답변이 DJ 계정으로 되돌아와도 다시 대답하지 않습니다.
     emit('dj-echo', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: chats[0].text, sentTime: Date.now() });

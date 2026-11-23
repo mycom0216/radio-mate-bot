@@ -124,8 +124,8 @@ test('a listener can simply talk: replies come without a command and continue fo
  assert.ok(t.store.logs('room').some(log=>log.type==='natural-chat')); // 운영 기록에는 이유만 남고 대화 내용은 남지 않음
  assert.ok(!JSON.stringify(t.store.logs('room')).includes('오늘 비가'));
 });
-test('the DJ, the DJ account echo of the bot and duplicates never trigger a reply',async()=>{
- const t=chatRoom();
+test('the DJ, the DJ account echo of the bot and duplicates never trigger a reply (when DJ chat is switched off)',async()=>{
+ const t=chatRoom({chatDjAll:false,chatDjCall:false});
  assert.equal((await t.say('안녕하세요',{user:'dj',isDj:true})).text,null);
  assert.equal((await t.say('안녕하세요',{user:'room'})).text,null); // 방 ID가 곧 DJ 계정 ID
  t.store.db.prepare("INSERT INTO outbox(id,room,event_key,text,created,due,attempts,status) VALUES(?,?,?,?,?,?,0,'sent')").run('o1','room','k1','반가워요 민수님!',t.time(),t.time());
@@ -269,7 +269,7 @@ test('without a configured AI the explicit chat command answers kindly instead o
 test('all mode answers plain chat that auto mode stays quiet about, but not DJ, reactions, mentions or repeats',async()=>{
  const text='오늘 저는 공원에서 산책을 했어요';
  const auto=chatRoom();assert.equal((await auto.say(text)).text,null,'auto 모드는 평범한 말에는 가만히 있음');
- const all=chatRoom({chatMode:'all'});
+ const all=chatRoom({chatMode:'all',chatDjAll:false});
  const out=await all.say(text);assert.equal(out.text,'네, 들었어요!');assert.equal(all.calls.converse.length,1);
  assert.equal(all.calls.converse[0].context.mayskip,false,'모든 채팅에 대답하는 모드에서는 AI가 입을 다물지 않음');
  // 반응·다른 사람 지목·DJ 본인·같은 말 도배는 답하지 않습니다.
@@ -314,8 +314,8 @@ test('old rooms move to all chats once; later choices are kept',()=>{
 });
 
 // ───── DJ가 봇 이름을 부르면 대답 ─────
-test('the DJ gets an answer only when calling the bot by name; plain DJ chat, long text and the off switch stay silent',async()=>{
- const t=chatRoom({chatMode:'all'});
+test('with the DJ-all switch off, the DJ gets an answer only when calling the bot by name; plain DJ chat, long text and the off switch stay silent',async()=>{
+ const t=chatRoom({chatMode:'all',chatDjAll:false});
  const dj=(message,extra={})=>t.say(message,{user:'dj',nickname:'DJ',isDj:true,...extra});
  // 화면 캡처처럼 DJ가 이름 없이 말한 것(야, 반응, 말)에는 대답하지 않습니다.
  for(const plain of ['야','반응','말','야야야야야야']){t.advance(10000);assert.equal((await dj(plain)).text,null,plain);}
@@ -353,4 +353,54 @@ test('DJ call setting defaults on, validates and fills old rooms',()=>{
  assert.equal(store.load('old').settings.chatDjCall,true,'예전에 저장된 방도 DJ 호출 대답이 켜진 상태');
  const html=createExtraUI({card:(title,body)=>body,toggle:(key,label)=>`[toggle:${key}:${label}]`,field:()=>'',saveButton:()=>'',table:()=>'',empty:()=>'',esc:v=>String(v??'')}).autoChat({...defaults()});
  assert.match(html,/\[toggle:chatDjCall:DJ 본인이 봇 이름을 부르면 대답/);
+});
+
+// ───── DJ 본인의 모든 채팅에도 대답(chatDjAll, 기본 켜짐) ─────
+test('by default the DJ gets answers to plain chat too, but not to reactions, long text or the off switch',async()=>{
+ const t=chatRoom({chatMode:'all'});assert.equal(t.store.load('room').settings.chatDjAll,true);
+ const dj=(message,extra={})=>t.say(message,{user:'dj',nickname:'DJ',isDj:true,...extra});
+ // 화면 캡처의 말들: 이름 없이 말해도 대답합니다. (방 주인 계정으로 들어온 이벤트도 같음)
+ for(const [message,user] of [['너뭐해','dj'],['오늘 날씨가 좋네요','room'],['말이없네','dj']]){t.advance(10000);assert.equal((await dj(message,{user})).text,'네, 들었어요!',message);}
+ // 자음만 있는 반응(ㅇㅇㅇ, ㄱㄱ)과 100자가 넘는 글에는 대답하지 않습니다.
+ for(const noise of ['ㅇㅇㅇㅇㅇㅇㅇㅇㅇㅇ','ㄱㄱ','ㅋㅋㅋ','가'.repeat(101)]){t.advance(10000);assert.equal((await dj(noise)).text,null,noise);}
+ // 스위치를 끄면 이름을 부를 때만 대답합니다.
+ t.store.transaction('room',r=>{r.settings.chatDjAll=false;});
+ t.advance(10000);assert.equal((await dj('너뭐해')).text,null);
+ t.advance(10000);assert.equal((await dj('라메야 너뭐해')).text,'네, 들었어요!');
+ // 둘 다 끄면 DJ에게는 대답하지 않습니다.
+ t.store.transaction('room',r=>{r.settings.chatDjCall=false;});
+ t.advance(10000);assert.equal((await dj('라메야 너뭐해')).text,null);
+});
+
+test('echo guard for the DJ account: exact, trimmed and quickly returning bot replies never start a loop',async()=>{
+ const t=chatRoom({chatMode:'all'});
+ const dj=message=>t.say(message,{user:'room',nickname:'DJ'});
+ const putSent=(id,text,created)=>t.store.db.prepare("INSERT INTO outbox(id,room,event_key,text,created,due,attempts,status) VALUES(?,?,?,?,?,?,0,'sent')").run(id,'room',id,text,created,created);
+ // 1) 같은 문구가 되돌아옴
+ const long='어서 오세요 민수님! 오늘도 방송에 와 주셔서 정말 반가워요 편하게 놀다 가세요';
+ putSent('o1',long,t.time());t.advance(5000);
+ assert.equal((await dj(long)).text,null);
+ // 2) 스푼이 끝을 다듬어 돌려줌: 앞 20글자 이상이 같으면 되돌아온 답변
+ t.advance(10000);putSent('o2',long+' ♡',t.time());t.advance(5000);
+ assert.equal((await dj(long.slice(0,40))).text,null,'끝이 잘려 돌아와도 무시');
+ // 3) 봇이 방금(4초 안에) 보낸 메시지가 있으면 DJ 채팅은 되돌아온 것일 수 있어 건너뜀
+ t.advance(300000);putSent('o3','다른 문구예요 그냥 테스트',t.time());t.advance(2000);
+ assert.equal((await dj('저는 지금 간단히 말해요')).text,null);
+ assert.equal(t.calls.converse.length,0,'되돌아온 답변에는 AI도 부르지 않음');
+ // 4) 시간이 지나면 DJ의 평범한 말에 다시 대답
+ t.advance(6000);assert.equal((await dj('저는 지금 간단히 말해요')).text,'네, 들었어요!');
+ // 5) 청취자의 말에는 4초 규칙이 적용되지 않음 (DJ 계정이 아니라서)
+ putSent('o4','또 다른 문구예요 한번 더 확인',t.time());t.advance(1000);
+ assert.equal((await t.say('안녕하세요 반가워요',{user:'listener',nickname:'청취자'})).text,'네, 들었어요!');
+});
+
+test('DJ-all setting defaults on, validates, fills old rooms and shows in the settings page',()=>{
+ assert.equal(defaults().chatDjAll,true);
+ assert.throws(()=>validateSettings({...defaults(),chatDjAll:'yes'}),/DJ 본인의 모든 채팅/);
+ assert.equal(validateSettings({...defaults(),chatDjAll:false}).chatDjAll,false);
+ const store=new Store();store.create('old','옛 방송');
+ store.db.prepare('UPDATE rooms SET data=? WHERE id=?').run(JSON.stringify((()=>{const r=store.load('old');delete r.settings.chatDjAll;return r;})()),'old');
+ assert.equal(store.load('old').settings.chatDjAll,true);
+ const html=createExtraUI({card:(title,body)=>body,toggle:(key,label)=>`[toggle:${key}:${label}]`,field:()=>'',saveButton:()=>'',table:()=>'',empty:()=>'',esc:v=>String(v??'')}).autoChat({...defaults()});
+ assert.match(html,/\[toggle:chatDjAll:DJ 본인의 채팅에도 대답/);
 });
