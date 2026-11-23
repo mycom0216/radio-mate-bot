@@ -11,6 +11,16 @@ export function selectDistricts(region=''){
  if(!rows.length)rows=catalog.locations.filter(loc=>key(loc.province)===target||key(loc.id).startsWith(target)||key(loc.name)===target);
  if(raw==='광주')rows=catalog.locations.filter(loc=>loc.province==='전남광주통합특별시'&&gwangjuDistricts.has(loc.name));
  if(raw==='전남')rows=catalog.locations.filter(loc=>loc.province==='전남광주통합특별시'&&!gwangjuDistricts.has(loc.name));
+ // '통영'·'울릉'·'경기 수원시'처럼 끝의 시·군·구를 빼거나 덧붙여 쓴 입력, '분당구'처럼 구 이름만 쓴 입력도 찾습니다.
+ // 위에서 이미 찾은 경우에는 건드리지 않아서 기존 결과가 달라지지 않습니다.
+ if(!rows.length&&target.length>=2){
+  const bare=target.replace(/[시군구]$/u,'');
+  if(bare.length>=2){
+   rows=catalog.locations.filter(loc=>key(loc.name).replace(/[시군구]$/u,'')===bare);
+   if(!rows.length)rows=catalog.locations.filter(loc=>key(loc.id).startsWith(bare));
+  }
+  if(!rows.length&&target.length>=3)rows=catalog.locations.filter(loc=>key(loc.name).endsWith(target));
+ }
  return rows;
 }
 export function districtPage(region='',page=1,pageSize=12){

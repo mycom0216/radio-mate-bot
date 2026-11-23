@@ -158,13 +158,49 @@ export class Lifestyle {
    let data;
    if(this.weatherSource==='kma'){
     // Detailed-region weather has a separate in-memory cache; production broadcast tables are untouched.
-    if(!this.districtDb){this.districtDb=new WeatherDb(new DatabaseSync(':memory:'));installDistricts(this.districtDb.db);this.districtKma=new KmaWeather({db:this.districtDb,fetcher:(...args)=>this.fetcher(...args),now:()=>this.now(),log:message=>this.log(message),key:this.kma.key,base:this.kma.base,keyParam:this.kma.keyParam});}
+    this.districtService();
     data=await this.kmaForecast(range,null,slice.locations.map(loc=>this.districtDb.get(loc.id)),this.districtKma);
    }else data=await this.openMeteoForecast(range,slice.locations);
    return {...data,scope:'districts',region,total:slice.total,page,pages:slice.pages,pageSize,items:data.items.map((item,i)=>({...item,displayName:districtLabel(slice.locations[i])})),note:'기상청 지역 목록의 시·군·구 및 특수지점 대표 좌표 기준입니다. '+(this.weatherSource==='kma'?'기상청 단기예보를 우선하고 없는 날짜는 해당 좌표의 Open-Meteo 모델로 보충합니다. ':'Open-Meteo 모델 예보입니다. ')+'주간은 한국시간 월~일, 지난 날짜는 과거 모델 또는 저장된 예보값으로 관측값이 아닙니다. 제공되지 않은 날짜는 미제공으로 표시합니다.'};
   });
  }
- async travel(options){return travelInfo(this,options);}
+ // 시·군·구 단위 날씨용 메모리 DB와 기상청 클라이언트를 한 번만 만들어 돌려줍니다. (방송 운영용 표는 건드리지 않습니다)
+  districtService(){
+   if(!this.districtDb){this.districtDb=new WeatherDb(new DatabaseSync(':memory:'));installDistricts(this.districtDb.db);this.districtKma=new KmaWeather({db:this.districtDb,fetcher:(...args)=>this.fetcher(...args),now:()=>this.now(),log:message=>this.log(message),key:this.kma.key,base:this.kma.base,keyParam:this.kma.keyParam});}
+   return {db:this.districtDb,kma:this.districtKma};
+  }
+  // 시·도 대표 지점이나 주요 시로 해석되지 않는 지역 이름을 전국 시·군·구 목록(257곳)에서 찾아
+  // 옷차림·우산·시간별·일출·일몰·현재 날씨를 안내합니다. 이름이 여러 곳에 해당하면 후보를 보여 주고 시·도·구를 함께 입력하도록 안내하며, 어디에도 없으면 null을 돌려줍니다.
+  async districtExtra(selection,text){
+   const query=String(text||'').trim(),word={outfit:'옷차림',umbrella:'우산',hourly:'시간별',sun:'일출'}[selection.mode]||'날씨';
+   const rows=/^(전국|전체|대한민국)$/u.test(query.replace(/\s/gu,''))?[]:selectDistricts(query);
+   // 시·군·구 목록에도 없으면 null을 돌려줘서, 호출한 쪽이 기존 '지원 지역' 안내를 그대로 보여 줍니다.
+   if(!rows.length)return null;
+   if(rows.length>1){
+    const labels=rows.map(districtLabel);
+    return `${query} 지역이 ${labels.length}곳이에요: ${labels.slice(0,4).join(' · ')}${labels.length>4?` 외 ${labels.length-4}곳`:''}\n시·도·구를 함께 입력해주세요. 예: !${word} ${labels[0]}`;
+   }
+   const loc=rows[0],label=districtLabel(loc),now=this.now(),today=koreaDate(now);
+   if(selection.mode==='sun'){
+    if(!Number.isFinite(loc.lat)||!Number.isFinite(loc.lon))throw Error('이 지역은 일출·일몰 위치 정보가 없어요.');
+    const day=selection.date||selection.start;return sunReply(label,loc.lat,loc.lon,day,day===today?'오늘':day===shiftDate(today,1)?'내일':day.slice(5));
+   }
+   if(this.weatherSource!=='kma')throw Error('시·군·구 날씨 안내는 기상청 자료로 날씨를 받을 때만 제공해요.');
+   const {db,kma}=this.districtService(),row=db.get(loc.id);if(!row)throw Error('지원하지 않는 지역이에요.');
+   if(selection.mode==='hourly')return hourlyReply(label,(await kma.hourly(row)).rows,now)||'시간별 예보 자료가 아직 없어요. 잠시 뒤 다시 시도해주세요.';
+   if(selection.mode==='umbrella'){
+    const rowsHourly=(await kma.hourly(row)).rows;let wet=[];
+    try{for(const period of ['thisWeek','nextWeek']){const range=weatherRange(period,now),data=await this.cached('forecast:kma:'+range.today+':'+range.start+':'+range.end+':'+loc.id,600000,()=>this.kmaForecast(range,null,[row],kma));for(const day of data.items.find(item=>item.region===loc.id)?.days||[])if(day.available&&day.date>=today&&(/비|눈|소나기/.test(day.condition)||day.rainChance>=60))wet.push(day);}}catch{wet=null;}
+    return umbrellaReply(label,rowsHourly,now,wet);
+   }
+   const {items}=await kma.current([row]),item=items[0];if(!item)throw Error('현재 기온 자료를 받지 못했어요. 잠시 뒤 다시 시도해주세요.');
+   if(selection.mode==='outfit'){
+    const range=weatherRange('current',now),day=(await kma.days(range,[row])).get(row.id)?.get(range.today);
+    return outfitReply(label,{temp:item.temperature,feels:item.feels,min:day?.min,max:day?.max});
+   }
+   return `${label} 날씨 · ${String(item.time).replace('T',' ')} KST\n${currentLine({...item,region:label},true)}\n출처 기상청${item.observed?' 실황':''} · 시·군·구 대표 좌표`;
+  }
+  async travel(options){return travelInfo(this,options);}
  async places({region='',kind='맛집',meal='',foodType='',extended=false}={}){
   region=String(region).trim();if(!region||region.length>60||/[\r\n]/.test(region))throw Error('지역을 입력해주세요. 예: 광주 동명동');
   if(!['맛집','카페'].includes(kind)||!['','아침','점심','저녁'].includes(meal))throw Error('검색 종류와 식사 시간을 확인해주세요.');
@@ -259,7 +295,18 @@ export class Lifestyle {
    // 현재 날씨는 지역을 여러 개(최대 6) 적어 한 번에 비교할 수 있습니다: !날씨 서울 부산 제주
    const names=region?region.split(' ').filter(Boolean):[];
    if(!selection.mode&&selection.period==='current'&&names.length>1&&names.length<=6){const resolved=names.map(name=>this.resolveRegion(name));if(resolved.every(Boolean))return await this.compareRegions([...new Set(resolved)]);}
-   if(region){region=this.resolveRegion(region);if(!region)return '지원 지역: '+this.regionListText()+' (시·도 대표 지점)';}
+   if(region){
+     const typed=region,resolved=this.resolveRegion(typed);
+     // 시·도 대표 지점·주요 시로 찾지 못하면 전국 시·군·구 목록에서 찾습니다. (옷차림·우산·시간별·일출·현재 날씨)
+     if(resolved)region=resolved;
+     else{
+      // 일출·일몰은 계산식이라 어느 날씨 출처에서나 되고, 나머지는 기상청 모드에서만 됩니다.
+      const canTry=selection.mode==='sun'||(this.weatherSource==='kma'&&(!selection.mode||['outfit','umbrella','hourly'].includes(selection.mode)));
+      const district=canTry?await this.districtExtra(selection,typed):null;
+      if(district!==null)return district;
+      return '지원 지역: '+this.regionListText()+' (시·도 대표 지점)';
+     }
+    }
    if(selection.mode)return await this.weatherExtra(selection,region);
    if(selection.period!=='current'){
     const forecast=await this.forecast(selection.period,region),data=region?{...forecast,items:forecast.items.filter(x=>x.region===region)}:forecast;
