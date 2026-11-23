@@ -444,7 +444,7 @@ export class Engine {
     if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return null;
     const plan=this.conversation.plan({roomId,event,settings:s,now,isRegion:token=>!!this.lifestyle.resolveRegion?.(token),lastResponse:event.delivery?0:r.lastResponse}); // 스푼 채팅은 응답 간격에 걸려도 대기열로 보내므로 간격 때문에 건너뛰지 않음
     if(!plan||plan.kind==='service'&&this.bulkBlocked(roomId,event,now))return null;
-    const context=this.chatContext(roomId,event,s,{natural:true,mayskip:plan.mayskip,song:r.current?.title}),promptKey=JSON.stringify([roomId,user]);
+    const context=this.chatContext(roomId,event,s,{natural:true,mayskip:plan.mayskip,song:r.current?.title}),promptKey=JSON.stringify([roomId,user]),started=Date.now();
     let parts,request={kind:'chat',arg:''},needsRegion=false;
     if(plan.kind==='service'){
       request=plan.request;needsRegion=['맛집','카페'].includes(request.kind)&&!diningQuery(request.arg,request.kind).region;
@@ -459,7 +459,7 @@ export class Engine {
       const reply=result.text||plan.fallback;if(!reply)return null;parts=[reply];
     }
     this.conversation.record(roomId,user,now,text);
-    return {natural:true,trigger:plan.trigger,assistantRequest:request,assistantText:parts[0],assistantMore:parts.slice(1),promptKey,needsRegion};
+    return {natural:true,trigger:plan.trigger,assistantRequest:request,assistantText:parts[0],assistantMore:parts.slice(1),promptKey,needsRegion,aiMs:Date.now()-started};
   }
   naturalCommand(r,e,now,prepared){
     if(r.settings.quiet)return {text:null,suppressed:'quiet'};
@@ -470,7 +470,8 @@ export class Engine {
     const [text,...more]=[prepared.assistantText,...(prepared.assistantMore||[])].map(part=>String(part||'').trim()).filter(Boolean);
     if(!text)return {text:null};
     r.lastResponse=now;
-    this.store.log(r.id,e.user.id,'natural-chat',{trigger:prepared.trigger,kind:prepared.assistantRequest.kind},now);
+    // aiMs: AI·날씨 등 답을 만드는 데 걸린 시간(밀리초). 반응이 느릴 때 어디서 걸리는지 운영 기록에서 확인할 수 있습니다.
+    this.store.log(r.id,e.user.id,'natural-chat',{trigger:prepared.trigger,kind:prepared.assistantRequest.kind,aiMs:prepared.aiMs},now);
     return {text:text.slice(0,200),...(more.length?{more:more.map(part=>part.slice(0,200))}:{})};
   }
   handle(roomId,event,preparedLottery=null){

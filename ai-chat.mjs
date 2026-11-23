@@ -9,7 +9,7 @@ export function fitChat(text,limit){
  return head.slice(0,limit-1).trimEnd()+'…';
 }
 export class AIChat{
- constructor({key='',model='gpt-4.1-mini',fetcher=fetch,now=Date.now,dailyLimit=100,globalLimit=1000}={}){Object.assign(this,{key,model,fetcher,now,dailyLimit,globalLimit});this.histories=new Map();this.last=new Map();this.pending=new Set();this.globalUsage={day:'',count:0};}
+ constructor({key='',model='gpt-4.1-mini',fetcher=fetch,now=Date.now,dailyLimit=100,globalLimit=1000,baseUrl='https://api.openai.com',effort=''}={}){Object.assign(this,{key,model,fetcher,now,dailyLimit,globalLimit,baseUrl:String(baseUrl||'https://api.openai.com').replace(/\/+$/,''),effort});this.histories=new Map();this.last=new Map();this.pending=new Set();this.globalUsage={day:'',count:0};}
  get configured(){return !!this.key;}
  scope({room,user,channel}){return createHash('sha256').update(JSON.stringify([room,user,channel])).digest('hex');}
  history(context){const h=this.histories.get(this.scope(context));return h&&h.expires>this.now()?h.messages:[];}
@@ -48,8 +48,9 @@ export class AIChat{
   context.store.transaction(context.room,r=>{if(r.aiUsage?.day!==day)r.aiUsage={day,count:0};if(r.aiUsage.count>=this.dailyLimit)throw Error('오늘 이 방송의 AI 호출 한도에 도달했습니다. 내일 다시 이용해주세요.');r.aiUsage.count++;});
   this.globalUsage.count++;this.last.set(key,now);this.pending.add(key);
   try{
-   const messages=this.history(context),input=[...messages,{role:'user',content:text}];
-   let response;try{response=await this.fetcher('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+this.key,'Content-Type':'application/json'},signal:AbortSignal.timeout(natural?9000:25000),body:JSON.stringify({model:this.model,store:false,max_output_tokens:spoon?(natural?220:180):500,instructions:this.instructions(context,now),input})});}catch{throw Error('AI 연결 시간이 초과되었거나 연결하지 못했습니다. 잠시 후 다시 시도해주세요.');}
+   // 자유 대화는 최근 3번 주고받은 내용만 보내 입력을 줄입니다. (기록은 그대로 12개까지 보관)
+   const messages=natural?this.history(context).slice(-6):this.history(context),input=[...messages,{role:'user',content:text}];
+   let response;try{response=await this.fetcher(`${this.baseUrl}/v1/responses`,{method:'POST',headers:{Authorization:'Bearer '+this.key,'Content-Type':'application/json'},signal:AbortSignal.timeout(natural?9000:25000),body:JSON.stringify({model:this.model,store:false,max_output_tokens:spoon?(natural?220:180):500,...(this.effort?{reasoning:{effort:this.effort}}:{}),instructions:this.instructions(context,now),input})});}catch{throw Error('AI 연결 시간이 초과되었거나 연결하지 못했습니다. 잠시 후 다시 시도해주세요.');}
    if(!response.ok)throw Error(response.status===401?'OpenAI API 키를 확인해주세요.':response.status===429?'OpenAI 사용 한도·크레딧을 확인하거나 잠시 후 다시 시도해주세요.':'AI 서비스 오류입니다. 잠시 후 다시 시도해주세요.');
    const data=await response.json();const output=(data.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim();
    if(!output)throw Error('AI 답변을 받지 못했습니다. 질문을 바꿔 다시 시도해주세요.');

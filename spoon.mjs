@@ -49,6 +49,20 @@ export class Spoon {
     if(this.running.has(room)&&this.store.load(room)?.live)return {connected:true};
     this.stop(room);this.start(room);return {connected:false};
   }
+  // 스푼 채팅 한 건을 처리합니다. AI 답을 기다리는 몇 초 동안 뒤에 온 채팅·후원·입장 알림이 줄을 서지 않도록 처리 끝을 기다리지 않고(백그라운드) 바로 다음 이벤트로 넘어갑니다.
+  // 한 방에서 처리 중인 채팅이 6개 이상 밀리면 그때만 하나가 끝날 때까지 잠깐 기다려 한꺼번에 몰리는 것을 막습니다.
+  // 오류는 연결 루프를 끊지 않고 운영 기록에만 남깁니다.
+  async runChatEvent(room,payload){
+    this.inflight??=new Map();
+    const running=this.inflight.get(room)??new Set();this.inflight.set(room,running);
+    if(running.size>=6)await Promise.race([...running]);
+    const task=(async()=>{
+      try{const out=await this.engine.handleAsync(room,payload);if(out.text)this.kickOutbox(room);}
+      catch(error){try{this.store.log(room,'system','chat-handle-error',{message:String(error?.message||error).slice(0,120)});}catch{/* 기록 실패가 처리를 막지 않게 */}}
+      finally{running.delete(task);}
+    })();
+    running.add(task);
+  }
   // 전송 대기열을 기다리지 않고 비우기 시작합니다. 이벤트 처리를 막지 않으려고 await 없이 두며, 쌓인 메시지는 간격을 지키며 이어서 보냅니다.
   kickOutbox(room){void this.outbox.flush(room,text=>this.sendDetailed(room,text,{wait:true}),Date.now(),{max:8}).catch(()=>{});}
   // wait가 true이면 앞 메시지와의 최소 간격(응답 간격)이 지날 때까지 잠깐 기다렸다가 보냅니다. (쌓인 답장을 버리거나 5초씩 미루지 않고 바로 이어서 내보내기 위해)
@@ -98,7 +112,7 @@ export class Spoon {
               const {data}=f;const cfg=this.store.load(room).settings;
               const banned=cfg.bannedWords.some(w=>String(data.message).includes(w));
               if(banned)this.store.log(room,data.user.id,'banned-word',{message:data.message});
-              if(!banned){this.engine.noteSeen(room,data.user);const out=await this.engine.handleAsync(room,{...data,id:createHash('sha256').update(f.id||`${data.sentTime}:${data.user.id}:${data.message}`).digest('hex'),delivery:true});if(out.text)this.kickOutbox(room);}
+              if(!banned){this.engine.noteSeen(room,data.user);await this.runChatEvent(room,{...data,id:createHash('sha256').update(f.id||`${data.sentTime}:${data.user.id}:${data.message}`).digest('hex'),delivery:true});}
             }else if(f.event==='presence'){
               this.engine.recordSpoonTemperature(room,f.data);
               this.engine.noteSeen(room,f.data.user);const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome){this.outbox.enqueue(room,'presence:'+createHash('sha256').update(f.id||`${f.data.time}:${f.data.user.id}`).digest('hex'),s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));if(!s.quiet)this.kickOutbox(room);}}
