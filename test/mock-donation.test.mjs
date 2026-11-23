@@ -66,12 +66,13 @@ test('모의 후원으로 후원 보상·메뉴판·큰 후원·지급·후원 �
   d=await donate(A,70); // 청팀 110 → 청팀 승리
   assert.match(d.messages.at(-1),/🏆 청팀 승리! 먼저 100스푼 달성 \(청팀 110 · 백팀 60\)\n승리 팀 후원자 1명 \+300PT\+300EXP\n🎁 선물 약속: 진 팀이 이긴 팀에 100스푼/);log('청팀이 먼저 100스푼 달성 (모의 후원 70스푼)',d.messages.at(-1));
 
-  // 5-3) DJ 랭킹 · 넥스트초이스 레벨
+  // 5-3) DJ 랭킹 · 넥스트초이스 등급 (월라디 순위로 자동 계산) + 이번 달 방송 현황
   log('등록 전 !랭킹조회',await chat(A,'!랭킹조회'));
   await chat(DJ,'!랭킹등록 일 12');await chat(DJ,'!랭킹등록 월 45');
-  text=await chat(DJ,'!랭킹등록 초이스 이전 2 현재 3 다음 4 컷 30');log('DJ 랭킹 입력 후 !랭킹조회',text);
-  assert.match(text,/일라디 12위 · 월라디 45위\n넥스트초이스 이전 Lv\.2 → 현재 Lv\.3 → 다음 Lv\.4까지 15등 남음/);
+  text=await chat(DJ,'!랭킹등록 지난달 150');log('DJ 랭킹 입력 후 !랭킹조회',text);
+  assert.match(text,/일라디 12위 · 월라디 45위\n초이스 이전 Normal Choice → 현재 Star Choice → 다음 Top Choice까지 35등 남음/);
   assert.equal(await chat(B,'!랭크조회'),text);
+  assert.match(text=await chat(A,'!초이스'),/^📊 .* 이번 달 방송 0일 · 0시간\nNormal Choice\(15일·30시간\) 15일·30시간 남음\nTop·Star Choice\(20일·45시간\) 20일·45시간 남음/);log('!초이스 (방송 연결 전)',text);
 
   // 6) 최종 상태: 후원마다 받은 EXP(스푼 × 20)와 대결 보상이 정확히 합산됐는지
   const state=await room();const a=state.users['user-A'],b=state.users['user-B'];

@@ -103,6 +103,17 @@ test('실제 흐름: 명령 3개가 동시에 와도 모두 답하고, 후원 �
     assert.equal(chats.length, 2, '감사 인사와 후원 보상 두 개');
     assert.ok(chats[1].t - donated < 3500, `후원 보상 안내는 한 간격 뒤에 바로 나가야 합니다: ${chats[1].t - donated}ms`);
     assert.match(chats[1].text, /후원! (복권 1장 지급|\+2,000 EXP)|복권 1장 지급/);
+    // 방송에 연결되면 방송 시간 집계 세션이 열리고, 웹 방 정보에 이번 달 집계가 내려갑니다. (공식 기록이 아닌 봇 연결 기준)
+    const live = await (await fetch(address + '/api/room', { headers })).json();
+    assert.equal(live.liveSession?.open, true, '방송 연결 중에는 세션이 열려 있어야 함');
+    assert.deepEqual(Object.keys(live.choiceProgress).sort(), ['days', 'minutes']);
+    // 3) 프로필 없이 채팅만 한 청취자에게 DJ가 닉네임 일부로 복권 지급 (@·고유 ID 입력 없음)
+    await sleep(1300); chats.length = 0;
+    emit('v1', 'chat', { user: { id: 'viewer-9', nickname: '🌙구경꾼ღ' }, message: 'ㅋㅋ 오늘 방송 좋네요', sentTime: Date.now() });
+    await sleep(400);
+    emit('g1', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: '!복권지급 구경꾼 2', sentTime: Date.now() });
+    for (let i = 0; i < 80 && !chats.some(c => /구경꾼.*복권 2장 지급/.test(c.text)); i++) await sleep(100);
+    assert.ok(chats.some(c => /🌙구경꾼ღ님 복권 2장 지급 · 보유 2장/.test(c.text)), JSON.stringify(chats.map(c => c.text)));
   } finally {
     const done = proc.exitCode === null ? new Promise(resolve => proc.once('exit', resolve)) : Promise.resolve();
     proc.kill(); await done; mock.close(); rmSync(data, { recursive: true, force: true });

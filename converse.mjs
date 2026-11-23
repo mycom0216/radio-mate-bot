@@ -3,7 +3,7 @@
 import {foodTypes,cafeTypes} from './public/dining-guide.mjs';
 import {koreaDate,shiftDate,weatherRange} from './weather-periods.mjs';
 
-export const CHAT_MODES=['off','call','auto'];
+export const CHAT_MODES=['off','call','auto','all'];
 export const DEFAULT_CHAT_NAME='메이트';
 export const SESSION_MS=180000; // 봇이 답한 뒤 3분 동안은 "이어서 말하는 중"으로 봅니다.
 export const SKIP='SKIP';
@@ -163,10 +163,11 @@ export class Conversation{
   const service=naturalRequest(text,{isRegion,now}),c=cues(text);
   const social=c.bye||c.thanks||c.identity||c.help||c.howAreYou||(c.greeting&&[...text].length<=30);
   const guess=c.question||c.emotion||c.address;
-  const trigger=called?'call':session?'session':service?'service':social?'social':guess?'guess':null;
+  // all(모든 채팅에 대답)은 위에 해당하지 않는 평범한 말에도 대답합니다. (그래도 아래 횟수 제한과 도배 방지는 적용)
+  const trigger=called?'call':session?'session':service?'service':social?'social':guess?'guess':mode==='all'?'all':null;
   if(!trigger)return null;
   if(mode==='call'&&trigger!=='call'&&trigger!=='session')return null;
-  if(!this.allow(roomId,user,now,{fast:trigger!=='guess'&&trigger!=='social'}))return null;
+  if(!this.allow(roomId,user,now,{fast:trigger!=='guess'&&trigger!=='social'&&trigger!=='all'}))return null;
   const wantsService=!!service&&(mode==='auto'||called||session);
   return {kind:wantsService?'service':'chat',request:wantsService?service:null,text,trigger,
    // 직접 부르지 않았는데 질문·감정 표현만 보고 끼어드는 경우에는 AI가 "내게 한 말이 아니다"라고 판단하면 SKIP으로 입을 다물 수 있습니다.

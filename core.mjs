@@ -51,10 +51,11 @@ export function defaults() {
     fishingWho:'both',
     // 화면 캡처 기준: 후원 한 건이 이 스푼 이상일 때만 확장 기능이 방송 화면을 캡처합니다. (기본 300스푼)
     screenCaptureMin:300,
-    // DJ 랭킹(일라디·월라디)과 넥스트초이스 레벨: 스푼이 순위를 API로 알려 주지 않아 DJ가 직접 입력합니다. 빈 값(null)은 미등록입니다.
+    // DJ 랭킹(일라디·월라디): 스푼이 순위를 API로 알려 주지 않아 DJ가 직접 입력합니다. 빈 값(null)은 미등록입니다. 넥스트초이스 등급은 월라디 순위로 자동 계산합니다.
     // 날짜·월 표시(…Date/…Month)는 값을 입력한 때를 기록해, 오래된 값에 '(기준일)'을 붙이는 데 씁니다.
     djRankDaily:null, djRankDailyDate:'', djRankMonthly:null, djRankMonthlyMonth:'',
-    choicePrevLevel:null, choiceNowLevel:null, choiceNextLevel:null, choiceNextCut:null, choiceMonth:'',
+    // 지난달 월라디 순위: 새 달의 순위를 처음 입력하면 이전 달 값이 자동으로 옮겨 오고, !랭킹등록 지난달 85로 직접 넣을 수도 있습니다.
+    djRankPrevMonthly:null, djRankPrevMonth:'',
     // 낚시 행운 보너스(%): 고급 이상 물고기(황금주사위 제외)의 가중치를 이만큼 늘려 PT가 큰 물고기가 더 자주 나오게 합니다. 0이면 보너스 없음.
     fishingLuck:100,
     // 후원 레벨 보상: 한 번에 기준 스푼 이상 후원한 청취자에게 '스푼 수 × 스푼당 EXP'를 줘서 레벨이 오르게 합니다.
@@ -85,15 +86,36 @@ export function dates(ms=Date.now()) {
   const day = new Date(ms+9*3600000).toISOString().slice(0,10);
   return {day,month:day.slice(0,7)};
 }
-// DJ가 입력한 랭킹·초이스 레벨이 바뀌면 '언제 입력했는지'를 기록합니다. 오래된 값에는 답변에 (기준일)을 붙이기 위해서입니다.
+// 넥스트초이스 등급(스푼 공식 안내 기준): 월간 DJ 순위 410위 이내에서 정해지고, 등급마다 필요한 방송일수·방송시간이 다릅니다.
+// settle=정산 비율(%), payoutDays=환전 처리일(영업일), benefits=등급별 혜택입니다. (스푼 Choice DJ 안내 기준, 선정 결과는 매월 1일 오후 6~7시 사이 갱신)
+export const CHOICE_TIERS=[
+  {key:'top',name:'Top Choice',min:1,max:10,days:20,hours:45,settle:70,payoutDays:1,benefits:['라이브 시 스푼이 선정한 DJ 상단 번들 노출','시그니처 스티커','최초 선정 시 순금 명함 지급','1위 선정 시 순금 숟가락 지급','랭킹 부스터 10개','방송시간 연장 10개','고정매니저+3 30일','퀵메시지+3 30일']},
+  {key:'star',name:'Star Choice',min:11,max:110,days:20,hours:45,settle:65,payoutDays:2,benefits:['라이브 시 스푼이 선정한 DJ 상단 번들 노출','방송시간 연장 5개','고정매니저+3 15일','퀵메시지+3 15일']},
+  {key:'normal',name:'Normal Choice',min:111,max:410,days:15,hours:30,settle:60,payoutDays:2,benefits:['방송시간 연장 5개','고정매니저+3 7일','퀵메시지+3 7일']},
+];
+// 순위에 해당하는 등급을 돌려줍니다. 410위 밖이거나 순위가 없으면 null입니다.
+export const choiceTier=rank=>Number.isSafeInteger(rank)&&rank>=1?CHOICE_TIERS.find(tier=>rank>=tier.min&&rank<=tier.max)||null:null;
+// 한 단계 위 등급과, 거기까지 몇 등을 더 올라가야 하는지 돌려줍니다. 이미 Top Choice이거나 순위가 없으면 null입니다.
+// 예) 45위(Star) → Top Choice까지 35등, 411위(선정권 밖) → Normal Choice까지 1등
+export function choiceNext(rank){
+  if(!Number.isSafeInteger(rank)||rank<1)return null;
+  const current=choiceTier(rank),next=current?CHOICE_TIERS[CHOICE_TIERS.indexOf(current)-1]:CHOICE_TIERS.at(-1);
+  return next?{tier:next,left:rank-next.max}:null;
+}
+const previousMonth=month=>{const [year,mon]=String(month).split('-').map(Number);return mon===1?`${year-1}-12`:`${year}-${String(mon-1).padStart(2,'0')}`;};
+// DJ가 입력한 순위가 바뀌면 '언제 입력했는지'를 기록합니다. 오래된 값에는 답변에 (기준일)을 붙이기 위해서입니다.
 // 웹 설정 저장과 채팅의 !랭킹등록이 같은 함수를 씁니다. prev는 바뀌기 전 설정, next는 바뀐 설정입니다.
 export function stampDjRank(prev,next,ms=Date.now()){
-  const {day,month}=dates(ms);
-  const changed=keys=>keys.some(key=>next[key]!==prev[key]);
-  if(next.djRankDaily===null)next.djRankDailyDate='';else if(changed(['djRankDaily'])||!next.djRankDailyDate)next.djRankDailyDate=day;
-  if(next.djRankMonthly===null)next.djRankMonthlyMonth='';else if(changed(['djRankMonthly'])||!next.djRankMonthlyMonth)next.djRankMonthlyMonth=month;
-  const levels=['choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut'];
-  if(levels.every(key=>next[key]===null))next.choiceMonth='';else if(changed(levels)||!next.choiceMonth)next.choiceMonth=month;
+  const {day,month}=dates(ms),changed=key=>next[key]!==prev[key];
+  if(next.djRankDaily===null)next.djRankDailyDate='';else if(changed('djRankDaily')||!next.djRankDailyDate)next.djRankDailyDate=day;
+  if(next.djRankMonthly===null)next.djRankMonthlyMonth='';
+  else if(changed('djRankMonthly')||!next.djRankMonthlyMonth){
+    // 새 달의 순위를 처음 입력하면, 이전 달에 입력해 둔 순위가 '지난달' 순위가 됩니다. (지난달 값을 직접 고쳤다면 그대로 둠)
+    if(changed('djRankMonthly')&&!changed('djRankPrevMonthly')&&prev.djRankMonthly!==null&&prev.djRankMonthlyMonth&&prev.djRankMonthlyMonth!==month){next.djRankPrevMonthly=prev.djRankMonthly;next.djRankPrevMonth=prev.djRankMonthlyMonth;}
+    next.djRankMonthlyMonth=month;
+  }
+  if(next.djRankPrevMonthly===null)next.djRankPrevMonth='';
+  else if(!next.djRankPrevMonth||(changed('djRankPrevMonthly')&&next.djRankPrevMonth===prev.djRankPrevMonth))next.djRankPrevMonth=previousMonth(month);
   return next;
 }
 export function validateSettings(s) {
@@ -112,12 +134,12 @@ export function validateSettings(s) {
   if(typeof s.battleEnabled!=='boolean'||!Number.isSafeInteger(s.battleMinutes)||s.battleMinutes<1||s.battleMinutes>120)throw Error('후원 대결은 켜기/끄기와 기본 시간(1~120분 정수)으로 설정하세요.');
   if(!Number.isSafeInteger(s.battleGiftSpoons)||s.battleGiftSpoons<0||s.battleGiftSpoons>1000)throw Error('후원 대결 스푼 선물 안내는 0~1000 사이의 정수로 입력하세요. (0이면 안내하지 않습니다)');
   for(const key of ['battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'])if(!Number.isSafeInteger(s[key])||s[key]<0||s[key]>1000000)throw Error('후원 대결 순위 보상은 0~1,000,000 사이의 정수로 입력하세요.');
-  // DJ 랭킹·넥스트초이스 레벨: 비어 있거나 0이면 미등록(null)으로 봅니다. 순위·컷은 1~1,000,000, 레벨은 1~999의 정수입니다.
-  for(const [key,label,max] of [['djRankDaily','일라디 순위',1000000],['djRankMonthly','월라디 순위',1000000],['choicePrevLevel','이전 초이스 레벨',999],['choiceNowLevel','현재 초이스 레벨',999],['choiceNextLevel','다음 초이스 레벨',999],['choiceNextCut','다음 레벨 진입 순위',1000000]]){
+  // DJ 랭킹: 비어 있거나 0이면 미등록(null)으로 봅니다. 순위는 1~1,000,000의 정수입니다.
+  for(const [key,label] of [['djRankDaily','일라디 순위'],['djRankMonthly','월라디 순위'],['djRankPrevMonthly','지난달 월라디 순위']]){
     if(s[key]===undefined||s[key]===0||s[key]==='')s[key]=null;
-    if(s[key]!==null&&(!Number.isSafeInteger(s[key])||s[key]<1||s[key]>max))throw Error(`${label}은(는) 1~${max.toLocaleString('en-US')} 사이의 정수로 입력하거나 비워 두세요.`);
+    if(s[key]!==null&&(!Number.isSafeInteger(s[key])||s[key]<1||s[key]>1000000))throw Error(`${label}은(는) 1~1,000,000 사이의 정수로 입력하거나 비워 두세요.`);
   }
-  for(const key of ['djRankDailyDate','djRankMonthlyMonth','choiceMonth']){
+  for(const key of ['djRankDailyDate','djRankMonthlyMonth','djRankPrevMonth']){
     if(s[key]===undefined)s[key]='';
     if(typeof s[key]!=='string'||s[key].length>10)throw Error('DJ 랭킹 기준 날짜 값이 올바르지 않습니다.');
   }
@@ -193,12 +215,12 @@ export function validateSettings(s) {
 const freshUser=(id,name,month)=>({id,name,month,exp:0,pt:0,tickets:0,attendance:'',daily:{day:'',fishExp:0,fishPt:0,oddPt:0,totalPt:0},bag:{},buffs:{},book:{},keeps:[],lastCommand:0});
 const n=x=>Number(x).toLocaleString('ko-KR');
 // 느낌표 뒤 첫 낱말이 이 목록에 있으면 진짜 명령어입니다. "!간호사"처럼 정답만 입력한 말과 구분하는 데 쓰며, 겹치면 명령어가 우선입니다.
-const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','애청온도','온도','라디오메이트','봇호출','랭크','랭크조회','랭킹등록','랭크등록','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','애청온도','온도','라디오메이트','봇호출','랭크','랭크조회','랭킹등록','랭크등록','초이스','초이스조회','초이스안내','초이스등급','초이스기준','방송기록','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
 // 느낌표로 시작하는 말 중에서 메뉴판을 봇이 알아듣는 명령 목록에 넣습니다.
 KNOWN_COMMANDS.push('메뉴판');
 // 아래 설정은 해당 기능이 생기기 전에 저장된 방에는 없습니다. Store.load가 없는 값을 기본값으로 채워서,
 // 웹 관리 화면에서 설정을 한 번 저장하기 전에도 기능이 정상 동작하게 합니다.
-const NEW_SETTING_KEYS=['donationDonorTicketEvery','djRankDaily','djRankDailyDate','djRankMonthly','djRankMonthlyMonth','choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut','choiceMonth','battleTargetSpoons','battleTeamGiftSpoons','screenCaptureMin','fishingWho','fishingLuck','donationTicketEnabled','donationTicketMin','donationTicketCount','donationExpEnabled','donationExpMin','donationExpPerSpoon','donationDonorTicketEnabled','donationDonorTicketMin','donationDonorTicketCount','lotteryFirstExp','lotteryFirstPt','lotterySecondExp','lotterySecondPt','lotteryThirdExp','lotteryThirdPt','battleEnabled','battleMinutes','battleGiftSpoons','battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'];
+const NEW_SETTING_KEYS=['donationDonorTicketEvery','djRankDaily','djRankDailyDate','djRankMonthly','djRankMonthlyMonth','djRankPrevMonthly','djRankPrevMonth','battleTargetSpoons','battleTeamGiftSpoons','screenCaptureMin','fishingWho','fishingLuck','donationTicketEnabled','donationTicketMin','donationTicketCount','donationExpEnabled','donationExpMin','donationExpPerSpoon','donationDonorTicketEnabled','donationDonorTicketMin','donationDonorTicketCount','lotteryFirstExp','lotteryFirstPt','lotterySecondExp','lotterySecondPt','lotteryThirdExp','lotteryThirdPt','battleEnabled','battleMinutes','battleGiftSpoons','battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'];
 const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','계정연결','대결','조용','게임','구매','포기','취소']);
 // 0, 음수, 소수는 받지 않습니다. 컴퓨터가 정확하게 기억할 수 있는 양의 정수만 허용합니다.
 const validReactionAmount=amount=>/^[1-9]\d*$/.test(amount)&&Number.isSafeInteger(Number(amount));
@@ -402,8 +424,10 @@ export class Engine {
     // DJ 본인과 봇이 DJ 계정으로 보낸 답변(되돌아온 것)에는 끼어들지 않습니다. 이미 처리한 이벤트도 다시 AI를 부르지 않습니다.
     if(event.isDj===true||String(user)===String(roomId)||this.isBotEcho(roomId,text,now))return null;
     if(keywordMatches(s,text))return null; // DJ가 만든 키워드 응답이 우선
+    // 스푼 채팅은 답장이 8개 이상 밀려 있으면 AI도 부르지 않고 건너뜁니다. (쓸모없는 호출과 도배 방지)
+    if(event.delivery&&this.replyQueueFull(roomId))return null;
     if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return null;
-    const plan=this.conversation.plan({roomId,event,settings:s,now,isRegion:token=>!!this.lifestyle.resolveRegion?.(token),lastResponse:r.lastResponse});
+    const plan=this.conversation.plan({roomId,event,settings:s,now,isRegion:token=>!!this.lifestyle.resolveRegion?.(token),lastResponse:event.delivery?0:r.lastResponse}); // 스푼 채팅은 응답 간격에 걸려도 대기열로 보내므로 간격 때문에 건너뛰지 않음
     if(!plan||plan.kind==='service'&&this.bulkBlocked(roomId,event,now))return null;
     const context=this.chatContext(roomId,event,s,{natural:true,mayskip:plan.mayskip,song:r.current?.title}),promptKey=JSON.stringify([roomId,user]);
     let parts,request={kind:'chat',arg:''},needsRegion=false;
@@ -645,6 +669,10 @@ export class Engine {
     }
     // DJ 전용 정보: 이 방송 DJ의 일라디·월라디 순위와 넥스트초이스 레벨 (!랭크·!랭킹조회·!랭크조회)
     if(['랭크','랭킹조회','랭크조회'].includes(cmd))return answer(this.djRankReply(r,now));
+    // 이번 달 방송일수·방송시간과 넥스트초이스 등급별 기준 비교 (!초이스·!초이스조회·!방송기록)
+    if(['초이스','초이스조회','방송기록'].includes(cmd))return answer(this.choiceReport(r,now));
+    // 넥스트초이스(Choice DJ) 티어별 선정 순위·정산 비율·환전 처리일 안내 (!초이스안내·!초이스등급·!초이스기준)
+    if(['초이스안내','초이스등급','초이스기준'].includes(cmd))return answer(this.choiceGuide());
     if(['랭킹','애청랭킹'].includes(cmd))return answer(chatPage('애청지수 순위',affinityRank(r.users).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(affinityScore(v))}점`),arg,'랭킹','등록된 청취자가 없습니다.'));
     if(cmd==='경험치랭킹')return answer(chatPage('경험치 순위',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,cmd,'등록된 청취자가 없습니다.'));
     if(['라디오메이트','봇호출'].includes(cmd))return answer('라디오메이트 명령 수신 중입니다. 다른 DJ 방송 연결은 라디오메이트 공용 HTTPS 화면에서 해당 DJ 계정으로 스푼 연결에 동의해 주세요. 방송이 시작되면 봇이 자동 접속합니다.');
@@ -849,7 +877,42 @@ export class Engine {
     });
   }
   target(r,target){
-    try{return resolveTarget(r.users,target,{identityKey:this.identityKey,room:r.id});}catch(error){fail(error.message);}
+    try{return resolveTarget(r.users,target,{identityKey:this.identityKey,room:r.id});}
+    catch(error){
+      // 아직 프로필이 없어도 최근 채팅·후원으로 본 청취자라면 닉네임 일부만으로 찾아 프로필을 만들어 줍니다.
+      if(/일치하는 청취자가 없습니다/u.test(error.message)){const id=this.seenTarget(r,target);if(id!==null)return id;}
+      fail(error.message);
+    }
+  }
+  // 최근에 채팅·후원한 청취자 중에서 찾습니다. 한 명으로 정해지면 프로필을 만들어 그 고유 ID를 돌려주고, 아니면 null입니다.
+  seenTarget(r,target){
+    const pool=Object.entries(r.seen||{}).filter(([id])=>!r.users[id]).map(([id,seen])=>({id,name:seen.name}));
+    if(!pool.length)return null;
+    try{
+      const id=resolveTarget(Object.fromEntries(pool.map(user=>[user.id,user])),target,{}),found=pool.find(user=>user.id===id);
+      r.users[id]=freshUser(id,found.name,dates(this.now()).month);
+      return id;
+    }catch(error){
+      // 최근 본 청취자 중에 여러 명이 겹치면 '없다'가 아니라 겹친다는 안내를 그대로 보여 줍니다.
+      if(/여러 명과 일치|중복됩니다/u.test(error.message))fail(error.message);
+      return null;
+    }
+  }
+  // 채팅·후원으로 본 청취자의 고유 ID와 닉네임을 기억합니다. (프로필이 없어도 !복권지급 닉네임 으로 지급할 수 있도록)
+  // 같은 사람은 10분에 한 번만 기록하고, 방당 최근 300명까지만 보관하며, 방 주인(DJ) 본인은 제외합니다.
+  noteSeen(roomId,user,now=this.now()){
+    const id=user?.id,name=String(user?.nickname||'').trim().slice(0,40);
+    if(id===undefined||id===null||String(id)===''||!name||String(id)===String(roomId))return;
+    this.seenAt??=new Map();
+    const key=roomId+'|'+id,last=this.seenAt.get(key);
+    if(last&&now-last<600000)return;
+    this.seenAt.set(key,now);if(this.seenAt.size>5000)this.seenAt.delete(this.seenAt.keys().next().value);
+    if(!this.store.load(roomId))return;
+    this.store.transaction(roomId,r=>{
+      r.seen??={};r.seen[String(id)]={name,at:now};
+      const ids=Object.keys(r.seen);
+      if(ids.length>300)for(const old of ids.sort((a,b)=>r.seen[a].at-r.seen[b].at).slice(0,ids.length-300))delete r.seen[old];
+    });
   }
   // 후원 알림 한 건을 처리합니다. 실제 방송(spoon.mjs)과 로컬 테스트의 '모의 후원'이 같은 코드를 써서, 모의 시험이 실제 동작과 같도록 합니다.
   // 순서: 후원 대결 합산 → 감사 인사(메뉴판 문구가 있으면 그 문구) → 후원 레벨·후원자 복권 보상 → 큰 후원 전체 복권.
@@ -919,52 +982,104 @@ export class Engine {
   // 스푼 채팅의 명령은 '응답 간격(기본 3초)' 안에 들어와도 버리지 않고 대기열에 쌓아 간격을 지키며 차례로 보내는데,
   // 한꺼번에 몰려 너무 많이 밀리면(8개 이상) 새 명령은 잠시 무시해 도배를 막습니다.
   replyQueueFull(roomId){
-    // 2분이 넘은 오래된 항목은 세지 않습니다. (보내다 멈춘 항목 때문에 새 명령이 계속 막히는 일을 방지)
-    return this.store.db.prepare("SELECT COUNT(*) n FROM outbox WHERE room=? AND status IN ('pending','sending') AND created>?").get(roomId,Date.now()-120000).n>=8;
+    // 1분이 넘은 오래된 항목은 세지 않습니다. (보내다 멈춘 항목 때문에 새 명령이 계속 막히는 일을 방지)
+    return this.store.db.prepare("SELECT COUNT(*) n FROM outbox WHERE room=? AND status IN ('pending','sending') AND created>?").get(roomId,this.now()-60000).n>=8;
   }
-  // ── DJ 랭킹 · 넥스트초이스 레벨 ──
-  // 이 방송 DJ의 일라디(일간)·월라디(월간) 순위와 넥스트초이스 레벨을 한 번에 보여 줍니다. (방마다 따로 저장되므로 그 DJ 것만 나옵니다)
-  // 순서: 일라디 → 월라디 → 이전 초이스 레벨 → 현재 레벨 → 다음 레벨까지 남은 등수
-  // 남은 등수 = 월라디 순위 − 다음 레벨 진입 순위(컷). 컷 이내로 들어왔으면 '조건 달성'으로 보여 줍니다.
+  // ── DJ 랭킹 · 넥스트초이스 등급 ──
+  // 이 방송 DJ의 일라디(일간)·월라디(월간) 순위와 넥스트초이스 등급을 한 번에 보여 줍니다. (방마다 따로 저장되므로 그 DJ 것만 나옵니다)
+  // 등급은 월라디 순위로 자동 계산합니다: 1~10위 Top Choice · 11~110위 Star Choice · 111~410위 Normal Choice · 411위 이후는 선정권 밖.
+  // 순서: 일라디 → 월라디 → 이전(지난달) 등급 → 현재 등급 → 다음 등급까지 남은 등수
   djRankReply(r,now){
     const s=r.settings,{day,month}=dates(now),monthLabel=value=>`${Number(String(value).slice(5))}월`;
     const name=[...String(r.name||'방송')].slice(0,20).join('');
     const daily=s.djRankDaily===null?'미등록':`${n(s.djRankDaily)}위${s.djRankDailyDate&&s.djRankDailyDate!==day?`(${s.djRankDailyDate.slice(5)} 기준)`:''}`;
     // 예전 !랭크의 '이번 달 넥스트초이스' 직접 입력 문구가 있으면 월라디 칸에 대신 보여 줍니다.
     const legacy=s.djRankMonthly===null&&s.monthlyRank&&s.monthlyRankMonth===month?s.monthlyRank:null;
-    const monthly=s.djRankMonthly!==null?`${n(s.djRankMonthly)}위${s.djRankMonthlyMonth&&s.djRankMonthlyMonth!==month?`(${monthLabel(s.djRankMonthlyMonth)} 기준)`:''}`:legacy??'미등록';
-    const lv=value=>value===null?'-':`Lv.${value}`;
-    let choice;
-    if([s.choicePrevLevel,s.choiceNowLevel,s.choiceNextLevel].every(value=>value===null))choice='넥스트초이스 레벨 미등록 (DJ가 !랭킹등록으로 입력)';
-    else{
-      const rankOk=s.djRankMonthly!==null&&s.djRankMonthlyMonth===month&&s.choiceNextCut!==null,left=rankOk?s.djRankMonthly-s.choiceNextCut:null;
-      const next=s.choiceNextLevel===null?'다음 레벨 미등록':left===null?`다음 ${lv(s.choiceNextLevel)} (남은 등수 미등록)`:left<=0?`다음 ${lv(s.choiceNextLevel)} 조건 달성`:`다음 ${lv(s.choiceNextLevel)}까지 ${n(left)}등 남음`;
-      choice=`넥스트초이스 이전 ${lv(s.choicePrevLevel)} → 현재 ${lv(s.choiceNowLevel)} → ${next}${s.choiceMonth&&s.choiceMonth!==month?` (${monthLabel(s.choiceMonth)} 기준)`:''}`;
-    }
-    return `📻 ${name} 랭킹\n일라디 ${daily} · 월라디 ${monthly}\n${choice}`;
+    const stale=s.djRankMonthly!==null&&!!s.djRankMonthlyMonth&&s.djRankMonthlyMonth!==month;
+    const monthly=s.djRankMonthly!==null?`${n(s.djRankMonthly)}위${stale?`(${monthLabel(s.djRankMonthlyMonth)} 기준)`:''}`:legacy??'미등록';
+    const tierName=rank=>rank===null?'미등록':choiceTier(rank)?.name||'선정권 밖';
+    const current=s.djRankMonthly===null?'미등록':`${tierName(s.djRankMonthly)}${stale?`(${monthLabel(s.djRankMonthlyMonth)} 기준)`:''}`;
+    let next;
+    if(s.djRankMonthly===null)next='다음 등급은 월라디 순위를 입력하면 계산해요';
+    else if(stale)next='다음 등급까지는 이번 달 월라디 순위를 입력하면 계산해요';
+    else{const step=choiceNext(s.djRankMonthly);next=step?`다음 ${step.tier.name}까지 ${n(step.left)}등 남음`:'최고 등급(Top Choice)이에요';}
+    return `📻 ${name} 랭킹\n일라디 ${daily} · 월라디 ${monthly}\n초이스 이전 ${tierName(s.djRankPrevMonthly)} → 현재 ${current} → ${next}`;
   }
-  // DJ 전용 !랭킹등록: 일라디·월라디 순위와 초이스 레벨을 입력합니다. 입력한 값은 설정에 저장되고 !랭킹조회로 보여 줍니다.
-  //   !랭킹등록 일 12 · !랭킹등록 월 45 · !랭킹등록 초이스 이전 2 현재 3 다음 4 컷 30 · !랭킹등록 초기화
+  // DJ 전용 !랭킹등록: 일라디·월라디·지난달 월라디 순위를 입력합니다. 입력한 값은 설정에 저장되고 !랭킹조회로 보여 줍니다.
+  //   !랭킹등록 일 12 · !랭킹등록 월 45 · !랭킹등록 지난달 85 · !랭킹등록 초기화
   registerDjRank(r,bits,now,e){
     const s=r.settings,prev={...s},kind=bits[0];
-    const usage='사용법: !랭킹등록 일 12 · !랭킹등록 월 45 · !랭킹등록 초이스 이전 2 현재 3 다음 4 컷 30 · !랭킹등록 초기화';
-    const num=(value,max)=>{const text=String(value);if(!/^\d{1,7}$/.test(text)||Number(text)<1||Number(text)>max)fail(usage);return Number(text);};
+    const usage='사용법: !랭킹등록 일 12 · !랭킹등록 월 45 · !랭킹등록 지난달 85 · !랭킹등록 초기화 (등급은 월라디 순위로 자동 계산)';
+    const num=value=>{const text=String(value);if(!/^\d{1,7}$/.test(text)||Number(text)<1||Number(text)>1000000)fail(usage);return Number(text);};
     if(kind==='초기화'){
       if(bits.length!==1)fail(usage);
-      for(const key of ['djRankDaily','djRankMonthly','choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut'])s[key]=null;
+      for(const key of ['djRankDaily','djRankMonthly','djRankPrevMonthly'])s[key]=null;
     }else if(['일','일라디','일간'].includes(kind)){
-      if(bits.length!==2)fail(usage);s.djRankDaily=num(bits[1],1000000);
+      if(bits.length!==2)fail(usage);s.djRankDaily=num(bits[1]);
     }else if(['월','월라디','월간'].includes(kind)){
-      if(bits.length!==2)fail(usage);s.djRankMonthly=num(bits[1],1000000);
-    }else if(kind==='초이스'){
-      const fields={이전:'choicePrevLevel',현재:'choiceNowLevel',다음:'choiceNextLevel',컷:'choiceNextCut'},pairs=bits.slice(1);
-      if(!pairs.length||pairs.length%2)fail(usage);
-      for(let i=0;i<pairs.length;i+=2){const key=fields[pairs[i]];if(!key)fail(usage);s[key]=num(pairs[i+1],key==='choiceNextCut'?1000000:999);}
+      if(bits.length!==2)fail(usage);s.djRankMonthly=num(bits[1]);
+    }else if(['지난달','전월','저번달'].includes(kind)){
+      if(bits.length!==2)fail(usage);s.djRankPrevMonthly=num(bits[1]);
     }else fail(usage);
     stampDjRank(prev,s,now);
     r.settingsRevision=(r.settingsRevision||0)+1;
     this.store.log(r.id,e.user.id,'dj-rank-update',{kind},now);
     return this.djRankReply(r,now);
+  }
+  // ── 방송일수·방송시간 집계 (넥스트초이스 활동 기준) ──
+  // 봇이 방송에 연결돼 있던 시간만 셉니다. 스푼의 공식 기록이 아니라 참고용입니다.
+  // 5분 이상 이어진 방송만 더하고(2분 안에 끊겼다 다시 연결되면 한 방송으로 봄), 방송을 시작한 날(한국 시간) 기준으로 1시간 이상 방송한 날을 1일로 셉니다.
+  liveStart(r,now){
+    const session=r.liveSession;
+    if(session&&(session.open||now-session.last<=120000)){session.open=true;session.touched=now;return;}
+    this.liveFlush(r,now,true);
+    r.liveSession={start:now,last:now,touched:now,open:true};
+  }
+  // 방송 연결이 끊기면 세션을 닫습니다. 확인 신호가 오래 끊겼다면(서버 중단 등) 마지막 확인 시각+3분까지만 인정합니다.
+  liveEnd(r,now){
+    const session=r.liveSession;if(!session?.open)return;
+    session.open=false;session.last=Math.min(now,session.touched+180000);
+  }
+  // 점검 때마다 호출: 진행 중인 방송에 '확인 신호'를 남기고, 닫힌 지 2분이 지난 세션을 집계에 더합니다.
+  liveMaintain(r,now){
+    const session=r.liveSession;if(!session)return;
+    if(session.open&&r.live)session.touched=now;
+    else if(session.open&&!r.live)this.liveEnd(r,now);
+    this.liveFlush(r,now);
+  }
+  liveFlush(r,now,force=false){
+    const session=r.liveSession;if(!session||session.open)return;
+    if(!force&&now-session.last<=120000)return;
+    delete r.liveSession;this.addLiveMinutes(r,session.start,session.last);
+  }
+  // start~end 방송 시간을 달별 집계에 더합니다. 5분 미만은 더하지 않고, 최근 3개월만 보관합니다.
+  // 스푼의 집계 기준대로 방송 데이터는 **방송을 시작한 날(한국 시간)**의 기록입니다. 자정을 넘겨 끝나도 시작한 날로 세고,
+  // 달을 넘겨도 시작한 달로 셉니다. (예: 1월 31일 23:50 시작 ~ 2월 1일 00:10 종료 → 1월 31일 20분)
+  addLiveMinutes(r,start,end){
+    if(!(end-start>=300000))return;
+    r.liveStats??={};
+    const day=dates(start).day,bucket=(r.liveStats[day.slice(0,7)]??={days:{}});
+    bucket.days[day]=(bucket.days[day]||0)+(end-start)/60000;
+    for(const old of Object.keys(r.liveStats).sort().slice(0,-3))delete r.liveStats[old];
+  }
+  // 이번 달 집계: 방송일수(하루 60분 이상인 날 수)와 방송 분. 진행 중이거나 아직 정산 전인 세션도 포함해서 계산합니다.
+  liveSummary(r,now){
+    const month=dates(now).month,temp={liveStats:structuredClone(r.liveStats||{})},session=r.liveSession;
+    if(session)this.addLiveMinutes(temp,session.start,session.open?now:session.last);
+    const days=temp.liveStats[month]?.days||{},minutes=Object.values(days).reduce((sum,value)=>sum+value,0);
+    return {days:Object.values(days).filter(value=>value>=60).length,minutes};
+  }
+  // !초이스안내: Choice DJ 3단계 티어의 선정 순위·정산 비율·환전 처리일을 한 메시지로 안내합니다. (혜택 목록은 웹 관리 화면에서 확인)
+  choiceGuide(){
+    return `🏅 Choice DJ 티어 (선정 결과는 매월 1일 오후 6~7시 갱신)\n${CHOICE_TIERS.map(tier=>`${tier.name} ${tier.min}~${tier.max}위 · 정산 ${tier.settle}% · 환전 ${tier.payoutDays}영업일`).join('\n')}`;
+  }
+  // !초이스: 이번 달 방송일수·시간을 넥스트초이스 등급별 기준(Normal 15일·30시간, Top·Star 20일·45시간)과 비교해 보여 줍니다.
+  choiceReport(r,now){
+    const sum=this.liveSummary(r,now),hours=(minutes,round)=>`${round(minutes/6)/10}시간`;
+    const name=[...String(r.name||'방송')].slice(0,20).join('');
+    const left=tier=>{const dayLeft=Math.max(0,tier.days-sum.days),minuteLeft=Math.max(0,tier.hours*60-sum.minutes);return dayLeft===0&&minuteLeft===0?'✅ 달성':`${dayLeft}일·${hours(minuteLeft,Math.ceil)} 남음`;};
+    const [top,,normal]=CHOICE_TIERS;
+    return `📊 ${name} 이번 달 방송 ${sum.days}일 · ${hours(sum.minutes,Math.floor)}\nNormal Choice(${normal.days}일·${normal.hours}시간) ${left(normal)}\nTop·Star Choice(${top.days}일·${top.hours}시간) ${left(top)}\n※ 봇이 연결된 동안만 집계해 공식 기록과 다를 수 있어요`;
   }
   // ── 후원 대결 ──
   // 대결 상태는 방 데이터의 r.battle에 저장합니다: { id, status:'open', startedAt, endsAt, participants:{ 청취자ID:{ name, joinedAt, total, lastAt } } }

@@ -95,7 +95,7 @@ test('one listener or one room cannot flood the chat and repeated text is ignore
 // ───── 엔진 통합: 가짜 lifestyle로 AI·날씨 호출 없이 흐름만 검증 ─────
 function chatRoom(extra={}){
  const store=new Store();store.create('room','방송');
- if(Object.keys(extra).length)store.transaction('room',r=>Object.assign(r.settings,extra));
+ store.transaction('room',r=>Object.assign(r.settings,{chatMode:'auto'},extra)); // 기본값은 이제 all이지만, 이 파일의 기존 시험은 auto 동작을 검사합니다.
  let now=FRIDAY;const engine=new Engine(store,{now:()=>now,int:a=>a}),calls={parts:[],converse:[]};
  engine.lifestyle={
   resolveRegion:token=>KNOWN.has(token)?token:null,
@@ -207,18 +207,18 @@ test('weather requests in plain words keep working when the weather service fail
  assert.match((await t.say('서울 날씨 어때?')).text,/알아오지 못했어요/);
 });
 test('settings: free talk defaults on and is validated',()=>{
- const s=defaults();assert.equal(s.chatMode,'auto');assert.equal(s.chatName,'메이트');assert.equal(s.chatPersona,'');
+ const s=defaults();assert.equal(s.chatMode,'all');assert.equal(s.chatAllApplied,true);assert.equal(s.chatName,'메이트');assert.equal(s.chatPersona,'');
  for(const bad of [{chatMode:'loud'},{chatName:'메 이 트'},{chatName:'봇'},{chatName:'@메이트'},{chatPersona:'가'.repeat(201)}])assert.throws(()=>validateSettings({...defaults(),...bad}),/대화|봇 이름|말투/,JSON.stringify(bad));
  assert.equal(validateSettings({...defaults(),chatName:' 봄이 ',chatPersona:'😀'.repeat(200)}).chatName,'봄이');
  const store=new Store();store.create('old','옛 방송');
  store.db.prepare('UPDATE rooms SET data=? WHERE id=?').run(JSON.stringify((()=>{const r=store.load('old');delete r.settings.chatMode;delete r.settings.chatName;return r;})()),'old');
- assert.equal(store.load('old').settings.chatMode,'auto'); // 기존 방도 불러올 때 기본값이 채워집니다.
+ assert.equal(store.load('old').settings.chatMode,'all'); // 기존 방도 불러올 때 기본값이 채워집니다. (예전 저장본은 한 번만 '모든 채팅에 대답'으로 바뀝니다)
 });
 test('the auto-chat page offers the conversation mode, name and style safely escaped',()=>{
  const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const ui=createExtraUI({card:(title,body)=>`<section><h2>${title}</h2>${body}</section>`,toggle:()=>'',field:(label,key,value,type)=>`<input data-field="${key}" type="${type}" value="${esc(value)}">`,saveButton:()=>'',table:()=>'',empty:()=>'',esc});
  const html=ui.autoChat({...defaults(),chatMode:'call',chatName:'봄이',chatPersona:'<b>귀엽게</b>'});
- assert.match(html,/<select data-field="chatMode">/);assert.match(html,/<option value="call" selected>/);assert.match(html,/<option value="auto" >/);
+ assert.match(html,/<select data-field="chatMode">/);assert.match(html,/<option value="call" selected>/);assert.match(html,/<option value="auto" >/);assert.match(html,/<option value="all" >모든 채팅에 대답/);
  assert.match(html,/data-field="chatName" type="text" value="봄이"/);assert.match(html,/&lt;b&gt;귀엽게&lt;\/b&gt;/);assert.ok(!html.includes('<b>귀엽게'));
 });
 
@@ -263,4 +263,52 @@ test('without a configured AI the explicit chat command answers kindly instead o
  assert.deepEqual(await service.converse('skip',{room:'a'}),{text:null,reason:'skipped'});
  service.ai={configured:true,answer:async()=>{throw Error('한도');}};
  assert.deepEqual(await service.converse('안녕',{room:'a'}),{text:null,reason:'error',message:'한도'});
+});
+
+// ───── 모든 채팅에 대답(all) ─────
+test('all mode answers plain chat that auto mode stays quiet about, but not DJ, reactions, mentions or repeats',async()=>{
+ const text='오늘 저는 공원에서 산책을 했어요';
+ const auto=chatRoom();assert.equal((await auto.say(text)).text,null,'auto 모드는 평범한 말에는 가만히 있음');
+ const all=chatRoom({chatMode:'all'});
+ const out=await all.say(text);assert.equal(out.text,'네, 들었어요!');assert.equal(all.calls.converse.length,1);
+ assert.equal(all.calls.converse[0].context.mayskip,false,'모든 채팅에 대답하는 모드에서는 AI가 입을 다물지 않음');
+ // 반응·다른 사람 지목·DJ 본인·같은 말 도배는 답하지 않습니다.
+ all.advance(30000);assert.equal((await all.say('ㅋㅋㅋㅋ',{user:'u2',nickname:'둘째'})).text,null);
+ assert.equal((await all.say('@다른사람 점심 먹었어요',{user:'u2',nickname:'둘째'})).text,null);
+ assert.equal((await all.say('저는 오늘 일찍 퇴근했어요',{user:'dj',nickname:'DJ',isDj:true})).text,null);
+ assert.equal((await all.say('저는 오늘 일찍 퇴근했어요',{user:'room',nickname:'DJ계정'})).text,null,'방 주인 계정(봇 답변이 되돌아온 것 포함)은 제외');
+ assert.equal((await all.say(text,{user:'u3',nickname:'셋째'})).text,'네, 들었어요!');
+ all.advance(5000);assert.equal((await all.say(text,{user:'u3',nickname:'셋째'})).text,null,'같은 말 도배는 답하지 않음');
+ // 명령어(!)는 자유 대화로 보내지 않습니다.
+ assert.notEqual((await all.say('!오늘은 산책',{user:'u4',nickname:'넷째'})).text,'네, 들었어요!');
+});
+
+test('all mode: replies are limited per person, and chats inside the response gap are queued instead of dropped',async()=>{
+ const t=chatRoom({chatMode:'all'});
+ const first=await t.say('오늘 저는 집에서 쉬었어요',{user:'a1',nickname:'가'});
+ t.advance(500); // 방송 응답 간격(3초) 안에 다른 청취자가 말해도 버리지 않고 대기열에 쌓습니다.
+ const second=await t.say('저도 오늘은 푹 쉬었어요',{user:'a2',nickname:'나'});
+ assert.ok(first.text&&second.text);assert.equal(t.outbox().length,2);
+ // 같은 사람이 8초 안에 또 말하면 답하지 않습니다.
+ t.advance(2000);assert.equal((await t.say('그리고 내일은 일해요',{user:'a1',nickname:'가'})).text,null);
+ t.advance(9000);assert.ok((await t.say('그리고 내일은 일해요',{user:'a1',nickname:'가'})).text);
+});
+
+test('all mode: no AI call and no reply when the reply queue is already full',async()=>{
+ const t=chatRoom({chatMode:'all'});
+ for(let i=0;i<8;i++){t.advance(4000);await t.say('오늘은 날씨가 선선했어요 '+i,{user:'f'+i,nickname:'청취자'+i});}
+ assert.equal(t.outbox().length,8);
+ const calls=t.calls.converse.length;t.advance(4000);
+ const dropped=await t.say('저도 산책을 다녀왔어요',{user:'late',nickname:'늦은이'});
+ assert.equal(dropped.text,null);assert.equal(t.calls.converse.length,calls,'AI를 부르지 않음');
+});
+
+test('old rooms move to all chats once; later choices are kept',()=>{
+ const make=mutate=>{const store=new Store();store.create('x','X');store.db.prepare('UPDATE rooms SET data=? WHERE id=?').run(JSON.stringify((()=>{const r=store.load('x');mutate(r.settings);return r;})()),'x');return store.load('x').settings;};
+ assert.equal(make(s=>{s.chatMode='auto';delete s.chatAllApplied;}).chatMode,'all');
+ assert.equal(make(s=>{s.chatMode='call';delete s.chatAllApplied;}).chatMode,'call','부르면 대답을 골랐다면 유지');
+ assert.equal(make(s=>{s.chatMode='off';delete s.chatAllApplied;}).chatMode,'off');
+ assert.equal(make(s=>{s.chatMode='auto';s.chatAllApplied=true;}).chatMode,'auto','이미 한 번 적용한 뒤 DJ가 고른 자유 대화는 유지');
+ assert.equal(validateSettings({...defaults(),chatMode:'all'}).chatMode,'all');
+ assert.throws(()=>validateSettings({...defaults(),chatAllApplied:'yes'}),/대화 방식/);
 });

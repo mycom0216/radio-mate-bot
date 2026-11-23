@@ -98,15 +98,16 @@ export class Spoon {
               const {data}=f;const cfg=this.store.load(room).settings;
               const banned=cfg.bannedWords.some(w=>String(data.message).includes(w));
               if(banned)this.store.log(room,data.user.id,'banned-word',{message:data.message});
-              if(!banned){const out=await this.engine.handleAsync(room,{...data,id:createHash('sha256').update(f.id||`${data.sentTime}:${data.user.id}:${data.message}`).digest('hex'),delivery:true});if(out.text)this.kickOutbox(room);}
+              if(!banned){this.engine.noteSeen(room,data.user);const out=await this.engine.handleAsync(room,{...data,id:createHash('sha256').update(f.id||`${data.sentTime}:${data.user.id}:${data.message}`).digest('hex'),delivery:true});if(out.text)this.kickOutbox(room);}
             }else if(f.event==='presence'){
               this.engine.recordSpoonTemperature(room,f.data);
-              const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome){this.outbox.enqueue(room,'presence:'+createHash('sha256').update(f.id||`${f.data.time}:${f.data.user.id}`).digest('hex'),s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));if(!s.quiet)this.kickOutbox(room);}}
+              this.engine.noteSeen(room,f.data.user);const key=`${room}:${f.data.user.id}`;if(!this.greeted.has(key)){this.greeted.add(key);const s=this.store.load(room).settings;if(s.welcome){this.outbox.enqueue(room,'presence:'+createHash('sha256').update(f.id||`${f.data.time}:${f.data.user.id}`).digest('hex'),s.welcome.replaceAll('{name}',f.data.user.nickname||'청취자'));if(!s.quiet)this.kickOutbox(room);}}
             }else if(f.event==='like'){
               const out=this.engine.likeGreeting(room,{...f.data,id:f.id||`${f.data.time}:${f.data.user.id}`},{commit:false});
               if(out.text&&await this.send(room,out.text))this.engine.recordLike(room,out.receipt);
             }else if(f.event==='donation'){
               this.captures.record(room,f);
+              this.engine.noteSeen(room,f.data.user);
               const s=this.store.load(room).settings;
               // 후원 한 건의 처리(대결 합산·감사 인사·후원 보상·큰 후원 복권)는 로컬 테스트의 '모의 후원'과 같은 코드(engine.processDonation)를 씁니다.
               const result=this.engine.processDonation(room,{id:f.id,data:f.data});
@@ -122,7 +123,9 @@ export class Spoon {
       await new Promise(resolve=>{const timer=setTimeout(done,backoff);function done(){clearTimeout(timer);signal.removeEventListener('abort',done);resolve();}signal.addEventListener('abort',done,{once:true});});backoff=Math.min(60000,backoff*1.5);
     }}finally{if(this.running.get(room)===controller&&this.store.load(room)){this.setLive(room,false);this.running.delete(room);}}
   }
-  setLive(room,live){this.store.transaction(room,r=>{this.engine.syncBuffs(r);if(r.live!==live)r.listenerSnapshot={};r.live=live;this.engine.syncBuffs(r);if(live&&!r.introDueAt)r.introDueAt=Date.now()+600000;});}
+  setLive(room,live){this.store.transaction(room,r=>{this.engine.syncBuffs(r);if(r.live!==live)r.listenerSnapshot={};r.live=live;this.engine.syncBuffs(r);if(live&&!r.introDueAt)r.introDueAt=Date.now()+600000;
+    // 방송일수·방송시간 집계: 연결되면 방송 세션을 열고, 끊기면 닫습니다.
+    if(live)this.engine.liveStart(r,Date.now());else this.engine.liveEnd(r,Date.now());});}
   async pollListeners(room){
     try{
       const token=await this.access(room),listeners=[],seen=new Set();let cursor=null;
@@ -145,6 +148,7 @@ export class Spoon {
       let notice=null,isIntro=false,autoChat=null,announcement=null,quiz=null;
       this.store.transaction(id,r=>{
         this.engine.reset(r);
+        this.engine.liveMaintain(r,Date.now()); // 방송 시간 집계: 진행 중 확인 신호와 지난 세션 정산
         // 시간이 다 된 후원 대결을 끝내고 순위별 보상을 지급합니다. 방송 중이고 조용 모드가 아니면 결과를 채팅으로 알립니다.
         const battleEnded=this.engine.battleTick(r,Date.now());
         if(battleEnded&&r.live&&!r.settings.quiet)this.outbox.enqueue(id,'battle-end:'+battleEnded.id,battleEnded.text);

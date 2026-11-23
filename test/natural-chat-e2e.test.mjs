@@ -84,7 +84,7 @@ test('the demo chat window and the settings API support free talk, with validati
     const room = async () => (await fetch(address + '/api/room', { headers })).json();
     // 기본값은 자유 대화입니다. 청취자가 명령어 없이 인사하면 닉네임을 넣어 대답합니다.
     let current = await room();
-    assert.equal(current.settings.chatMode, 'auto');assert.equal(current.settings.chatName, '메이트');
+    assert.equal(current.settings.chatMode, 'all');assert.equal(current.settings.chatName, '메이트');
     res = await post('/api/test', { message: '안녕하세요', user: 'listener-a', name: '민수' });
     assert.equal(res.status, 200);assert.match((await res.json()).text, /민수님/);
     res = await post('/api/test', { message: '오늘 노래 좋네요', user: 'listener-b', name: '지영' });
