@@ -25,7 +25,7 @@ function setup() {
   const tick = () => store.transaction('room1', r => engine.battleTick(r, time));
   // 세 명(a1·b1·c1)이 대결에 참가한 상태를 만들어 줍니다.
   const startWithThree = () => {
-    dj('!대결 시작 5');
+    dj('!대결 개인 시작 5');
     for (const id of ['a1', 'b1', 'c1']) say('!대결', { id, name: id });
   };
   return { store, engine, say, dj, donate, advance, room, user, setSettings, tick, startWithThree };
@@ -39,22 +39,22 @@ test('기본 설정: 켜짐, 5분, 선물 안내 10스푼, 보상 300/150/50', (
 
 test('DJ만 시작·종료·취소할 수 있고, 분을 생략하면 설정값을 씁니다', () => {
   const f = setup();
-  assert.match(f.say('!대결 시작 5').text, /DJ 전용/);
+  assert.match(f.say('!대결 개인 시작 5').text, /DJ 전용/);
   assert.match(f.dj('!대결 종료').text, /진행 중인 대결이 없습니다/);
-  assert.match(f.dj('!대결 시작').text, /후원 대결 시작! 5분/);
+  assert.match(f.dj('!대결 개인 시작').text, /후원 대결 시작! 5분/);
   assert.equal(f.room().battle.endsAt - f.room().battle.startedAt, 5 * 60000);
-  assert.match(f.dj('!대결 시작 3').text, /이미 진행 중인 대결/);
+  assert.match(f.dj('!대결 개인 시작 3').text, /이미 진행 중인 대결/);
   assert.match(f.say('!대결 종료', { id: 'u2' }).text, /DJ 전용/);
   assert.match(f.say('!대결 취소', { id: 'u2' }).text, /DJ 전용/);
   assert.match(f.dj('!대결 취소').text, /취소했어요/);
   assert.equal(f.room().battle, undefined);
-  for (const bad of ['0', '121', 'abc', '1.5']) assert.match(f.dj(`!대결 시작 ${bad}`).text, /사용법: !대결 시작 5/);
+  for (const bad of ['0', '121', 'abc', '1.5']) assert.match(f.dj(`!대결 개인 시작 ${bad}`).text, /사용법: !대결 시작 5/);
 });
 
 test('방송 주인 계정은 isDj가 없어도 스푼 스트림(delivery)에서 오면 DJ로 인정합니다', () => {
   const f = setup();
   // 방 ID(room1)와 같은 계정이 실제 스트림에서 보낸 메시지
-  assert.match(f.say('!대결 시작 2', { id: 'room1', name: '주인', delivery: true }).text, /후원 대결 시작! 2분/);
+  assert.match(f.say('!대결 개인 시작 2', { id: 'room1', name: '주인', delivery: true }).text, /후원 대결 시작! 2분/);
   // 같은 ID라도 스트림이 아닌 경로(delivery 없음)에서는 DJ가 아닙니다.
   assert.match(f.say('!대결 종료', { id: 'room1', name: '주인', delivery: false }).text, /DJ 전용/);
 });
@@ -62,7 +62,7 @@ test('방송 주인 계정은 isDj가 없어도 스푼 스트림(delivery)에서
 test('참가: 프로필이 자동으로 만들어지고 한 사람은 한 번만 참가합니다', () => {
   const f = setup();
   assert.match(f.say('!대결', { id: 'a1', name: '가' }).text, /진행 중인 대결이 없어요/);
-  f.dj('!대결 시작 5');
+  f.dj('!대결 개인 시작 5');
   const joined = f.say('!대결', { id: 'new1', name: '새사람' }).text;
   assert.match(joined, /새사람님 대결 참가! \(참가 1명\)/);
   assert.equal(f.user('new1').name, '새사람');
@@ -75,7 +75,7 @@ test('참가: 프로필이 자동으로 만들어지고 한 사람은 한 번만
 
 test('참가자의 후원만, 참가한 뒤의 후원만, 같은 알림은 한 번만 합산합니다', () => {
   const f = setup();
-  f.dj('!대결 시작 5');
+  f.dj('!대결 개인 시작 5');
   assert.equal(f.donate('a1', 40), false, '참가 전 후원은 합산하지 않습니다');
   f.say('!대결', { id: 'a1', name: '가' });
   assert.equal(f.donate('a1', 30, 'same'), true);
@@ -134,7 +134,7 @@ test('시간이 다 되면 점검에서 자동 종료되고, 보상은 한 번�
   assert.equal(f.tick(), null, '이미 끝난 대결은 다시 처리하지 않습니다');
   assert.equal(f.user('b1').pt, 300);
   // 시간이 지난 뒤에는 후원 합산도 참가도 받지 않습니다.
-  f.dj('!대결 시작 1');
+  f.dj('!대결 개인 시작 1');
   f.say('!대결', { id: 'a1', name: 'a1' });
   f.advance(2 * 60000);
   assert.equal(f.donate('a1', 50), false);
@@ -157,14 +157,14 @@ test('설정에서 끄면 동작하지 않고, 선물 안내를 0으로 두면 �
   assert.ok(!result.includes('선물 약속'));
   assert.match(result, /1등 a1 100스푼 \+1PT · 2등 b1 50스푼/);
   f.setSettings({ battleEnabled: false });
-  assert.match(f.dj('!대결 시작').text, /후원 대결이 꺼져 있습니다/);
+  assert.match(f.dj('!대결 개인 시작').text, /후원 대결이 꺼져 있습니다/);
   assert.equal(f.donate('a1', 10), false);
 });
 
 test('결과 메시지는 200자를 넘지 않습니다 (큰 보상·긴 닉네임)', () => {
   const f = setup();
   f.setSettings({ battleFirstPt: 1000000, battleFirstExp: 1000000, battleSecondPt: 1000000, battleSecondExp: 1000000, battleThirdPt: 1000000, battleThirdExp: 1000000, battleGiftSpoons: 1000 });
-  f.dj('!대결 시작 5');
+  f.dj('!대결 개인 시작 5');
   for (const [id, total] of [['x1', 99999], ['x2', 88888], ['x3', 77777]]) { f.say('!대결', { id, name: '아주아주아주긴닉네임입니다' }); f.donate(id, total); }
   const text = f.dj('!대결 종료').text;
   assert.ok([...text].length <= 200, `길이 ${[...text].length}`);
@@ -203,10 +203,11 @@ test('웹 관리 화면의 후원 대결 카드가 설정 입력칸과 안내를
   };
   const s = { ...defaults() };
   const html = render(s);
-  for (const key of ['battleEnabled', 'battleMinutes', 'battleFirstPt', 'battleFirstExp', 'battleSecondPt', 'battleSecondExp', 'battleThirdPt', 'battleThirdExp', 'battleGiftSpoons'])
+  for (const key of ['battleEnabled', 'battleMinutes', 'battleTargetSpoons', 'battleTeamGiftSpoons', 'battleFirstPt', 'battleFirstExp', 'battleSecondPt', 'battleSecondExp', 'battleThirdPt', 'battleThirdExp', 'battleGiftSpoons'])
     assert.ok(html.includes(`:${key}]`), key);
   assert.ok(html.includes('후원 대결 · !대결') && html.includes('[save]'));
   assert.ok(html.includes('봇은 스푼을 대신 보관하거나 사용자끼리 옮길 수 없습니다'));
-  assert.ok(html.includes('5분 · 1등 300PT+300EXP / 2등 150PT+150EXP / 3등 50PT+50EXP'));
+  assert.ok(html.includes('지금 설정: 5분 · 팀 목표 100스푼 · 승리 보상 300PT+300EXP'));
+  assert.ok(html.includes('!대결 청') && html.includes('!대결 백') && html.includes('먼저 모은 팀이 바로 승리') && html.includes('!대결 개인 시작 5'));
   assert.ok(render({ ...s, battleEnabled: false }).includes('지금 설정: 꺼짐'));
 });

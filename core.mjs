@@ -49,6 +49,12 @@ export function defaults() {
     // 복권 등수별 보상: 1등(3개 일치)은 EXP+PT, 2등(2개)은 EXP만, 3등(1개)은 PT만 줍니다. 값은 관리 화면에서 바꿀 수 있습니다.
     // 낚시 결과에 '누가 잡았는지' 표시하는 방식: both(닉네임+고유 ID) / nickname / id / off(표시 안 함)
     fishingWho:'both',
+    // 화면 캡처 기준: 후원 한 건이 이 스푼 이상일 때만 확장 기능이 방송 화면을 캡처합니다. (기본 300스푼)
+    screenCaptureMin:300,
+    // DJ 랭킹(일라디·월라디)과 넥스트초이스 레벨: 스푼이 순위를 API로 알려 주지 않아 DJ가 직접 입력합니다. 빈 값(null)은 미등록입니다.
+    // 날짜·월 표시(…Date/…Month)는 값을 입력한 때를 기록해, 오래된 값에 '(기준일)'을 붙이는 데 씁니다.
+    djRankDaily:null, djRankDailyDate:'', djRankMonthly:null, djRankMonthlyMonth:'',
+    choicePrevLevel:null, choiceNowLevel:null, choiceNextLevel:null, choiceNextCut:null, choiceMonth:'',
     // 낚시 행운 보너스(%): 고급 이상 물고기(황금주사위 제외)의 가중치를 이만큼 늘려 PT가 큰 물고기가 더 자주 나오게 합니다. 0이면 보너스 없음.
     fishingLuck:100,
     // 후원 레벨 보상: 한 번에 기준 스푼 이상 후원한 청취자에게 '스푼 수 × 스푼당 EXP'를 줘서 레벨이 오르게 합니다.
@@ -58,6 +64,8 @@ export function defaults() {
     // 후원 대결: !대결로 참가한 사람들이 정해진 시간 동안 DJ에게 후원한 스푼 합계로 1·2·3등을 겨룹니다. 순위별 보상(PT·EXP)은 자동 지급하고,
     // 실제 스푼 선물(battleGiftSpoons, 0이면 안내 없음)은 봇이 옮길 수 없어서 채팅으로 안내만 합니다.
     battleEnabled:true, battleMinutes:5, battleGiftSpoons:10,
+    // 팀 대결(청팀·백팀): 목표 스푼을 먼저 모은 팀이 이기고, 진 팀이 이긴 팀에 줄 스푼은 '선물 약속' 안내만 합니다. (0이면 안내 없음)
+    battleTargetSpoons:100, battleTeamGiftSpoons:100,
     battleFirstPt:300, battleFirstExp:300, battleSecondPt:150, battleSecondExp:150, battleThirdPt:50, battleThirdExp:50,
     lotteryFirstExp:300, lotteryFirstPt:300, lotterySecondExp:150, lotterySecondPt:0, lotteryThirdExp:0, lotteryThirdPt:50,
     monthlyRank:'', monthlyRankMonth:'', playlistMode:false, playlistTitle:'플레이리스트 방송',
@@ -75,6 +83,17 @@ export function dates(ms=Date.now()) {
   const day = new Date(ms+9*3600000).toISOString().slice(0,10);
   return {day,month:day.slice(0,7)};
 }
+// DJ가 입력한 랭킹·초이스 레벨이 바뀌면 '언제 입력했는지'를 기록합니다. 오래된 값에는 답변에 (기준일)을 붙이기 위해서입니다.
+// 웹 설정 저장과 채팅의 !랭킹등록이 같은 함수를 씁니다. prev는 바뀌기 전 설정, next는 바뀐 설정입니다.
+export function stampDjRank(prev,next,ms=Date.now()){
+  const {day,month}=dates(ms);
+  const changed=keys=>keys.some(key=>next[key]!==prev[key]);
+  if(next.djRankDaily===null)next.djRankDailyDate='';else if(changed(['djRankDaily'])||!next.djRankDailyDate)next.djRankDailyDate=day;
+  if(next.djRankMonthly===null)next.djRankMonthlyMonth='';else if(changed(['djRankMonthly'])||!next.djRankMonthlyMonth)next.djRankMonthlyMonth=month;
+  const levels=['choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut'];
+  if(levels.every(key=>next[key]===null))next.choiceMonth='';else if(changed(levels)||!next.choiceMonth)next.choiceMonth=month;
+  return next;
+}
 export function validateSettings(s) {
   // 이 기능이 생기기 전에 저장한 설정에는 메뉴판이 없으므로 빈 메뉴판부터 시작합니다.
   s.donationReactions??={};
@@ -91,6 +110,23 @@ export function validateSettings(s) {
   if(typeof s.battleEnabled!=='boolean'||!Number.isSafeInteger(s.battleMinutes)||s.battleMinutes<1||s.battleMinutes>120)throw Error('후원 대결은 켜기/끄기와 기본 시간(1~120분 정수)으로 설정하세요.');
   if(!Number.isSafeInteger(s.battleGiftSpoons)||s.battleGiftSpoons<0||s.battleGiftSpoons>1000)throw Error('후원 대결 스푼 선물 안내는 0~1000 사이의 정수로 입력하세요. (0이면 안내하지 않습니다)');
   for(const key of ['battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'])if(!Number.isSafeInteger(s[key])||s[key]<0||s[key]>1000000)throw Error('후원 대결 순위 보상은 0~1,000,000 사이의 정수로 입력하세요.');
+  // DJ 랭킹·넥스트초이스 레벨: 비어 있거나 0이면 미등록(null)으로 봅니다. 순위·컷은 1~1,000,000, 레벨은 1~999의 정수입니다.
+  for(const [key,label,max] of [['djRankDaily','일라디 순위',1000000],['djRankMonthly','월라디 순위',1000000],['choicePrevLevel','이전 초이스 레벨',999],['choiceNowLevel','현재 초이스 레벨',999],['choiceNextLevel','다음 초이스 레벨',999],['choiceNextCut','다음 레벨 진입 순위',1000000]]){
+    if(s[key]===undefined||s[key]===0||s[key]==='')s[key]=null;
+    if(s[key]!==null&&(!Number.isSafeInteger(s[key])||s[key]<1||s[key]>max))throw Error(`${label}은(는) 1~${max.toLocaleString('en-US')} 사이의 정수로 입력하거나 비워 두세요.`);
+  }
+  for(const key of ['djRankDailyDate','djRankMonthlyMonth','choiceMonth']){
+    if(s[key]===undefined)s[key]='';
+    if(typeof s[key]!=='string'||s[key].length>10)throw Error('DJ 랭킹 기준 날짜 값이 올바르지 않습니다.');
+  }
+  // 팀 대결 목표 스푼(1~1,000,000)과 진 팀이 이긴 팀에 줄 선물 약속 스푼(0~100,000, 0이면 안내 없음)
+  if(s.battleTargetSpoons===undefined)s.battleTargetSpoons=100;
+  if(s.battleTeamGiftSpoons===undefined)s.battleTeamGiftSpoons=100;
+  if(!Number.isSafeInteger(s.battleTargetSpoons)||s.battleTargetSpoons<1||s.battleTargetSpoons>1000000)throw Error('후원 팀 대결 목표 스푼은 1~1,000,000 사이의 정수로 입력하세요.');
+  if(!Number.isSafeInteger(s.battleTeamGiftSpoons)||s.battleTeamGiftSpoons<0||s.battleTeamGiftSpoons>100000)throw Error('후원 팀 대결 선물 약속 스푼은 0~100,000 사이의 정수로 입력하세요. (0이면 안내하지 않습니다)');
+  // 화면 캡처 기준 스푼(1 이상 정수). 이 기능이 생기기 전에 저장한 설정에는 없으므로 값이 없을 때만 기본값을 채웁니다.
+  if(s.screenCaptureMin===undefined)s.screenCaptureMin=300;
+  if(!Number.isSafeInteger(s.screenCaptureMin)||s.screenCaptureMin<1||s.screenCaptureMin>100000000)throw Error('화면 캡처 기준 스푼은 1 이상의 정수로 입력하세요.');
   // 낚시 행운 보너스(0~1000%)와 후원 레벨 보상 설정입니다. 이전 설정에는 없으므로 값이 없을 때만 기본값을 채웁니다.
   if(s.fishingLuck===undefined)s.fishingLuck=100;
   if(s.donationExpEnabled===undefined)s.donationExpEnabled=true;
@@ -153,12 +189,12 @@ export function validateSettings(s) {
 const freshUser=(id,name,month)=>({id,name,month,exp:0,pt:0,tickets:0,attendance:'',daily:{day:'',fishExp:0,fishPt:0,oddPt:0,totalPt:0},bag:{},buffs:{},book:{},keeps:[],lastCommand:0});
 const n=x=>Number(x).toLocaleString('ko-KR');
 // 느낌표 뒤 첫 낱말이 이 목록에 있으면 진짜 명령어입니다. "!간호사"처럼 정답만 입력한 말과 구분하는 데 쓰며, 겹치면 명령어가 우선입니다.
-const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','애청온도','온도','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
+const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','애청온도','온도','라디오메이트','봇호출','랭크','랭크조회','랭킹등록','랭크등록','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
 // 느낌표로 시작하는 말 중에서 메뉴판을 봇이 알아듣는 명령 목록에 넣습니다.
 KNOWN_COMMANDS.push('메뉴판');
 // 아래 설정은 해당 기능이 생기기 전에 저장된 방에는 없습니다. Store.load가 없는 값을 기본값으로 채워서,
 // 웹 관리 화면에서 설정을 한 번 저장하기 전에도 기능이 정상 동작하게 합니다.
-const NEW_SETTING_KEYS=['fishingWho','fishingLuck','donationTicketEnabled','donationTicketMin','donationTicketCount','donationExpEnabled','donationExpMin','donationExpPerSpoon','donationDonorTicketEnabled','donationDonorTicketMin','donationDonorTicketCount','lotteryFirstExp','lotteryFirstPt','lotterySecondExp','lotterySecondPt','lotteryThirdExp','lotteryThirdPt','battleEnabled','battleMinutes','battleGiftSpoons','battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'];
+const NEW_SETTING_KEYS=['djRankDaily','djRankDailyDate','djRankMonthly','djRankMonthlyMonth','choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut','choiceMonth','battleTargetSpoons','battleTeamGiftSpoons','screenCaptureMin','fishingWho','fishingLuck','donationTicketEnabled','donationTicketMin','donationTicketCount','donationExpEnabled','donationExpMin','donationExpPerSpoon','donationDonorTicketEnabled','donationDonorTicketMin','donationDonorTicketCount','lotteryFirstExp','lotteryFirstPt','lotterySecondExp','lotterySecondPt','lotteryThirdExp','lotteryThirdPt','battleEnabled','battleMinutes','battleGiftSpoons','battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'];
 const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','계정연결','대결','조용','게임','구매','포기','취소']);
 // 0, 음수, 소수는 받지 않습니다. 컴퓨터가 정확하게 기억할 수 있는 양의 정수만 허용합니다.
 const validReactionAmount=amount=>/^[1-9]\d*$/.test(amount)&&Number.isSafeInteger(Number(amount));
@@ -537,6 +573,11 @@ export class Engine {
     if(['조용','복권지급','계정연결'].includes(cmd))fail('DJ 전용 명령어입니다.');
     // !대결: 참가·현황은 누구나, 시작·종료·취소는 DJ만 (자세한 규칙은 battleCommand)
     if(cmd==='대결')return this.battleCommand(r,e,bits,dj,now,answer);
+    // DJ가 자기 방송의 순위·초이스 레벨을 채팅으로 입력합니다. (스푼이 순위를 API로 주지 않아 직접 입력)
+    if(cmd==='랭킹등록'||cmd==='랭크등록'){
+      if(!dj)fail('DJ 전용 명령어입니다.');
+      return answer(this.registerDjRank(r,bits,now,e));
+    }
 
     const gameToggle=['게임','낚시','홀짝'].includes(cmd)&&['on','off'].includes(arg),gameStatus=cmd==='게임'&&arg==='상태';
     if(gameToggle&&arg==='off'&&!dj)fail('게임을 끄는 OFF 명령은 DJ 전용입니다.');
@@ -595,8 +636,9 @@ export class Engine {
       // 목록이 길면 여러 페이지로 나눕니다. '!메뉴판 2'를 입력하면 두 번째 페이지를 보여줍니다.
       return answer(chatPage('후원 메뉴판',entries.map(([amount,reaction])=>`${n(Number(amount))}스푼 · ${reaction}`),arg,cmd,'등록된 후원 리액션이 없습니다.'));
     }
-    if(cmd==='랭크')return answer(s.monthlyRank&&s.monthlyRankMonth===dates(now).month?`이번 달 넥스트초이스: ${s.monthlyRank} (DJ 수동 등록)`:'이번 달 순위 미등록 — 넥스트초이스 → 이번 달에서 확인해주세요.');
-    if(['랭킹','랭킹조회','애청랭킹'].includes(cmd))return answer(chatPage('애청지수 순위',affinityRank(r.users).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(affinityScore(v))}점`),arg,'랭킹','등록된 청취자가 없습니다.'));
+    // DJ 전용 정보: 이 방송 DJ의 일라디·월라디 순위와 넥스트초이스 레벨 (!랭크·!랭킹조회·!랭크조회)
+    if(['랭크','랭킹조회','랭크조회'].includes(cmd))return answer(this.djRankReply(r,now));
+    if(['랭킹','애청랭킹'].includes(cmd))return answer(chatPage('애청지수 순위',affinityRank(r.users).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(affinityScore(v))}점`),arg,'랭킹','등록된 청취자가 없습니다.'));
     if(cmd==='경험치랭킹')return answer(chatPage('경험치 순위',Object.values(r.users).sort((a,b)=>b.exp-a.exp||a.id.localeCompare(b.id)).map((v,i)=>`${i+1}. ${[...v.name].slice(0,25).join('')} ${n(v.exp)} EXP`),arg,cmd,'등록된 청취자가 없습니다.'));
     if(['라디오메이트','봇호출'].includes(cmd))return answer('라디오메이트 명령 수신 중입니다. 다른 DJ 방송 연결은 라디오메이트 공용 HTTPS 화면에서 해당 DJ 계정으로 스푼 연결에 동의해 주세요. 방송이 시작되면 봇이 자동 접속합니다.');
     if(cmd==='이전곡'){
@@ -811,7 +853,7 @@ export class Engine {
     if(!room)return {messages:[],battleCounted:false};
     const s=room.settings,hash=createHash('sha256').update(id||JSON.stringify(data)).digest('hex'),event={id:hash,amount:data.amount,user:data.user},messages=[];
     // 후원 대결 중이면 참가자의 후원 스푼을 합산합니다. (참가 후의 후원만, 같은 후원은 한 번만)
-    const battleCounted=this.battleDonation(roomId,event);
+    const battle=this.battleDonationDetail(roomId,event),battleCounted=battle.counted;
     // 후원 금액 10을 메뉴판의 '10' 항목에서 찾고, 없으면 기본 감사 인사를 씁니다. 후원자 이름을 모르면 '청취자'라고 부릅니다.
     const amount=String(data.amount),name=data.user?.nickname||'청취자',reactions=s.donationReactions??{};
     const template=Object.hasOwn(reactions,amount)?reactions[amount]:s.donation;
@@ -822,7 +864,9 @@ export class Engine {
     // 큰 후원이면 등록된 모든 청취자에게 복권을 지급합니다. (설정에서 켠 경우에만)
     const bonus=this.donationTicketsToAll(roomId,event);
     if(bonus.text)messages.push({key:'donation-tickets:'+hash,text:bonus.text});
-    return {messages,battleCounted};
+    // 이 후원으로 팀 대결의 승부가 났다면 결과 발표를 맨 끝에 붙입니다.
+    if(battle.ended)messages.push({key:'battle-end:'+battle.ended.id,text:battle.ended.text});
+    return {messages,battleCounted,battleEnded:!!battle.ended};
   }
   // 한 번에 기준 스푼 이상 후원한 청취자에게 EXP를 주어 레벨이 오르게 합니다. (설정에서 켠 경우에만 동작합니다.)
   // event: { id: 후원을 구별하는 값, amount: 후원 스푼 수, user: 후원자 { id, nickname } }
@@ -864,6 +908,50 @@ export class Engine {
     const head=`${result.name}님 ${n(amount)}스푼 후원! +${n(exp)} EXP`;
     return {text:result.levelAfter>result.levelBefore?`🆙 ${head} · Lv.${result.levelBefore} → Lv.${result.levelAfter} 레벨 업!`:`✨ ${head} · Lv.${result.levelAfter} (다음 레벨까지 ${n(result.toNext)} EXP)`,exp,levelBefore:result.levelBefore,levelAfter:result.levelAfter};
   }
+  // ── DJ 랭킹 · 넥스트초이스 레벨 ──
+  // 이 방송 DJ의 일라디(일간)·월라디(월간) 순위와 넥스트초이스 레벨을 한 번에 보여 줍니다. (방마다 따로 저장되므로 그 DJ 것만 나옵니다)
+  // 순서: 일라디 → 월라디 → 이전 초이스 레벨 → 현재 레벨 → 다음 레벨까지 남은 등수
+  // 남은 등수 = 월라디 순위 − 다음 레벨 진입 순위(컷). 컷 이내로 들어왔으면 '조건 달성'으로 보여 줍니다.
+  djRankReply(r,now){
+    const s=r.settings,{day,month}=dates(now),monthLabel=value=>`${Number(String(value).slice(5))}월`;
+    const name=[...String(r.name||'방송')].slice(0,20).join('');
+    const daily=s.djRankDaily===null?'미등록':`${n(s.djRankDaily)}위${s.djRankDailyDate&&s.djRankDailyDate!==day?`(${s.djRankDailyDate.slice(5)} 기준)`:''}`;
+    // 예전 !랭크의 '이번 달 넥스트초이스' 직접 입력 문구가 있으면 월라디 칸에 대신 보여 줍니다.
+    const legacy=s.djRankMonthly===null&&s.monthlyRank&&s.monthlyRankMonth===month?s.monthlyRank:null;
+    const monthly=s.djRankMonthly!==null?`${n(s.djRankMonthly)}위${s.djRankMonthlyMonth&&s.djRankMonthlyMonth!==month?`(${monthLabel(s.djRankMonthlyMonth)} 기준)`:''}`:legacy??'미등록';
+    const lv=value=>value===null?'-':`Lv.${value}`;
+    let choice;
+    if([s.choicePrevLevel,s.choiceNowLevel,s.choiceNextLevel].every(value=>value===null))choice='넥스트초이스 레벨 미등록 (DJ가 !랭킹등록으로 입력)';
+    else{
+      const rankOk=s.djRankMonthly!==null&&s.djRankMonthlyMonth===month&&s.choiceNextCut!==null,left=rankOk?s.djRankMonthly-s.choiceNextCut:null;
+      const next=s.choiceNextLevel===null?'다음 레벨 미등록':left===null?`다음 ${lv(s.choiceNextLevel)} (남은 등수 미등록)`:left<=0?`다음 ${lv(s.choiceNextLevel)} 조건 달성`:`다음 ${lv(s.choiceNextLevel)}까지 ${n(left)}등 남음`;
+      choice=`넥스트초이스 이전 ${lv(s.choicePrevLevel)} → 현재 ${lv(s.choiceNowLevel)} → ${next}${s.choiceMonth&&s.choiceMonth!==month?` (${monthLabel(s.choiceMonth)} 기준)`:''}`;
+    }
+    return `📻 ${name} 랭킹\n일라디 ${daily} · 월라디 ${monthly}\n${choice}`;
+  }
+  // DJ 전용 !랭킹등록: 일라디·월라디 순위와 초이스 레벨을 입력합니다. 입력한 값은 설정에 저장되고 !랭킹조회로 보여 줍니다.
+  //   !랭킹등록 일 12 · !랭킹등록 월 45 · !랭킹등록 초이스 이전 2 현재 3 다음 4 컷 30 · !랭킹등록 초기화
+  registerDjRank(r,bits,now,e){
+    const s=r.settings,prev={...s},kind=bits[0];
+    const usage='사용법: !랭킹등록 일 12 · !랭킹등록 월 45 · !랭킹등록 초이스 이전 2 현재 3 다음 4 컷 30 · !랭킹등록 초기화';
+    const num=(value,max)=>{const text=String(value);if(!/^\d{1,7}$/.test(text)||Number(text)<1||Number(text)>max)fail(usage);return Number(text);};
+    if(kind==='초기화'){
+      if(bits.length!==1)fail(usage);
+      for(const key of ['djRankDaily','djRankMonthly','choicePrevLevel','choiceNowLevel','choiceNextLevel','choiceNextCut'])s[key]=null;
+    }else if(['일','일라디','일간'].includes(kind)){
+      if(bits.length!==2)fail(usage);s.djRankDaily=num(bits[1],1000000);
+    }else if(['월','월라디','월간'].includes(kind)){
+      if(bits.length!==2)fail(usage);s.djRankMonthly=num(bits[1],1000000);
+    }else if(kind==='초이스'){
+      const fields={이전:'choicePrevLevel',현재:'choiceNowLevel',다음:'choiceNextLevel',컷:'choiceNextCut'},pairs=bits.slice(1);
+      if(!pairs.length||pairs.length%2)fail(usage);
+      for(let i=0;i<pairs.length;i+=2){const key=fields[pairs[i]];if(!key)fail(usage);s[key]=num(pairs[i+1],key==='choiceNextCut'?1000000:999);}
+    }else fail(usage);
+    stampDjRank(prev,s,now);
+    r.settingsRevision=(r.settingsRevision||0)+1;
+    this.store.log(r.id,e.user.id,'dj-rank-update',{kind},now);
+    return this.djRankReply(r,now);
+  }
   // ── 후원 대결 ──
   // 대결 상태는 방 데이터의 r.battle에 저장합니다: { id, status:'open', startedAt, endsAt, participants:{ 청취자ID:{ name, joinedAt, total, lastAt } } }
   // 끝난 대결은 r.battle을 지우고 요약만 r.lastBattle에 남깁니다.
@@ -874,6 +962,8 @@ export class Engine {
   }
   // 대결을 끝내고 순위별 보상(PT·EXP)을 지급합니다. 후원한 참가자가 2명 미만이면 무효 처리하고 보상은 주지 않습니다.
   finishBattle(r,now){
+    // 팀 대결은 팀 결과로 끝냅니다. (직접 종료하면 목표에 먼저 닿은 팀이 없으므로 승부 없음)
+    if(r.battle.mode==='team')return this.finishTeamBattle(r,now,null);
     const b=r.battle,s=r.settings,ranking=this.battleRanking(b),participants=Object.keys(b.participants).length;
     delete r.battle;
     const short=name=>[...String(name||'청취자')].slice(0,7).join('');
@@ -897,6 +987,39 @@ export class Engine {
     const gift=s.battleGiftSpoons>0?`\n🎁 선물 약속: 1등 외 참가자는 1등에게 ${n(s.battleGiftSpoons)}스푼 (직접 전달)`:'';
     return {id:b.id,text:`🏆 대결 결과 ${parts.join(' · ')}${gift}`,winners:ranking.slice(0,3).map(x=>x.id)};
   }
+  // ── 팀 대결(청팀·백팀) ──
+  // 팀별 후원 스푼 합계와 인원수. participants의 team 값('blue'=청팀, 'white'=백팀)으로 셉니다.
+  teamStats(battle){
+    const stats={blue:{total:0,count:0},white:{total:0,count:0}};
+    for(const member of Object.values(battle.participants)){const side=stats[member.team];if(side){side.total+=member.total;side.count++;}}
+    return stats;
+  }
+  // 팀 대결을 끝냅니다. winner가 'blue'·'white'이면 그 팀이 먼저 목표 스푼에 닿은 것이고, null이면 승부 없음입니다.
+  // 승리 팀에서 후원한 참가자에게는 1등 보상(PT·EXP)을 주고, 진 팀이 이긴 팀에 줄 스푼은 봇이 옮길 수 없어 '선물 약속' 안내만 합니다.
+  finishTeamBattle(r,now,winner){
+    const b=r.battle,s=r.settings,stats=this.teamStats(b),label={blue:'청팀',white:'백팀'};
+    delete r.battle;
+    const participants=Object.keys(b.participants).length;
+    r.lastBattle={id:b.id,mode:'team',endedAt:now,participants,target:b.target,winner,blue:stats.blue.total,white:stats.white.total};
+    if(!winner){
+      this.store.log(r.id,'system','battle-result',{battle:b.id,mode:'team',participants,winner:null,blue:stats.blue.total,white:stats.white.total},now);
+      return {id:b.id,text:`⚔️ 팀 대결 종료 · ${n(b.target)}스푼에 먼저 닿은 팀이 없어요 (청팀 ${n(stats.blue.total)} · 백팀 ${n(stats.white.total)}) · 보상 없음`};
+    }
+    let rewarded=0;
+    for(const [id,member] of Object.entries(b.participants)){
+      if(member.team!==winner||member.total<1)continue;
+      const u=r.users[id];let pt=s.battleFirstPt,exp=s.battleFirstExp;
+      // 보유량이 정수 범위를 넘는 경우에는 그 사람의 보상만 건너뜁니다.
+      if(!u||!Number.isSafeInteger(u.pt+pt)||!Number.isSafeInteger(u.exp+exp)){pt=0;exp=0;}else{u.pt+=pt;u.exp+=exp;}
+      this.store.log(r.id,id,'battle',{battle:b.id,mode:'team',team:winner,rank:1,total:member.total,pt,exp},now);
+      rewarded++;
+    }
+    this.store.log(r.id,'system','battle-result',{battle:b.id,mode:'team',participants,winner,blue:stats.blue.total,white:stats.white.total,rewarded},now);
+    const prize=`${s.battleFirstPt>0?`+${n(s.battleFirstPt)}PT`:''}${s.battleFirstExp>0?`+${n(s.battleFirstExp)}EXP`:''}`;
+    const reward=rewarded&&prize?`\n승리 팀 후원자 ${n(rewarded)}명 ${prize}`:'';
+    const gift=s.battleTeamGiftSpoons>0?`\n🎁 선물 약속: 진 팀이 이긴 팀에 ${n(s.battleTeamGiftSpoons)}스푼 (직접 전달·이긴 팀끼리 나눠 가져요)`:'';
+    return {id:b.id,text:`🏆 ${label[winner]} 승리! 먼저 ${n(b.target)}스푼 달성 (청팀 ${n(stats.blue.total)} · 백팀 ${n(stats.white.total)})${reward}${gift}`,winner};
+  }
   // 시간이 다 된 대결을 끝냅니다. (스케줄 점검에서 주기적으로 호출합니다) 끝낸 경우 결과를, 아니면 null을 돌려줍니다.
   battleTick(r,now){
     if(r.battle?.status==='open'&&now>=r.battle.endsAt)return this.finishBattle(r,now);
@@ -904,13 +1027,17 @@ export class Engine {
   }
   // 후원 알림이 들어오면, 후원자가 진행 중인 대결의 참가자일 때만 후원 스푼을 합산합니다.
   // 참가한 뒤의 후원만 합산하고, 같은 후원 알림은 한 번만 반영합니다. 합산했으면 true를 돌려줍니다.
-  battleDonation(roomId,event){
+  battleDonation(roomId,event){return this.battleDonationDetail(roomId,event).counted;}
+  // 합산했는지(counted)와, 이 후원으로 팀 대결이 끝났다면 그 결과(ended)를 함께 돌려줍니다.
+  // 팀 대결은 팀 합계가 목표 스푼 이상이 되고 양 팀에 1명 이상 있을 때 그 팀이 바로 이깁니다.
+  battleDonationDetail(roomId,event){
+    const none={counted:false,ended:null};
     const room=this.store.load(roomId);
-    if(!room||!room.settings.battleEnabled||room.battle?.status!=='open')return false;
+    if(!room||!room.settings.battleEnabled||room.battle?.status!=='open')return none;
     const amount=Number(event.amount),uid=event.user?.id;
-    if(!event.id||uid===undefined||uid===null||String(uid)===''||!Number.isSafeInteger(amount)||amount<1)return false;
+    if(!event.id||uid===undefined||uid===null||String(uid)===''||!Number.isSafeInteger(amount)||amount<1)return none;
     const eventId=`battle-donation:${event.id}`,now=this.now();
-    let counted=false;
+    let counted=false,ended=null;
     this.store.transaction(roomId,r=>{
       const b=r.battle;
       if(!b||b.status!=='open'||now>=b.endsAt)return;
@@ -919,26 +1046,48 @@ export class Engine {
       p.total+=amount;p.lastAt=now;p.donations=(p.donations||0)+1;
       this.store.db.prepare('INSERT INTO events VALUES(?,?,?)').run(roomId,eventId,JSON.stringify({battleDonation:true}));
       counted=true;
+      if(b.mode==='team'){
+        const stats=this.teamStats(b);
+        if(stats[p.team].total>=b.target&&stats.blue.count>0&&stats.white.count>0)ended=this.finishTeamBattle(r,now,p.team);
+      }
     });
-    return counted;
+    return {counted,ended};
   }
-  // '!대결' 명령 처리: 참가(!대결)·현황(!대결 현황)은 누구나, 시작·종료·취소는 DJ 전용입니다.
+  // '!대결' 명령 처리
+  //  - 팀 대결(기본): DJ가 !대결 시작 [분] [목표스푼]으로 열고, 청취자가 !대결 청 / !대결 백으로 팀을 골라 참가합니다.
+  //    참가한 뒤 DJ에게 후원한 스푼이 팀 합계에 더해지고, 목표 스푼(기본 100)에 먼저 닿은 팀이 이깁니다.
+  //  - 개인 대결: !대결 개인 시작 [분]으로 열고, 참가는 !대결, 후원 합계가 큰 순서로 1·2·3등을 정합니다.
+  //  - !대결 현황은 누구나, !대결 종료·취소는 DJ 전용입니다.
   battleCommand(r,e,bits,dj,now,answer){
-    const s=r.settings,sub=bits[0]||'';
+    const s=r.settings;
+    let sub=bits[0]||'',solo=false;
+    // '!대결 개인 시작 5'처럼 앞에 '개인'이 붙으면 개인 대결 명령으로 봅니다.
+    if(sub==='개인'){solo=true;bits=bits.slice(1);sub=bits[0]||'';}
     if(!s.battleEnabled)fail('후원 대결이 꺼져 있습니다. DJ 관리 화면의 게임 설정에서 켤 수 있어요.');
     const short=name=>[...String(name||'청취자')].slice(0,7).join('');
     const left=b=>`${Math.max(1,Math.ceil((b.endsAt-now)/60000))}분`;
+    const labels={blue:'청팀',white:'백팀'};
+    // 팀 이름 낱말을 청팀('blue')·백팀('white')으로 바꿉니다. 모르는 낱말이면 null입니다.
+    const teamOf=word=>{const w=String(word||'').replace(/팀$/u,'').toLowerCase();return ['청','파랑','파란','블루','blue'].includes(w)?'blue':['백','흰','하양','화이트','white'].includes(w)?'white':null;};
     // 시간이 지났지만 아직 종료 처리되지 않은 대결은 곧 끝나므로 참가·후원을 받지 않습니다.
     const open=r.battle?.status==='open'&&now<r.battle.endsAt?r.battle:null;
+    const usage='사용법: !대결 청 / !대결 백 (팀 선택) · !대결 현황 · DJ: !대결 시작 5 · !대결 종료 · !대결 취소 · !대결 개인 시작 5';
     if(['시작','종료','취소'].includes(sub)){
       if(!dj)fail('대결 시작·종료·취소는 DJ 전용입니다.');
       if(sub==='시작'){
         if(r.battle?.status==='open')fail('이미 진행 중인 대결이 있어요. !대결 종료 또는 !대결 취소 후 다시 시작하세요.');
         const minutes=bits[1]===undefined?s.battleMinutes:Number(bits[1]);
-        if(!Number.isSafeInteger(minutes)||minutes<1||minutes>120)fail(`사용법: !대결 시작 5 (1~120분, 분을 생략하면 설정값 ${s.battleMinutes}분)`);
-        r.battle={id:`battle-${now}`,status:'open',startedAt:now,endsAt:now+minutes*60000,participants:{}};
-        this.store.log(r.id,e.user.id,'battle-start',{minutes},now);
-        return answer(`⚔️ 후원 대결 시작! ${minutes}분 · 참가는 !대결 · 참가 후 DJ에게 후원한 스푼 합계로 1·2·3등을 정해요`);
+        if(!Number.isSafeInteger(minutes)||minutes<1||minutes>120)fail(`사용법: !대결 시작 5 (1~120분, 분을 생략하면 설정값 ${s.battleMinutes}분) · 목표 스푼: !대결 시작 5 100`);
+        if(solo){
+          r.battle={id:`battle-${now}`,status:'open',mode:'solo',startedAt:now,endsAt:now+minutes*60000,participants:{}};
+          this.store.log(r.id,e.user.id,'battle-start',{minutes,mode:'solo'},now);
+          return answer(`⚔️ 후원 대결 시작! ${minutes}분 · 참가는 !대결 · 참가 후 DJ에게 후원한 스푼 합계로 1·2·3등을 정해요`);
+        }
+        const target=bits[2]===undefined?s.battleTargetSpoons:Number(bits[2]);
+        if(!Number.isSafeInteger(target)||target<1||target>1000000)fail(`목표 스푼은 1~1,000,000 사이의 정수로 입력하세요. 예: !대결 시작 5 100 (생략하면 설정값 ${n(s.battleTargetSpoons)}스푼)`);
+        r.battle={id:`battle-${now}`,status:'open',mode:'team',startedAt:now,endsAt:now+minutes*60000,target,participants:{}};
+        this.store.log(r.id,e.user.id,'battle-start',{minutes,mode:'team',target},now);
+        return answer(`⚔️ 청팀 vs 백팀 대결 시작! ${n(target)}스푼을 먼저 모으는 팀이 승리 · ${minutes}분 · 팀 선택: !대결 청 / !대결 백`);
       }
       if(r.battle?.status!=='open')fail('진행 중인 대결이 없습니다.');
       if(sub==='취소'){
@@ -948,23 +1097,49 @@ export class Engine {
       }
       return answer(this.finishBattle(r,now).text);
     }
-    // 현황: 진행 중이면 현재 순위, 아니면 마지막 대결 결과를 보여 줍니다. DJ가 !대결만 입력해도 현황을 보여 줍니다.
+    // 현황: 진행 중이면 현재 상황, 아니면 마지막 대결 결과를 보여 줍니다. DJ가 !대결만 입력해도 현황을 보여 줍니다.
     if(sub==='현황'||sub==='순위'||(dj&&!sub)){
       if(!open){
         const last=r.lastBattle;
         if(r.battle?.status==='open')return answer('⚔️ 대결 시간이 끝나 곧 결과를 발표해요.');
-        return answer(last?`⚔️ 진행 중인 대결이 없어요 · 지난 대결 ${last.void?'무효':last.ranking.map((x,i)=>`${i+1}등 ${short(x.name)} ${n(x.total)}스푼`).join(' · ')}`:'⚔️ 진행 중인 대결이 없어요. DJ가 !대결 시작으로 열 수 있어요.');
+        if(!last)return answer('⚔️ 진행 중인 대결이 없어요. DJ가 !대결 시작으로 열 수 있어요.');
+        if(last.mode==='team')return answer(`⚔️ 진행 중인 대결이 없어요 · 지난 팀 대결 ${last.winner?`${labels[last.winner]} 승리`:'승부 없음'} (청팀 ${n(last.blue)} · 백팀 ${n(last.white)} / 목표 ${n(last.target)}스푼)`);
+        return answer(`⚔️ 진행 중인 대결이 없어요 · 지난 대결 ${last.void?'무효':last.ranking.map((x,i)=>`${i+1}등 ${short(x.name)} ${n(x.total)}스푼`).join(' · ')}`);
+      }
+      if(open.mode==='team'){
+        const st=this.teamStats(open);
+        return answer(`⚔️ 팀 대결 진행 중 · 청팀 ${n(st.blue.total)}/${n(open.target)}스푼(${n(st.blue.count)}명) vs 백팀 ${n(st.white.total)}/${n(open.target)}스푼(${n(st.white.count)}명) · 남은 ${left(open)}`);
       }
       const ranking=this.battleRanking(open),count=Object.keys(open.participants).length;
       return answer(`⚔️ 대결 진행 중 · 남은 ${left(open)} · 참가 ${n(count)}명${ranking.length?' · '+ranking.slice(0,3).map((x,i)=>`${i+1}위 ${short(x.name)} ${n(x.total)}스푼`).join(' / '):' · 아직 후원 없음'}`);
     }
-    if(sub)fail('사용법: !대결 (참가) / !대결 현황 / DJ: !대결 시작 5 · !대결 종료 · !대결 취소');
+    const team=teamOf(sub);
+    if(sub&&!team)fail(usage);
     // 참가: 프로필이 없으면 만들고, 한 사람은 한 번만 참가합니다. DJ는 참가할 수 없습니다.
     if(!open)fail(r.battle?.status==='open'?'대결 시간이 끝나 곧 결과를 발표해요.':'진행 중인 대결이 없어요. DJ가 !대결 시작으로 열 수 있어요.');
+    if(dj&&team)fail('DJ는 대결에 참가할 수 없어요. !대결 현황으로 확인하세요.');
     const id=String(e.user.id);
     let u=r.users[id];
     if(!u){u=freshUser(id,e.user.nickname||'청취자',dates(now).month);r.users[id]=u;}
     const joined=open.participants[id];
+    if(open.mode==='team'){
+      if(solo)fail('이번 대결은 팀전이에요. !대결 청 / !대결 백으로 팀을 골라 주세요.');
+      if(!team)return answer('⚔️ 팀 대결에 참가하려면 !대결 청 또는 !대결 백으로 팀을 골라 주세요.');
+      if(joined){
+        if(joined.team===team)return answer(`${short(u.name)}님은 이미 ${labels[team]}이에요 · 현재 ${n(joined.total)}스푼`);
+        if(joined.total>0)fail('이미 후원한 뒤에는 팀을 바꿀 수 없어요.');
+        joined.team=team; // 아직 후원하지 않았다면 팀을 바꿀 수 있습니다.
+      }else{
+        if(Object.keys(open.participants).length>=100)fail('참가자가 가득 찼어요. (최대 100명)');
+        open.participants[id]={name:u.name,joinedAt:now,total:0,lastAt:0,team};
+      }
+      const st=this.teamStats(open);
+      // 한 팀이 혼자 목표를 넘겨 둔 상태에서 상대 팀에 첫 참가자가 생기면 바로 승부가 납니다.
+      const winner=st.blue.count>0&&st.white.count>0?['blue','white'].find(side=>st[side].total>=open.target):null;
+      if(winner)return answer(this.finishTeamBattle(r,now,winner).text);
+      return answer(`⚔️ ${short(u.name)}님 ${labels[team]} 참가! 청팀 ${n(st.blue.count)}명 · 백팀 ${n(st.white.count)}명 · ${n(open.target)}스푼 먼저 모으는 팀 승리 · 남은 ${left(open)}`);
+    }
+    if(team)fail('이번 대결은 개인전이에요. !대결 로 참가하세요.');
     if(joined)return answer(`${short(u.name)}님은 이미 참가 중이에요 · 현재 ${n(joined.total)}스푼`);
     if(Object.keys(open.participants).length>=100)fail('참가자가 가득 찼어요. (최대 100명)');
     open.participants[id]={name:u.name,joinedAt:now,total:0,lastAt:0};

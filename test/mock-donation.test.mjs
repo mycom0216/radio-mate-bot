@@ -49,19 +49,36 @@ test('모의 후원으로 후원 보상·메뉴판·큰 후원·지급·후원 �
   text=await chat(DJ,'!복권지급 @test_id 2');assert.match(text,/시험청취자님 복권 2장 지급/);log('DJ !복권지급 @test_id 2',text);
 
   // 5) 후원 대결
-  assert.match(text=await chat(DJ,'!대결 시작 2'),/후원 대결 시작! 2분/);log('DJ !대결 시작 2',text);
+  assert.match(text=await chat(DJ,'!대결 개인 시작 2'),/후원 대결 시작! 2분/);log('DJ !대결 개인 시작 2',text);
   log('시험청취자 !대결',await chat(A,'!대결'));log('시험청취자2 !대결',await chat(B,'!대결'));
   d=await donate(A,30);assert.equal(d.battleCounted,true);d=await donate(B,50);assert.equal(d.battleCounted,true);d=await donate(A,40);assert.equal(d.battleCounted,true);
   log('모의 후원 3번 (A 30·40, B 50)','후원 대결에 합산됨');
   assert.match(text=await chat(B,'!대결 현황'),/1위 시험청취자 70스푼 \/ 2위 시험청취자2 50스푼/);log('!대결 현황',text);
   text=await chat(DJ,'!대결 종료');assert.match(text,/🏆 대결 결과 1등 시험청취자 70스푼 \+300PT\+300EXP · 2등 시험청취자2 50스푼 \+150PT\+150EXP\n🎁 선물 약속: 1등 외 참가자는 1등에게 10스푼 \(직접 전달\)/);log('DJ !대결 종료',text);
 
+  // 5-2) 팀 대결(청팀·백팀): 팀을 고르고, 목표 100스푼을 먼저 모은 팀이 승리
+  assert.match(text=await chat(DJ,'!대결 시작 5'),/청팀 vs 백팀 대결 시작! 100스푼을 먼저 모으는 팀이 승리/);log('DJ !대결 시작 5 (팀 대결)',text);
+  assert.match(text=await chat(A,'!대결 청'),/청팀 참가/);log('시험청취자 !대결 청',text);
+  assert.match(text=await chat(B,'!대결 백'),/백팀 참가/);log('시험청취자2 !대결 백',text);
+  d=await donate(A,40);assert.equal(d.battleCounted,true);d=await donate(B,60);
+  assert.match(text=await chat(B,'!대결 현황'),/청팀 40\/100스푼\(1명\) vs 백팀 60\/100스푼\(1명\)/);log('!대결 현황',text);
+  d=await donate(A,70); // 청팀 110 → 청팀 승리
+  assert.match(d.messages.at(-1),/🏆 청팀 승리! 먼저 100스푼 달성 \(청팀 110 · 백팀 60\)\n승리 팀 후원자 1명 \+300PT\+300EXP\n🎁 선물 약속: 진 팀이 이긴 팀에 100스푼/);log('청팀이 먼저 100스푼 달성 (모의 후원 70스푼)',d.messages.at(-1));
+
+  // 5-3) DJ 랭킹 · 넥스트초이스 레벨
+  log('등록 전 !랭킹조회',await chat(A,'!랭킹조회'));
+  await chat(DJ,'!랭킹등록 일 12');await chat(DJ,'!랭킹등록 월 45');
+  text=await chat(DJ,'!랭킹등록 초이스 이전 2 현재 3 다음 4 컷 30');log('DJ 랭킹 입력 후 !랭킹조회',text);
+  assert.match(text,/일라디 12위 · 월라디 45위\n넥스트초이스 이전 Lv\.2 → 현재 Lv\.3 → 다음 Lv\.4까지 15등 남음/);
+  assert.equal(await chat(B,'!랭크조회'),text);
+
   // 6) 최종 상태: 후원마다 받은 EXP(스푼 × 20)와 대결 보상이 정확히 합산됐는지
   const state=await room();const a=state.users['user-A'],b=state.users['user-B'];
-  // A: 20스푼 400 + 50스푼 1,000 + 100스푼 2,000 + 30스푼 600 + 40스푼 800 + 대결 1등 300 = 5,100 (10스푼은 기준 20 미만)
-  assert.equal(a.exp,5100);assert.equal(a.pt,300);
-  // B: 50스푼 1,000 + 대결 2등 150 = 1,150
-  assert.equal(b.exp,1150);assert.equal(b.pt,150);
+  // A: 20스푼 400 + 50스푼 1,000 + 100스푼 2,000 + 30스푼 600 + 40스푼 800 + 개인 대결 1등 300 = 5,100
+  //    + 팀 대결 후원 40스푼 800 + 70스푼 1,400 + 팀 대결 승리 보상 300 = 7,600 (10스푼은 기준 20 미만)
+  assert.equal(a.exp,7600);assert.equal(a.pt,600);
+  // B: 50스푼 1,000 + 개인 대결 2등 150 + 팀 대결 후원 60스푼 1,200 = 2,350 (진 팀이라 팀 대결 보상 없음)
+  assert.equal(b.exp,2350);assert.equal(b.pt,150);
   log('시험 후 상태',`시험청취자: EXP ${a.exp} / PT ${a.pt} / 복권 ${a.tickets}장\n시험청취자2: EXP ${b.exp} / PT ${b.pt} / 복권 ${b.tickets}장`);
 
   // 7) 같은 후원이 아닌 잘못된 입력은 막고, 방송에 연결된 방에서는 쓸 수 없습니다.

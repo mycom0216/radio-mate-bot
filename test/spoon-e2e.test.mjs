@@ -163,7 +163,7 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     res=await fetch(address+'/api/settings',{method:'POST',headers:{Cookie:session,'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({settings:{...roomForBattle.settings,donationExpEnabled:false,donationDonorTicketEnabled:false},expectedRevision:roomForBattle.settingsRevision||0,name:roomForBattle.name})});
     assert.equal(res.status,200);
     await waitForSendGap();
-    chat('battle-start',dj,'!대결 시작 2');
+    chat('battle-start',dj,'!대결 개인 시작 2');
     await expectReply(12,/후원 대결 시작! 2분/);
     await waitForSendGap();
     chat('battle-join',listener,'!대결');

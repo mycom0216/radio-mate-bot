@@ -64,6 +64,6 @@ test('예전 방에서도 후원 보상(EXP·후원자 복권)이 기본값으�
 
 test('예전 방에서도 후원 대결을 시작하고 참가할 수 있습니다', () => {
   const f = setup();
-  assert.match(f.say('!대결 시작 5', { id: 'dj1', name: 'DJ', dj: true }).text, /후원 대결 시작! 5분/);
+  assert.match(f.say('!대결 개인 시작 5', { id: 'dj1', name: 'DJ', dj: true }).text, /후원 대결 시작! 5분/);
   assert.match(f.say('!대결').text, /가님 대결 참가/);
 });

@@ -28,7 +28,7 @@ import { randomBytes,randomUUID,createHash,timingSafeEqual } from 'node:crypto';
 import { mkdirSync,readFileSync,existsSync,writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname,join,resolve } from 'node:path';
-import { Store,Engine,defaults,validateSettings,dates,LIMIT } from './core.mjs';
+import { Store,Engine,defaults,validateSettings,stampDjRank,dates,LIMIT } from './core.mjs';
 import { Spoon,spoonRegion } from './spoon.mjs';
 import {buildDiagnostics} from './diagnostics.mjs';
 const ROOT=dirname(fileURLToPath(import.meta.url));
@@ -288,7 +288,7 @@ const server=createServer(async(req,res)=>{
       }
       if(path==='/api/logout'){sessions.delete(sessionKey(req));if(sandbox?.has(roomId))sandbox.remove(roomId);res.setHeader('Set-Cookie','studio=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');reply(res,200,{ok:true});return;}
       if(path==='/api/settings'){
-        const settings=validateSettings(b.settings);store.transaction(roomId,r=>{checkSettingsRevision(r,b.expectedRevision);store.backup(roomId);const old=r.settings;engine.syncBuffs(r);r.settings=settings;engine.syncBuffs(r);r.settingsRevision=(r.settingsRevision||0)+1;if(JSON.stringify([old.autoChatEnabled,old.autoChatMode,old.autoChatMinutes,old.autoChatMessages])!==JSON.stringify([settings.autoChatEnabled,settings.autoChatMode,settings.autoChatMinutes,settings.autoChatMessages]))delete r.autoChat;if(b.name)r.name=String(b.name).slice(0,50);store.log(roomId,'dj','settings-update',{});});reply(res,200,{ok:true});return;
+        const settings=validateSettings(b.settings);store.transaction(roomId,r=>{checkSettingsRevision(r,b.expectedRevision);store.backup(roomId);const old=r.settings;engine.syncBuffs(r);r.settings=settings;stampDjRank(old,settings);engine.syncBuffs(r);r.settingsRevision=(r.settingsRevision||0)+1;if(JSON.stringify([old.autoChatEnabled,old.autoChatMode,old.autoChatMinutes,old.autoChatMessages])!==JSON.stringify([settings.autoChatEnabled,settings.autoChatMode,settings.autoChatMinutes,settings.autoChatMessages]))delete r.autoChat;if(b.name)r.name=String(b.name).slice(0,50);store.log(roomId,'dj','settings-update',{});});reply(res,200,{ok:true});return;
       }
       if(path==='/api/test-like'){
         if(!isDemo(roomId))throw Error('로컬 테스트 모드에서만 사용할 수 있습니다.');

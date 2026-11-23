@@ -21,7 +21,9 @@ export class ScreenCapture {
  }
  record(room,frame){
   const data=frame?.data,time=Date.parse(data?.time),now=this.now();
-  if(!this.status(room).enabled||typeof data?.user?.id!=='string'||!data.user.id||!Number.isSafeInteger(data.amount)||data.amount<=0||!Number.isFinite(time)||Math.abs(now-time)>120000)return false;
+  // 기준 스푼(설정 screenCaptureMin, 기본 300) 미만의 후원은 캡처 대상으로 기록하지 않습니다.
+  const min=this.store.load(room)?.settings?.screenCaptureMin??300;
+  if(!this.status(room).enabled||typeof data?.user?.id!=='string'||!data.user.id||!Number.isSafeInteger(data.amount)||data.amount<min||!Number.isFinite(time)||Math.abs(now-time)>120000)return false;
   const id=hash(frame.id||JSON.stringify(data));let recorded=false;
   this.store.transaction(room,r=>{const config=r.screenCapture;if(!config||config.expiresAt<=now)return;
    config.events=config.events.filter(event=>now-event.receivedAt<=120000);
