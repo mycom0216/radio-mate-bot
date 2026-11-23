@@ -99,38 +99,11 @@ export class Spoon {
             }else if(f.event==='donation'){
               this.captures.record(room,f);
               const s=this.store.load(room).settings;
-              // 후원 대결 중이면 참가자의 후원 스푼을 합산합니다. (참가 후의 후원만, 같은 후원은 한 번만)
-              this.engine.battleDonation(room,{id:createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex'),amount:f.data.amount,user:f.data.user});
-              // 후원 금액 10을 메뉴판의 '10' 항목에서 찾습니다. 후원자 이름을 받지 못하면 '청취자'라고 부릅니다.
-              const amount=String(f.data.amount),name=f.data.user?.nickname||'청취자';
-              const reactions=s.donationReactions??{};
-              // 같은 금액에 등록된 문구가 있으면 그 문구를 고르고, 없으면 기본 감사 인사를 고릅니다.
-              const template=Object.hasOwn(reactions,amount)?reactions[amount]:s.donation;
-              if(template){
-                // '{name}'과 '{amount}' 자리에 실제 이름과 금액을 넣습니다.
-                const text=template.replace(/\{name\}|\{amount\}/g,token=>token==='{name}'?name:amount);
-                // 같은 후원 알림이 다시 들어와도 인사를 한 번만 보내도록 후원마다 구별되는 키를 만듭니다.
-                const key='donation:'+createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex');
-                this.outbox.enqueue(room,key,text);
+              // 후원 한 건의 처리(대결 합산·감사 인사·후원 보상·큰 후원 복권)는 로컬 테스트의 '모의 후원'과 같은 코드(engine.processDonation)를 씁니다.
+              const result=this.engine.processDonation(room,{id:f.id,data:f.data});
+              for(const message of result.messages){
+                this.outbox.enqueue(room,message.key,message.text);
                 // 조용 모드가 꺼져 있으면 전송 대기열에서 메시지를 꺼내 보내기를 시도합니다.
-                if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));
-              }
-              // 후원 레벨 보상: 기준(기본 20스푼) 이상이면 후원자에게 EXP를 주고 레벨 변화를 알립니다. (설정에서 켠 경우에만, 같은 후원은 한 번만)
-              const donationLevelKey=createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex');
-              const levelUp=this.engine.donationLevelUp(room,{id:donationLevelKey,amount:f.data.amount,user:f.data.user});
-              // 후원자 복권 지급: 기준(기본 10스푼) 이상이면 후원자 본인에게 복권을 줍니다. 레벨 안내와 한 메시지로 묶어 보냅니다.
-              const donorTicket=this.engine.donationDonorTickets(room,{id:donationLevelKey,amount:f.data.amount,user:f.data.user});
-              const rewardText=[levelUp.text,donorTicket.text].filter(Boolean).join('\n');
-              if(rewardText){
-                this.outbox.enqueue(room,'donation-reward:'+donationLevelKey,rewardText);
-                if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));
-              }
-              // 감사 인사를 보낸 다음, 큰 후원이면 등록된 모든 청취자에게 복권을 지급합니다. (설정에서 켠 경우에만, 같은 후원은 한 번만)
-              // 후원 알림에 번호가 없으면 내용 전체로 후원을 구별합니다.
-              const donationKey=createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex');
-              const bonus=this.engine.donationTicketsToAll(room,{id:donationKey,amount:f.data.amount,user:f.data.user});
-              if(bonus.text){
-                this.outbox.enqueue(room,'donation-tickets:'+donationKey,bonus.text);
                 if(!s.quiet)await this.outbox.flush(room,text=>this.sendDetailed(room,text));
               }
             }

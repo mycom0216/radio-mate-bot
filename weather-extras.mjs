@@ -21,6 +21,22 @@ export function currentLine(item,detail=false){
 
 const OUTFITS=[[28,'민소매·반팔·반바지'],[23,'반팔·얇은 셔츠·반바지·면바지'],[20,'얇은 가디건·긴팔·면바지·청바지'],[17,'얇은 니트·맨투맨·가디건·청바지'],[12,'자켓·가디건·야상·스타킹·청바지'],[9,'자켓·트렌치코트·야상·니트·청바지'],[5,'코트·가죽자켓·히트텍·니트·레깅스'],[-Infinity,'패딩·두꺼운 코트·목도리·기모 제품']];
 export const outfitFor=temp=>OUTFITS.find(([min])=>temp>=min)[1];
+// 전국 옷차림: 시·도 대표 지점의 현재 기온(체감이 있으면 체감)으로 옷차림 구간별 지역을 묶어 보여 줍니다.
+// 스푼 채팅은 200자까지라서, 길어지면 구간별 추천 문구를 줄이고(처음 항목만), 그래도 길면 맨 끝 출처 줄을 뺍니다.
+export function nationalOutfitReply(items){
+ const rows=items.map(item=>({region:item.region,temp:Number.isFinite(item.feels)?item.feels:item.temperature,raw:item.temperature})).filter(row=>Number.isFinite(row.temp));
+ if(!rows.length)return null;
+ const groups=new Map();
+ for(const row of rows){const text=outfitFor(row.temp);if(!groups.has(text))groups.set(text,[]);groups.get(text).push(row.region);}
+ // 따뜻한 구간부터 보여 주려고 OUTFITS 순서(더운 것 → 추운 것)를 따릅니다.
+ const order=OUTFITS.map(([,text])=>text).filter(text=>groups.has(text));
+ const temps=rows.map(row=>row.raw).filter(Number.isFinite),low=Math.min(...temps),high=Math.max(...temps);
+ const build=(pick,footer)=>`전국 옷차림 · 지금 ${low}~${high}℃\n${order.map(text=>`${pick(text)} 추천: ${groups.get(text).join('·')}`).join('\n')}${footer?'\n기상청 · 시·도 대표 지점':''}`;
+ for(const [pick,footer] of [[text=>text.split('·').slice(0,2).join('·'),true],[text=>text.split('·')[0],true],[text=>text.split('·')[0],false]]){
+  const text=build(pick,footer);if([...text].length<=200)return text;
+ }
+ return [...build(text=>text.split('·')[0],false)].slice(0,199).join('')+'…';
+}
 export function outfitReply(name,{temp,feels,min,max}){
  const reference=Number.isFinite(feels)?feels:temp,now=`${temp}℃${Number.isFinite(feels)&&Math.abs(temp-feels)>=1?`(체감 ${feels}℃)`:''}`;
  const range=Number.isFinite(min)&&Number.isFinite(max)?` · 오늘 ${min}~${max}℃${max-min>=10?' · 일교차가 커요, 겉옷을 챙기세요':''}`:'';

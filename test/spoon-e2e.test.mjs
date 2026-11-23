@@ -174,6 +174,11 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     await waitForSendGap();
     chat('battle-status',listener,'!대결 현황');
     await expectReply(15,/대결 진행 중 .*1위 후원자 30스푼/);
+    // 방송에 연결된 실제 방에서는 모의 후원을 보낼 수 없어야 하고, 청취자 정보도 바뀌면 안 됩니다.
+    const ticketsBeforeMock=(await usersNow()).u2.tickets;
+    res=await fetch(address+'/api/test-donation',{method:'POST',headers:{Cookie:session,'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({amount:10,user:'u2',name:'후원자'})});
+    assert.equal(res.status,400);
+    assert.equal((await usersNow()).u2.tickets,ticketsBeforeMock);
     const joinedAt=Date.now();
     for(const [index,value] of [36.5,38.75].entries()){
       seen.stream.write(`id: temperature-${index}\nevent: presence\ndata: ${JSON.stringify({user:{id:'u1',nickname:'청취자'},type:'JOIN',favoriteTemperature:value,time:new Date(joinedAt+index*1000).toISOString()})}\n\n`);

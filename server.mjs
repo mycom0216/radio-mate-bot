@@ -294,6 +294,17 @@ const server=createServer(async(req,res)=>{
         if(!isDemo(roomId))throw Error('로컬 테스트 모드에서만 사용할 수 있습니다.');
         const result=engine.likeGreeting(roomId,{id:randomUUID(),user:{id:String(b.user||'listener-1').slice(0,100),nickname:String(b.name||'청취자').slice(0,40)},type:'FREE',combo:null,totalAmount:1});reply(res,200,result);return;
       }
+      if(path==='/api/test-donation'){
+        // 모의 후원: 결제 없이 후원 알림 한 건을 흉내 내서 실제 방송과 같은 처리(감사 인사·후원 보상·후원 대결 합산·큰 후원 복권)를 시험합니다.
+        // 방송에 연결되지 않은 로컬 테스트·공개 테스트 공간에서만 쓸 수 있고, 실제 방송과 청취자에게는 영향을 주지 않습니다.
+        if(!isDemo(roomId))throw Error('실제 방송에서는 모의 후원을 보낼 수 없습니다. 로컬 테스트 모드에서만 사용할 수 있습니다.');
+        const amount=Number(b.amount);
+        if(!Number.isSafeInteger(amount)||amount<1||amount>100000000)throw Error('후원 스푼은 1 이상의 정수로 입력하세요.');
+        const userId=String(b.user||'listener-1').slice(0,100);
+        if(sandbox?.has(roomId)&&!Object.hasOwn(store.load(roomId).users,userId)&&Object.keys(store.load(roomId).users).length>=100)throw Error('테스트 공간은 청취자 100명까지 만들 수 있습니다.');
+        const result=engine.processDonation(roomId,{id:randomUUID(),data:{amount,user:{id:userId,nickname:String(b.name||'청취자').slice(0,40)}}});
+        reply(res,200,{messages:result.messages.map(message=>message.text),battleCounted:result.battleCounted});return;
+      }
       if(path==='/api/test'){
         if(!isDemo(roomId))throw Error('실제 방송에서는 테스트 명령을 실행할 수 없습니다.');
         if(sandbox?.has(roomId)&&!Object.hasOwn(store.load(roomId).users,String(b.user||'listener-1').slice(0,100))&&Object.keys(store.load(roomId).users).length>=100)throw Error('테스트 공간은 청취자 100명까지 만들 수 있습니다.');

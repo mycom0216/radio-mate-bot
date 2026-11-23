@@ -18,7 +18,7 @@ import {playQuiz,plainQuizAnswer,activeQuizRound} from './quiz.mjs';
 import {extraDefaults,normalizeExtras,validateExtras,keywordReply,keywordMatches,playMiniGame} from './extras.mjs';
 import {parseSongRequest,songVideoId,groupKeeps,keepName,keepExpiryLabel} from './public/song-utils.mjs';
 import { DatabaseSync } from 'node:sqlite';
-import { randomInt, randomUUID,randomBytes } from 'node:crypto';
+import { randomInt, randomUUID,randomBytes,createHash } from 'node:crypto';
 import { mkdirSync, renameSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -801,6 +801,28 @@ export class Engine {
   }
   target(r,target){
     try{return resolveTarget(r.users,target,{identityKey:this.identityKey,room:r.id});}catch(error){fail(error.message);}
+  }
+  // 후원 알림 한 건을 처리합니다. 실제 방송(spoon.mjs)과 로컬 테스트의 '모의 후원'이 같은 코드를 써서, 모의 시험이 실제 동작과 같도록 합니다.
+  // 순서: 후원 대결 합산 → 감사 인사(메뉴판 문구가 있으면 그 문구) → 후원 레벨·후원자 복권 보상 → 큰 후원 전체 복권.
+  // 채팅으로 보낼 메시지 목록([{key,text}])을 돌려줍니다. key는 같은 후원이 다시 들어와도 한 번만 보내기 위한 구별값입니다.
+  // id가 없는 후원 알림은 내용 전체(data)로 같은 후원을 구별합니다.
+  processDonation(roomId,{id,data}){
+    const room=this.store.load(roomId);
+    if(!room)return {messages:[],battleCounted:false};
+    const s=room.settings,hash=createHash('sha256').update(id||JSON.stringify(data)).digest('hex'),event={id:hash,amount:data.amount,user:data.user},messages=[];
+    // 후원 대결 중이면 참가자의 후원 스푼을 합산합니다. (참가 후의 후원만, 같은 후원은 한 번만)
+    const battleCounted=this.battleDonation(roomId,event);
+    // 후원 금액 10을 메뉴판의 '10' 항목에서 찾고, 없으면 기본 감사 인사를 씁니다. 후원자 이름을 모르면 '청취자'라고 부릅니다.
+    const amount=String(data.amount),name=data.user?.nickname||'청취자',reactions=s.donationReactions??{};
+    const template=Object.hasOwn(reactions,amount)?reactions[amount]:s.donation;
+    if(template)messages.push({key:'donation:'+hash,text:template.replace(/\{name\}|\{amount\}/g,token=>token==='{name}'?name:amount)});
+    // 후원 레벨 보상과 후원자 복권은 한 메시지(둘째 줄)로 묶습니다.
+    const reward=[this.donationLevelUp(roomId,event).text,this.donationDonorTickets(roomId,event).text].filter(Boolean).join('\n');
+    if(reward)messages.push({key:'donation-reward:'+hash,text:reward});
+    // 큰 후원이면 등록된 모든 청취자에게 복권을 지급합니다. (설정에서 켠 경우에만)
+    const bonus=this.donationTicketsToAll(roomId,event);
+    if(bonus.text)messages.push({key:'donation-tickets:'+hash,text:bonus.text});
+    return {messages,battleCounted};
   }
   // 한 번에 기준 스푼 이상 후원한 청취자에게 EXP를 주어 레벨이 오르게 합니다. (설정에서 켠 경우에만 동작합니다.)
   // event: { id: 후원을 구별하는 값, amount: 후원 스푼 수, user: 후원자 { id, nickname } }

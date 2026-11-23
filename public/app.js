@@ -222,6 +222,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)r
  if(a==='discard'){if(confirm('저장하지 않은 변경사항을 취소할까요?')){room=structuredClone(savedRoom);setDirty(false);render();}return;}
  if(b.dataset.testCommand){$('#test-form').message.value=b.dataset.testCommand;$('#test-form').message.focus();return;}
  if(a==='test-like'){await sendTest('좋아요 이벤트',true);return;}
+  if(a==='test-donation'){await sendDonation(Number(b.dataset.amount??$('#test-donation-amount').value));return;}
  if(a==='add-quiz'){room.settings=collect();if(room.settings.quizQuestions.length>=100)throw Error('최대 100문제까지 등록할 수 있습니다.');room.settings.quizQuestions.push({id:crypto.randomUUID(),question:'',answers:[]});setDirty(true);render();$('#quiz-bank').open=true;return;}
  if(b.dataset.deleteQuiz!==undefined){room.settings=collect();room.settings.quizQuestions.splice(Number(b.dataset.deleteQuiz),1);setDirty(true);render();$('#quiz-bank').open=true;return;}
  if(a==='add-reply'){room.settings=collect();room.settings.autoReplies.push({id:crypto.randomUUID(),keyword:'안녕',match:'contains',text:'{name}님, 반갑습니다!',enabled:false,cooldown:60});setDirty(true);render();return;}
@@ -306,7 +307,7 @@ function mayLeave(){return !dirty||confirm('저장하지 않은 변경사항이 
 document.addEventListener('input',e=>{const el=e.target;if(el.matches('#test-user,#test-name,#test-dj')){testIdentity={user:$('#test-user').value,name:$('#test-name').value,dj:$('#test-dj').checked};persistHistory();updateTestReadiness();}if(el.dataset.filter){filters[el.dataset.filter]=el.value;applyFilter();return;}if(el.matches('[data-roulette]'))updateRouletteOdds();if(el.matches('[data-setting],[data-field],[data-item-enabled],[data-fish],[data-notice],[data-menu],[data-roulette],[data-reply],[data-quiz],#auto-chat-messages,#banned'))setDirty(true);});
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 function helpWorkspace(){return searchBox('help','명령어 또는 기능 검색')+`<div class="note">청취자는 먼저 <strong>!내정보 생성</strong>을 입력해야 합니다. 개인 대기시간 ${room.settings.cooldown}초와 방송 응답 간격 ${room.settings.responseGap}초가 적용됩니다.</div><div class="grid two">${commandGroups.map(([title,commands])=>card(title,`<div class="command-list" data-command-group>${commands.map(([cmd,desc])=>`<div class="command-entry" data-search="${esc(cmd+' '+desc)}"><div><code>${esc(cmd)}</code><p class="small">${esc(desc)}</p></div>${room.id==='demo'?`<button data-test-command="${esc(cmd)}" data-page="test">테스트</button>`:''}</div>`).join('')}</div>`)).join('')}</div>`;}
-function testWorkspace(){if(room.id!=='demo')return empty('명령어 테스트는 로컬 테스트 모드에서만 사용할 수 있습니다.');return `<div class="grid test-layout"><div>${testPanel()}<button data-action="test-like" style="margin-top:12px">♥ 좋아요 이벤트 테스트</button></div><div class="stack">${card('빠른 명령어',`<p class="small">명령을 선택하면 입력창에 채워집니다. 내용을 확인한 후 전송하세요.</p><div class="command-chips">${['!내정보 생성','!출석','!내정보','!게임 on','!게임 off','!낚시','!복권 자동','!복권 3 6 9','!복권 초기화 @고유ID','!아이템 상점','!룰렛','!가위바위보 바위','!주사위','!주사위 자동','!주사위 4','!숫자맞히기 50','!퀴즈','!정답 서울','!포기','!퀴즈 포기','!자동퀴즈 on 10','!자동퀴즈 상태','!자동퀴즈 off','!보이스카드','!스푼','!신청곡 가수 - 제목','!이전곡','!현재곡','!다음곡','!재생','!멈춤','!삭제 1','!게임 상태'].map(cmd=>`<button data-test-command="${esc(cmd)}">${esc(cmd)}</button>`).join('')}</div>`)}<div id="listener-progress">${profileCard(testIdentity.user)}</div>${card('테스트 상태',`<div class="line"><span>등록 청취자</span><strong>${Object.keys(room.users).length}명</strong></div><div class="line"><span>낚시 / 홀짝</span><strong>${room.settings.fishing?'ON':'OFF'} / ${room.settings.odd?'ON':'OFF'}</strong></div><div class="line"><span>대기 신청곡</span><strong>${room.songs.length}곡</strong></div><div class="line"><span>퀴즈 / 정답 보상</span><strong>${room.settings.quiz?'ON':'OFF'} / ${num(room.settings.quizExp)} EXP</strong></div><p class="small">게임 ON: 청취자 가능 / 게임 OFF: DJ 전용. 명령 사이에는 ${room.settings.cooldown}초 기다리세요.</p><button data-page="games">게임 설정 열기 →</button>`)}${card('진행 순서','<ol class="list"><li>!내정보 (자동 생성) → 대기 → !출석</li><li>복권을 받으면 대기 후 복권 명령 실행</li><li>청취자도 !게임 on 또는 !낚시 on으로 게임 켜기 가능</li><li>PT는 청취자 메뉴에서 수동 지급 가능</li></ol>')}</div></div>`;}
+function testWorkspace(){if(room.id!=='demo')return empty('명령어 테스트는 로컬 테스트 모드에서만 사용할 수 있습니다.');return `<div class="grid test-layout"><div>${testPanel()}<button data-action="test-like" style="margin-top:12px">♥ 좋아요 이벤트 테스트</button>${donationTestPanel()}</div><div class="stack">${card('빠른 명령어',`<p class="small">명령을 선택하면 입력창에 채워집니다. 내용을 확인한 후 전송하세요.</p><div class="command-chips">${['!내정보 생성','!출석','!내정보','!게임 on','!게임 off','!낚시','!복권 자동','!복권 3 6 9','!복권 초기화 @고유ID','!아이템 상점','!룰렛','!가위바위보 바위','!주사위','!주사위 자동','!주사위 4','!숫자맞히기 50','!퀴즈','!정답 서울','!포기','!퀴즈 포기','!자동퀴즈 on 10','!자동퀴즈 상태','!자동퀴즈 off','!보이스카드','!스푼','!신청곡 가수 - 제목','!이전곡','!현재곡','!다음곡','!재생','!멈춤','!삭제 1','!게임 상태','!대결 시작 2','!대결','!대결 현황','!대결 종료','!복권지급 전체 3','!계정연결 닉네임 @아이디','!옷차림 서울','!옷차림 서울 강남구','!옷차림 전국'].map(cmd=>`<button data-test-command="${esc(cmd)}">${esc(cmd)}</button>`).join('')}</div>`)}<div id="listener-progress">${profileCard(testIdentity.user)}</div>${card('테스트 상태',`<div class="line"><span>등록 청취자</span><strong>${Object.keys(room.users).length}명</strong></div><div class="line"><span>낚시 / 홀짝</span><strong>${room.settings.fishing?'ON':'OFF'} / ${room.settings.odd?'ON':'OFF'}</strong></div><div class="line"><span>대기 신청곡</span><strong>${room.songs.length}곡</strong></div><div class="line"><span>퀴즈 / 정답 보상</span><strong>${room.settings.quiz?'ON':'OFF'} / ${num(room.settings.quizExp)} EXP</strong></div><p class="small">게임 ON: 청취자 가능 / 게임 OFF: DJ 전용. 명령 사이에는 ${room.settings.cooldown}초 기다리세요.</p><button data-page="games">게임 설정 열기 →</button>`)}${card('진행 순서','<ol class="list"><li>!내정보 (자동 생성) → 대기 → !출석</li><li>복권을 받으면 대기 후 복권 명령 실행</li><li>청취자도 !게임 on 또는 !낚시 on으로 게임 켜기 가능</li><li>PT는 청취자 메뉴에서 수동 지급 가능</li></ol>')}</div></div>`;}
 function profileCard(id){
  const u=Object.hasOwn(room.users,id)?room.users[id]:null;if(!u)return card('나의 성장 기록','<p class="small">!내정보를 입력하면 프로필이 자동 생성되고 레벨과 경험치가 여기에 표시됩니다.</p>');
  const p=levelProgress(u.exp,room.settings.levelStep);
@@ -323,6 +324,27 @@ function updateTestReadiness(){
  const host=$('#listener-progress');if(host&&host.dataset.user!==id){host.innerHTML=profileCard(id);host.dataset.user=id;}
 }
 setInterval(updateTestReadiness,1000);
+// 모의 후원: 결제 없이 후원 알림을 흉내 내서 봇의 반응(감사 인사·후원 보상·후원 대결 합산·큰 후원 복권)을 시험합니다. (로컬 테스트 화면 전용)
+function donationTestPanel(){
+  return card('모의 후원 (결제 없음)',`<p class="small">위에 입력한 고유 ID·닉네임이 후원자가 됩니다. 후원 대결은 먼저 <b>!대결 시작 2</b>(DJ 권한)와 <b>!대결</b>(참가)로 열어 두세요.</p><div class="command-chips">${[5,9,10,20,50,100,500].map(v=>`<button data-action="test-donation" data-amount="${v}">${v}스푼</button>`).join('')}</div><div class="chat-form" style="margin-top:10px"><input id="test-donation-amount" type="number" min="1" step="1" value="10" aria-label="모의 후원 스푼"><button class="primary" data-action="test-donation">모의 후원 보내기</button></div>`);
+}
+async function sendDonation(amount){
+  if(busy)return;
+  if(!Number.isSafeInteger(amount)||amount<1){toast('후원 스푼은 1 이상의 정수로 입력해 주세요.');return;}
+  if(!$('#test-user').value.trim()||!$('#test-name').value.trim()){toast('위의 고유 ID와 닉네임을 입력해 주세요.');return;}
+  testIdentity={user:$('#test-user').value,name:$('#test-name').value,dj:$('#test-dj').checked};
+  busy=true;
+  chats.push({text:`${testIdentity.name}: [모의 후원 ${amount}스푼]`});renderChats();
+  try{
+   const out=await api('/api/test-donation',{amount,user:testIdentity.user,name:testIdentity.name});
+   // 실제 방송에서 채팅으로 나갈 메시지를 순서대로 보여 줍니다.
+   if(out.messages.length)for(const text of out.messages)chats.push({bot:true,text});
+   else chats.push({bot:true,text:'후원에 대한 반응이 없습니다. 메뉴판·감사 문구와 후원 보상 설정을 확인하세요.'});
+   if(out.battleCounted)chats.push({bot:true,text:`(후원 대결에 ${amount}스푼이 합산되었습니다)`});
+   chats=chats.slice(-100);renderChats();await reload();
+  }catch(err){chats.push({bot:true,text:err.message});chats=chats.slice(-100);renderChats();toast(err.message);}
+  finally{busy=false;updateTestReadiness();}
+}
 async function sendTest(message,like=false){
  if(busy||!message.trim())return;
  if(!$('#test-user').value.trim()||!$('#test-name').value.trim()){toast('고유 ID와 닉네임을 입력해 주세요.');return;}

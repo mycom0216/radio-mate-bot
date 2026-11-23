@@ -5,12 +5,14 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {WeatherDb} from '../weather-db.mjs';
 import {Lifestyle,assistantRequest} from '../lifestyle.mjs';
-import {outfitFor} from '../weather-extras.mjs';
+import {outfitFor,nationalOutfitReply} from '../weather-extras.mjs';
 import {districtCatalog,selectDistricts,districtLabel} from '../weather-districts.mjs';
 
 const NOW=Date.parse('2026-11-19T01:30:00Z'); // 2026-11-19(목) 10:30 KST
 // 지역 이름에 따라 기온을 다르게 줍니다: 낮 시간(7~15시) 기온 = offset + 3
 const OFFSETS=[['강남구',-2],['해운대구',17],['서귀포시',14],['통영시',9],['울릉군',6],['가평군',-6]];
+// 시·도 대표 지점은 이름(id)으로 기온을 다르게 줍니다: 부산 20℃, 제주 17℃, 강원 -3℃, 나머지 8℃ (낮 기온 = offset + 3)
+const NATIONAL_OFFSETS={부산:17,제주:14,강원:-6};
 const offsetOf=name=>OFFSETS.find(([word])=>name.includes(word))?.[1]??5;
 function hourlyRows(offset){
  const rows=[];
@@ -23,6 +25,8 @@ function xml(rows,name){
 }
 // 시·도 대표 지점(기존)과 전국 시·군·구(신규)를 모두 코드로 찾을 수 있게 합니다.
 const probe=new WeatherDb(new DatabaseSync(':memory:'));
+// 시·도 대표 지점은 일부 시·군·구와 같은 기상청 코드를 씁니다(예: 부산 대표 = 부산 연제구). 코드로 요청하므로 기온도 코드 기준으로 정합니다.
+const ZONE_OFFSET=new Map(probe.national().filter(loc=>NATIONAL_OFFSETS[loc.id]!==undefined).map(loc=>[loc.zone,NATIONAL_OFFSETS[loc.id]]));
 const ZONES=new Map([...probe.national(),...['서귀포','목포','여수','순천'].map(name=>probe.get(name)),...districtCatalog.locations].map(loc=>[loc.zone,loc]));
 function world(){
  const calls=[];
@@ -32,7 +36,7 @@ function world(){
   const loc=ZONES.get(url.searchParams.get('zone'));
   if(!loc)return {ok:false,status:404};
   const name=loc.kmaName;
-  return {ok:true,status:200,text:async()=>xml(hourlyRows(offsetOf(name)),name)};
+  return {ok:true,status:200,text:async()=>xml(hourlyRows(ZONE_OFFSET.get(loc.zone)??offsetOf(name)),name)};
  };
  return {fetcher,zones:()=>calls.map(url=>url.searchParams.get('zone'))};
 }
@@ -117,4 +121,42 @@ test('시·군·구 주간 날씨와 지도는 기존처럼 동작합니다', as
  const svc=service();
  const week=await ask(svc,'!날씨 서울 강남구 다음주');
  assert.match(week,/강남구/);
+});
+
+test('!옷차림 전국은 서울 값이 아니라 시·도별 옷차림을 구간별로 묶어 보여 줍니다', async () => {
+ const w=world(),svc=service(w);
+ const text=await ask(svc,'!옷차림 전국');
+ assert.match(text,/^전국 옷차림 · 지금 -3~20℃\n/);
+ assert.ok(text.includes('얇은 가디건·긴팔 추천: 부산'),text);
+ assert.ok(text.includes('얇은 니트·맨투맨 추천: 제주'),text);
+ assert.ok(text.includes('패딩·두꺼운 코트 추천: 강원'),text);
+ assert.match(text,/코트·가죽자켓 추천: .*서울/);
+ assert.ok(text.endsWith('기상청 · 시·도 대표 지점'));
+ assert.ok([...text].length<=200,'200자 초과');
+ assert.equal(new Set(w.zones()).size,17,'시·도 17곳의 코드를 한 번씩 요청해야 합니다');
+ // '전체'·'대한민국'·'한국'도 같은 전국 요약
+ for(const message of ['!옷차림 전체','!옷차림 대한민국','!옷차림 한국'])assert.match(await ask(service(),message),/^전국 옷차림 · 지금 -3~20℃\n/,message);
+ // 서울 한 곳은 기존처럼
+ assert.match(await ask(svc,'!옷차림 서울'),/^서울 옷차림 · 지금 8℃/);
+});
+
+test('전국 요약은 구간이 많아도 200자를 넘지 않습니다', () => {
+ // 8개 옷차림 구간 전부 + 17개 시·도 이름
+ const temps=[30,25,21,18,13,10,6,0,29,24,22,19,14,11,7,1,-5];
+ const names=['서울','부산','대구','인천','광주','대전','울산','세종','경기','강원','충북','충남','전북','전남','경북','경남','제주'];
+ const items=names.map((region,i)=>({region,temperature:temps[i]}));
+ const text=nationalOutfitReply(items);
+ assert.ok(text.startsWith('전국 옷차림 · 지금 -5~30℃\n'));
+ assert.ok([...text].length<=200,`길이 ${[...text].length}`);
+ for(const region of names)assert.ok(text.includes(region),`${region} 누락`);
+ // 체감온도가 있으면 체감으로 구간을 정하고, 자료가 하나도 없으면 null
+ assert.ok(nationalOutfitReply([{region:'서울',temperature:8,feels:2}]).includes('패딩'));
+ assert.equal(nationalOutfitReply([]),null);
+ assert.equal(nationalOutfitReply([{region:'서울',temperature:null}]),null);
+});
+
+test('우산·시간별에 전국을 쓰면 서울 값을 보여 주지 않고 지역 입력을 안내합니다', async () => {
+ const w=world(),svc=service(w);
+ for(const message of ['!우산 전국','!시간별 전국','!우산 대한민국'])assert.match(await ask(svc,message),/^전국 단위는 !옷차림 전국 · !전국날씨 로 볼 수 있어요\./,message);
+ assert.equal(w.zones().length,0,'안내만 하고 날씨 서버를 부르지 않습니다');
 });

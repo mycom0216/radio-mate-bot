@@ -5,7 +5,7 @@ import {parseWeatherQuery,weatherRange,koreaDate,shiftDate,forecastReply,weather
 import {districtCatalog,selectDistricts,districtPage,districtLabel,installDistricts} from './weather-districts.mjs';
 import {travelRequest,travelKinds,travelInfo,travelAnswer} from './travel.mjs';
 import {smallTalk,fallbackChat} from './converse.mjs';
-import {currentLine,hourlyReply,umbrellaReply,outfitReply,briefingReply,yesterdayReply,sunReply,weatherHelp} from './weather-extras.mjs';
+import {currentLine,hourlyReply,umbrellaReply,outfitReply,nationalOutfitReply,briefingReply,yesterdayReply,sunReply,weatherHelp} from './weather-extras.mjs';
 import {AirKorea,sidoOf,dustReply,dustShort,dustForecastReply} from './air-korea.mjs';
 import {KmaWarnings,warningReply,alertShort} from './weather-warnings.mjs';
 import {naverSearchRequest} from './naver-search-config.mjs';
@@ -295,7 +295,16 @@ export class Lifestyle {
    // 현재 날씨는 지역을 여러 개(최대 6) 적어 한 번에 비교할 수 있습니다: !날씨 서울 부산 제주
    const names=region?region.split(' ').filter(Boolean):[];
    if(!selection.mode&&selection.period==='current'&&names.length>1&&names.length<=6){const resolved=names.map(name=>this.resolveRegion(name));if(resolved.every(Boolean))return await this.compareRegions([...new Set(resolved)]);}
-   if(region){
+   // '전국'·'전체'·'대한민국' 같은 말은 지역 이름에서 빠지므로 지역이 비어 서울로 답하게 됩니다. 이를 알아보고, 옷차림은 전국 요약을 보여 주며
+    // 나머지 부가 기능(우산·시간별 등)은 서울 값을 전국인 것처럼 보여 주지 않고 지역을 함께 입력하게 안내합니다.
+    if(selection.mode&&selection.mode!=='help'&&!region&&/전국|전체|대한민국|우리나라|한국|지역별/u.test(String(arg))){
+     if(selection.mode==='outfit'&&this.weatherSource==='kma'){
+      const national=await this.weather({});
+      return nationalOutfitReply(national.items)||'전국 날씨 자료를 받지 못했어요. 잠시 뒤 다시 시도해주세요.';
+     }
+     if(selection.mode!=='outfit'&&selection.mode!=='sun')return '전국 단위는 !옷차림 전국 · !전국날씨 로 볼 수 있어요. 이 안내는 지역을 함께 입력해주세요. 예: !우산 부산 · !시간별 서울 강남구';
+    }
+    if(region){
      const typed=region,resolved=this.resolveRegion(typed);
      // 시·도 대표 지점·주요 시로 찾지 못하면 전국 시·군·구 목록에서 찾습니다. (옷차림·우산·시간별·일출·현재 날씨)
      if(resolved)region=resolved;
