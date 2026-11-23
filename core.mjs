@@ -156,6 +156,9 @@ const n=x=>Number(x).toLocaleString('ko-KR');
 const KNOWN_COMMANDS=['채팅방','전국날씨','날씨','맛집','카페','채팅','대화','내정보','출석','낚시','홀','짝','홀짝','복권','랭킹','랭킹조회','애청랭킹','경험치랭킹','애청지수','애청온도','온도','라디오메이트','봇호출','랭크','신청곡','신청취소','신청곡취소','신청곡목록','현재곡','다음곡','이전곡','재생','멈춤','삭제','도감','아이템','가방','버프','킵','룰렛','가위바위보','주사위','숫자맞히기','퀴즈','정답','보이스카드','스푼','도움말','공지','낚시정보'];
 // 느낌표로 시작하는 말 중에서 메뉴판을 봇이 알아듣는 명령 목록에 넣습니다.
 KNOWN_COMMANDS.push('메뉴판');
+// 아래 설정은 해당 기능이 생기기 전에 저장된 방에는 없습니다. Store.load가 없는 값을 기본값으로 채워서,
+// 웹 관리 화면에서 설정을 한 번 저장하기 전에도 기능이 정상 동작하게 합니다.
+const NEW_SETTING_KEYS=['fishingWho','fishingLuck','donationTicketEnabled','donationTicketMin','donationTicketCount','donationExpEnabled','donationExpMin','donationExpPerSpoon','donationDonorTicketEnabled','donationDonorTicketMin','donationDonorTicketCount','lotteryFirstExp','lotteryFirstPt','lotterySecondExp','lotterySecondPt','lotteryThirdExp','lotteryThirdPt','battleEnabled','battleMinutes','battleGiftSpoons','battleFirstPt','battleFirstExp','battleSecondPt','battleSecondExp','battleThirdPt','battleThirdExp'];
 const COMMAND_WORDS=new Set([...KNOWN_COMMANDS,'자동운영','자동퀴즈','복권초기화','복권지급','계정연결','대결','조용','게임','구매','포기','취소']);
 // 0, 음수, 소수는 받지 않습니다. 컴퓨터가 정확하게 기억할 수 있는 양의 정수만 허용합니다.
 const validReactionAmount=amount=>/^[1-9]\d*$/.test(amount)&&Number.isSafeInteger(Number(amount));
@@ -172,7 +175,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS backups(id TEXT PRIMARY KEY,room TEXT,time INTEGER,data TEXT);`);
   }
   ids(){return this.db.prepare('SELECT id FROM rooms').all().map(r=>r.id);}
-  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);room.users=Object.assign(Object.create(null),room.users);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;if(room.settings.spoonNotice===LEGACY_CHARGE_NOTICE)room.settings.spoonNotice=DEFAULT_CHARGE_NOTICE;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;return room;}
+  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);room.users=Object.assign(Object.create(null),room.users);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;if(room.settings.spoonNotice===LEGACY_CHARGE_NOTICE)room.settings.spoonNotice=DEFAULT_CHARGE_NOTICE;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;const base=defaults();for(const key of NEW_SETTING_KEYS)if(room.settings[key]===undefined&&base[key]!==undefined)room.settings[key]=base[key];return room;}
   create(id,name) {
     if(!this.load(id))this.save({id,name,settings:defaults(),month:dates().month,users:{},songs:[],current:null,previous:null,lastRequester:null,streak:0,lastResponse:0,live:false,noticeTimes:{},achievers:[],special:[]});
     return this.load(id);
