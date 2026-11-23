@@ -158,6 +158,22 @@ test('OAuth login, SSE chat event and chat reply work end to end against a mock 
     assert.match(seen.chat[11],/\n🎟️ 후원자님 25스푼 후원! 복권 3장 지급 \(보유 3장\)/);
     assert.equal((await usersNow()).u2.tickets,3);
     assert.equal((await usersNow()).u1.tickets,2,'다른 청취자에게는 지급되지 않아야 합니다');
+    // 후원 대결: DJ가 시작하고 청취자가 참가한 뒤 후원하면 합산되어 현황에 보여야 합니다. (후원 보상 안내는 꺼서 답장 순서를 단순하게 합니다)
+    const roomForBattle=await (await fetch(address+'/api/room',{headers:{Cookie:session}})).json();
+    res=await fetch(address+'/api/settings',{method:'POST',headers:{Cookie:session,'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({settings:{...roomForBattle.settings,donationExpEnabled:false,donationDonorTicketEnabled:false},expectedRevision:roomForBattle.settingsRevision||0,name:roomForBattle.name})});
+    assert.equal(res.status,200);
+    await waitForSendGap();
+    chat('battle-start',dj,'!대결 시작 2');
+    await expectReply(12,/후원 대결 시작! 2분/);
+    await waitForSendGap();
+    chat('battle-join',listener,'!대결');
+    await expectReply(13,/후원자님 대결 참가/);
+    await waitForSendGap();
+    emit('gift-battle','donation',{user:listener,amount:30});
+    await expectReply(14,/^후원자님, 30 스푼 감사합니다!$/);
+    await waitForSendGap();
+    chat('battle-status',listener,'!대결 현황');
+    await expectReply(15,/대결 진행 중 .*1위 후원자 30스푼/);
     const joinedAt=Date.now();
     for(const [index,value] of [36.5,38.75].entries()){
       seen.stream.write(`id: temperature-${index}\nevent: presence\ndata: ${JSON.stringify({user:{id:'u1',nickname:'청취자'},type:'JOIN',favoriteTemperature:value,time:new Date(joinedAt+index*1000).toISOString()})}\n\n`);

@@ -99,6 +99,8 @@ export class Spoon {
             }else if(f.event==='donation'){
               this.captures.record(room,f);
               const s=this.store.load(room).settings;
+              // 후원 대결 중이면 참가자의 후원 스푼을 합산합니다. (참가 후의 후원만, 같은 후원은 한 번만)
+              this.engine.battleDonation(room,{id:createHash('sha256').update(f.id||JSON.stringify(f.data)).digest('hex'),amount:f.data.amount,user:f.data.user});
               // 후원 금액 10을 메뉴판의 '10' 항목에서 찾습니다. 후원자 이름을 받지 못하면 '청취자'라고 부릅니다.
               const amount=String(f.data.amount),name=f.data.user?.nickname||'청취자';
               const reactions=s.donationReactions??{};
@@ -163,6 +165,9 @@ export class Spoon {
       let notice=null,isIntro=false,autoChat=null,announcement=null,quiz=null;
       this.store.transaction(id,r=>{
         this.engine.reset(r);
+        // 시간이 다 된 후원 대결을 끝내고 순위별 보상을 지급합니다. 방송 중이고 조용 모드가 아니면 결과를 채팅으로 알립니다.
+        const battleEnded=this.engine.battleTick(r,Date.now());
+        if(battleEnded&&r.live&&!r.settings.quiet)this.outbox.enqueue(id,'battle-end:'+battleEnded.id,battleEnded.text);
         if(r.live&&!r.settings.quiet)for(const expired of expireQuizRounds(this.engine,r,Date.now()))this.outbox.enqueue(id,expired.key,expired.text);
         if(!r.live||!r.settings.quiz||!r.settings.autoQuizEnabled)autoQuizCandidate(this.engine,r,Date.now());
         if(!r.live||r.settings.quiet||Date.now()-r.lastResponse<r.settings.responseGap*1000)return;
