@@ -10,3 +10,5 @@
 .capture-grid img{width:100%;height:auto;border-radius:10px;border:1px solid rgba(0,0,0,.15);background:#222}
 .capture-grid figcaption{font-size:.85rem;line-height:1.9}
 .capture-event a.button,.capture-event button{min-height:40px;padding:8px 14px;border-radius:10px;text-decoration:none;display:inline-block}
+.capture-status{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:8px 14px;margin:10px 0;background:rgba(255,255,255,.5)}
+.capture-status p{margin:6px 0}

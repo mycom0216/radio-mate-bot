@@ -19,7 +19,7 @@ export function inspectPng(bytes){
 }
 export class ScreenCapture {
  constructor(store,{now=Date.now}={}){
-  Object.assign(this,{store,now,dir:null,maxFiles:1000,retentionDays:30,maxBytes:3*1024**3,hits:new Map()});
+  Object.assign(this,{store,now,dir:null,maxFiles:1000,retentionDays:30,maxBytes:3*1024**3,hits:new Map(),lastPoll:new Map(),lastDonation:new Map()});
   // 서버에 보관한 캡처 목록(파일 내용은 data/captures 폴더, 여기에는 정보만)
   store.db.exec('CREATE TABLE IF NOT EXISTS capture_files(id TEXT PRIMARY KEY,room TEXT NOT NULL,created INTEGER NOT NULL,event_id TEXT NOT NULL,frame INTEGER NOT NULL,nickname TEXT NOT NULL,amount INTEGER NOT NULL,size INTEGER NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,path TEXT NOT NULL,UNIQUE(room,event_id,frame))');
   store.db.exec('CREATE INDEX IF NOT EXISTS capture_files_room ON capture_files(room,created)');
@@ -31,6 +31,9 @@ export class ScreenCapture {
  }
  authorized(room){return !!this.store.db.prepare('SELECT 1 FROM tokens WHERE room=?').get(room);}
  status(room){const data=this.store.load(room)?.screenCapture;return {enabled:!!data&&data.expiresAt>this.now()&&this.authorized(room),expiresAt:data?.expiresAt||null};}
+ // 관리 화면용 진단: 확장이 서버에 마지막으로 접속한 시각과, 마지막으로 받은 후원이 왜 캡처 대상이 되었는지(되지 않았는지)를 보여 줍니다.
+ // 둘 다 서버를 다시 시작하면 초기화되는 메모리 값입니다. 서버에 보관된 캡처 장수도 함께 돌려줍니다.
+ diagnostics(room){return {...this.status(room),lastPollAt:this.lastPoll.get(room)||null,lastDonation:this.lastDonation.get(room)||null,stored:this.usage(room)};}
  issue(room){
   if(!this.authorized(room))throw Error('실제 DJ 계정을 먼저 연결해주세요.');
   const token=randomBytes(32).toString('base64url'),expiresAt=this.now()+12*3600000;
@@ -44,19 +47,38 @@ export class ScreenCapture {
   for(const room of this.store.ids()){const data=this.store.load(room)?.screenCapture;if(data?.expiresAt>this.now()&&typeof data.tokenHash==='string'&&data.tokenHash.length===64&&timingSafeEqual(Buffer.from(key),Buffer.from(data.tokenHash))&&this.authorized(room))return room;}
   return null;
  }
+ // 후원 알림에서 후원 시각(밀리초)을 찾습니다. 스푼 알림마다 필드 이름이 다를 수 있어 time·sentTime·createdAt 등을 차례로 보고(초 단위·문자열 날짜도 인식),
+ // 어느 것도 없으면 서버가 받은 시각을 씁니다. 반환: {ms, fromEvent}
+ static eventTime(data,now){
+  for(const value of [data?.time,data?.sentTime,data?.createdAt,data?.created,data?.timestamp]){
+   if(value===undefined||value===null||value==='')continue;
+   let ms=typeof value==='number'?value:/^\d+(\.\d+)?$/.test(String(value).trim())?Number(value):Date.parse(value);
+   if(Number.isFinite(ms)&&ms>0&&ms<1e11)ms*=1000; // 초 단위 값
+   if(Number.isFinite(ms))return {ms,fromEvent:true};
+  }
+  return {ms:now,fromEvent:false};
+ }
  record(room,frame){
-  const data=frame?.data,time=Date.parse(data?.time),now=this.now();
+  const data=frame?.data,now=this.now(),min=this.store.load(room)?.settings?.screenCaptureMin??300;
+  const rawId=data?.user?.id,userId=typeof rawId==='string'?rawId:Number.isSafeInteger(rawId)?String(rawId):'',amount=Number(data?.amount),nickname=String(data?.user?.nickname||'청취자').slice(0,40);
+  // 어떤 이유로 대상이 되었는지(되지 않았는지)를 방마다 기억해 관리 화면에서 보여 줍니다.
+  const note=result=>{this.lastDonation.set(room,{at:now,amount:Number.isFinite(amount)?amount:null,nickname,result,min});if(this.lastDonation.size>500)this.lastDonation.delete(this.lastDonation.keys().next().value);return result==='recorded';};
+  if(!this.status(room).enabled)return note('not-connected');
+  if(!userId)return note('bad-user');
+  if(!Number.isSafeInteger(amount)||amount<1)return note('bad-amount');
   // 기준 스푼(설정 screenCaptureMin, 기본 300) 미만의 후원은 캡처 대상으로 기록하지 않습니다.
-  const min=this.store.load(room)?.settings?.screenCaptureMin??300;
-  if(!this.status(room).enabled||typeof data?.user?.id!=='string'||!data.user.id||!Number.isSafeInteger(data.amount)||data.amount<min||!Number.isFinite(time)||Math.abs(now-time)>120000)return false;
-  const id=hash(frame.id||JSON.stringify(data));let recorded=false;
-  this.store.transaction(room,r=>{const config=r.screenCapture;if(!config||config.expiresAt<=now)return;
+  if(amount<min)return note('below-min');
+  const {ms:time,fromEvent}=ScreenCapture.eventTime(data,now);
+  if(fromEvent&&Math.abs(now-time)>120000)return note('stale');
+  const id=hash(frame.id||JSON.stringify(data));let result='duplicate';
+  this.store.transaction(room,r=>{const config=r.screenCapture;if(!config||config.expiresAt<=now){result='not-connected';return;}
    config.events=config.events.filter(event=>now-event.receivedAt<=120000);
    if(config.events.some(event=>event.id===id))return;
-   config.events.push({id,sequence:++config.sequence,userId:data.user.id,nickname:String(data.user.nickname||'청취자').slice(0,40),amount:data.amount,time,receivedAt:now});config.events=config.events.slice(-100);recorded=true;
-  });return recorded;
+   config.events.push({id,sequence:++config.sequence,userId,nickname,amount,time,receivedAt:now});config.events=config.events.slice(-100);result='recorded';
+  });
+  return note(result);
  }
- list(room,after=0){const r=this.store.load(room),config=r.screenCapture;return {dj:r.name,expiresAt:config.expiresAt,cursor:config.sequence,events:config.events.filter(event=>event.sequence>after&&this.now()-event.receivedAt<=120000).map(({userId,...event})=>event)};}
+ list(room,after=0){const r=this.store.load(room),config=r.screenCapture;this.lastPoll.set(room,this.now());if(this.lastPoll.size>500)this.lastPoll.delete(this.lastPoll.keys().next().value);return {dj:r.name,expiresAt:config.expiresAt,cursor:config.sequence,events:config.events.filter(event=>event.sequence>after&&this.now()-event.receivedAt<=120000).map(({userId,...event})=>event)};}
  // ── 서버 보관 ──
  // 확장 기능이 올린 PNG 한 장을 검사해 보관합니다. 같은 (후원, 장 번호)는 한 번만 받고, 방마다 분당 30장까지만 받습니다.
  save(room,meta,bytes){

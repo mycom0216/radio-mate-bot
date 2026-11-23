@@ -62,9 +62,10 @@ test('웹 관리 화면의 캡처 카드가 기준 입력칸과 300스푼 안내
   const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   const start = source.indexOf('function screenCapturePanel(){');
   const end = source.indexOf('\n', start);
-  const context = { room: { id: 'r', name: '콰앙', screenCapture: null, settings: { screenCaptureMin: 300 } }, card: (title, body) => `${title}|${body}`, field: (label, key) => `[${label}:${key}]`, saveButton: () => '[save]', esc: value => String(value) };
+  const context = { room: { id: 'r', name: '콰앙', screenCapture: null, settings: { screenCaptureMin: 300 } }, card: (title, body) => `${title}|${body}`, field: (label, key) => `[${label}:${key}]`, saveButton: () => '[save]', esc: value => String(value), captureStatusHtml: () => '[status]' };
   vm.createContext(context);
   vm.runInContext(`${source.slice(start, end)}\nthis.html=screenCapturePanel();`, context);
+  assert.ok(context.html.includes('[status]'), '연결 상태 표시 자리');
   assert.ok(context.html.includes(':screenCaptureMin]') && context.html.includes('기준 스푼(기본 300스푼) 이상') && context.html.includes('[save]'));
   assert.ok(!context.html.includes('20스푼'));
 });
