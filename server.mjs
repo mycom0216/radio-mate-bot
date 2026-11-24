@@ -16,7 +16,7 @@ import {YouTubeSearch} from './youtube-search.mjs';
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {youtubeId} from './public/song-utils.mjs';
 import {PublicSandbox} from './sandbox.mjs';
-import {readJSON,readBytes,publicOrigin} from './http-utils.mjs';
+import {readJSON,readBytes,parseRange,publicOrigin} from './http-utils.mjs';
 import {fullBackup} from './backup.mjs';
 import {renameSync,rmSync,readdirSync} from 'node:fs';
 import {deleteRoom,deleteListener,expireVoice} from './privacy.mjs';
@@ -111,6 +111,17 @@ const server=createServer(async(req,res)=>{
       const bytes=await readBytes(req,{limit:8*1024*1024});
       res.setHeader('Referrer-Policy','no-referrer');
       reply(res,201,spoon.captures.save(room,{eventId:header('x-capture-event'),frame:Number(header('x-capture-frame')),amount:Number(header('x-capture-amount')),time:Number(header('x-capture-time')),nickname:decode(header('x-capture-nick'))},bytes));return;
+    }
+    if(path==='/api/screen-capture/video'){
+      // 확장 기능이 녹화한 후원 순간 영상(WebM) 한 개를 올립니다. 사진과 같은 연결 토큰으로만 인증합니다.
+      if(req.method!=='POST')throw Object.assign(Error('허용되지 않은 요청입니다.'),{status:405});
+      const bearer=/^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization||''),room=bearer&&spoon.captures.resolve(bearer[1]);
+      if(!room)throw Object.assign(Error('캡처 연결이 만료되었거나 해제되었습니다. DJ 화면에서 다시 연결해주세요.'),{status:401});
+      if(String(req.headers['content-type']||'').split(';')[0].trim().toLowerCase()!=='video/webm')throw Object.assign(Error('WebM 영상(Content-Type: video/webm)만 올릴 수 있습니다.'),{status:415});
+      const header=name=>String(req.headers[name]||''),decode=value=>{try{return decodeURIComponent(value).slice(0,200);}catch{return '';}};
+      const bytes=await readBytes(req,{limit:50*1024*1024});
+      res.setHeader('Referrer-Policy','no-referrer');
+      reply(res,201,spoon.captures.saveVideo(room,{eventId:header('x-capture-event'),amount:Number(header('x-capture-amount')),time:Number(header('x-capture-time')),nickname:decode(header('x-capture-nick'))},bytes));return;
     }
     const callPage=/^\/call\/[A-Za-z0-9_-]{43}\/?$/.test(path),publicCall=/^\/api\/bot-call-public\/([A-Za-z0-9_-]{43})$/.exec(path);
     if(callPage){
@@ -239,8 +250,13 @@ const server=createServer(async(req,res)=>{
       const captureFile=/^\/api\/screen-capture\/files\/([a-f0-9]{24})$/.exec(path);
       if(captureFile&&req.method==='GET'){
         if(isDemo(roomId))throw Object.assign(Error('공개 체험에는 보관된 캡처가 없습니다.'),{status:404});
-        const {data,row}=spoon.captures.file(roomId,captureFile[1]),name=`RadioMate_${row.amount}spoon_frame${String(row.frame).padStart(2,'0')}_${new Date(row.created+9*3600000).toISOString().slice(0,19).replace(/[-:T]/g,'')}.png`;
-        res.writeHead(200,{'Content-Type':'image/png','Content-Length':data.length,'Cache-Control':'private, no-store','Content-Disposition':`${url.searchParams.get('download')==='1'?'attachment':'inline'}; filename="${name}"`,'X-Content-Type-Options':'nosniff'});res.end(data);return;
+        const {data,row,kind,mime}=spoon.captures.file(roomId,captureFile[1]),stamp=new Date(row.created+9*3600000).toISOString().slice(0,19).replace(/[-:T]/g,''),
+          name=kind==='video'?`RadioMate_${row.amount}spoon_video_${stamp}.webm`:`RadioMate_${row.amount}spoon_frame${String(row.frame).padStart(2,'0')}_${stamp}.png`;
+        const range=parseRange(req.headers.range,data.length),base={'Content-Type':mime,'Accept-Ranges':'bytes','Cache-Control':'private, no-store','Content-Disposition':`${url.searchParams.get('download')==='1'?'attachment':'inline'}; filename="${name}"`,'X-Content-Type-Options':'nosniff'};
+        // 영상은 부분 요청(Range)을 지원해야 아이패드(사파리)에서 재생·건너뛰기가 됩니다.
+        if(range?.invalid){res.writeHead(416,{'Content-Range':`bytes */${data.length}`});res.end();return;}
+        if(range){const part=data.subarray(range.start,range.end+1);res.writeHead(206,{...base,'Content-Range':`bytes ${range.start}-${range.end}/${data.length}`,'Content-Length':part.length});res.end(part);return;}
+        res.writeHead(200,{...base,'Content-Length':data.length});res.end(data);return;
       }
       const captureZip=/^\/api\/screen-capture\/zip\/([A-Za-z0-9_-]{1,80})$/.exec(path);
       if(captureZip&&req.method==='GET'){

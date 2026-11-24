@@ -12,3 +12,5 @@
 .capture-event a.button,.capture-event button{min-height:40px;padding:8px 14px;border-radius:10px;text-decoration:none;display:inline-block}
 .capture-status{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:8px 14px;margin:10px 0;background:rgba(255,255,255,.5)}
 .capture-status p{margin:6px 0}
+.capture-grid figure.capture-video{grid-column:1/-1}
+.capture-video video{width:100%;max-width:420px;border-radius:10px;background:#000}

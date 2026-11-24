@@ -119,7 +119,7 @@ test('실제 흐름: 명령 3개가 동시에 와도 모두 답하고, 후원 �
     emit('dj-call', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: '안녕하세요', sentTime: Date.now() });
     for (let i = 0; i < 60 && !chats.length; i++) await sleep(100);
     assert.equal(chats.length, 1, 'DJ 본인의 평범한 인사에도 대답');
-    assert.match(chats[0].text, /반가|안녕|어서/);
+    assert.match(chats[0].text, /DJ님/, '인사 문구는 시간대(아침·낮·저녁·밤)와 무작위로 바뀌지만 모두 닉네임을 부름');
     // 봇의 답변이 DJ 계정으로 되돌아와도 다시 대답하지 않습니다.
     emit('dj-echo', 'chat', { user: { id: 'dj-speed', nickname: 'DJ' }, message: chats[0].text, sentTime: Date.now() });
     await sleep(1800);

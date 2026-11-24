@@ -1,12 +1,18 @@
 export const ORIGIN='https://radiomate-mycom0216.gallanttamarind4.chatgpt.site';
 export function liveUrl(value){try{const url=new URL(value);return url.protocol==='https:'&&['www.spooncast.net','spooncast.net'].includes(url.hostname)&&/^\/(kr|jp)\/live\/[^/]+\/?$/.test(url.pathname)?url.href:null;}catch{return null;}}
+// 연결한 방송 탭이 지금 그대로 보이는 상태인지 확인합니다. (사진·영상 공통) 아니면 건너뛰는 이유를 돌려줍니다.
+export function tabDecision(binding,tab,window){
+ return (!liveUrl(tab?.url)||tab.id!==binding.tabId||tab.windowId!==binding.windowId||tab.url!==binding.spoonUrl||!tab.active||window?.state==='minimized')?'다른 탭·다른 방송이거나 창이 최소화되어 캡처하지 않았습니다.':null;
+}
 export function captureDecision(event,binding,tab,window,now=Date.now()){
- if(!liveUrl(tab?.url)||tab.id!==binding.tabId||tab.windowId!==binding.windowId||tab.url!==binding.spoonUrl||!tab.active||window?.state==='minimized')return '다른 탭·다른 방송이거나 창이 최소화되어 캡처하지 않았습니다.';
+ const tabReason=tabDecision(binding,tab,window);if(tabReason)return tabReason;
  if(!Number.isFinite(event?.time)||now-event.time>10000||event.time-now>5000)return '후원 시점에서 10초 이상 지나 실제 순간 캡처를 건너뛰었습니다.';
  return null;
 }
 const safe=value=>[...String(value).normalize('NFKC').replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').replace(/[. ]+$/g,'')].slice(0,35).join('')||'listener';
 export function captureFilename(event,dj){const stamp=new Date(event.time+9*3600000).toISOString(),frame=Number.isInteger(event.frame)?`_frame${String(event.frame).padStart(2,'0')}`:'';return `RadioMate-Captures/${stamp.slice(0,10)}/${stamp.slice(11,19).replaceAll(':','')}_${safe(dj)}_${safe(event.nickname)}_${event.amount}spoon_${safe(event.id).slice(0,10)}${frame}.png`;}
+// 후원 순간 영상의 저장 파일 이름: RadioMate-Captures/날짜/시간_DJ_닉네임_수량spoon_이벤트_video.webm
+export function videoFilename(event,dj){const stamp=new Date(event.time+9*3600000).toISOString();return `RadioMate-Captures/${stamp.slice(0,10)}/${stamp.slice(11,19).replaceAll(':','')}_${safe(dj)}_${safe(event.nickname)}_${event.amount}spoon_${safe(event.id).slice(0,10)}_video.webm`;}
 export async function captureEvent(event,binding,io,now=Date.now){
  if(io.allowed&&!await io.allowed())return {kind:'skipped',reason:'캡처 연결이 중지·변경되었습니다.'};
  const epoch=io.epoch?.(binding);

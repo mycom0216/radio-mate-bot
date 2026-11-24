@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';import {join} from 'node:path';
-const files=['manifest.json','worker.mjs','policy.mjs','popup.html','popup.mjs','popup.css','README.md'];
+const files=['manifest.json','worker.mjs','policy.mjs','offscreen.html','offscreen.mjs','popup.html','popup.mjs','popup.css','README.md'];
 function crc32(data){let crc=0xffffffff;for(const byte of data){crc^=byte;for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}return (crc^0xffffffff)>>>0;}
 // A small, uncompressed ZIP keeps the extension download self-contained on fresh deployments.
 export function captureExtensionZip(root){

@@ -10,6 +10,12 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const PNG_SIGNATURE=Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),PNG_END=Buffer.from([0,0,0,0,0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82]);
 const fail=(message,status=400)=>Object.assign(Error(message),{status});
 // PNG 한 장이 정말 PNG인지(서명·IHDR 크기·IEND 끝)와 화면 크기가 상식적인지 확인하고 가로·세로를 돌려줍니다.
+// 후원 순간 영상(WebM)인지 확인합니다: EBML 머리표(1A 45 DF A3)와 문서 종류 'webm', 크기 8KB~50MB.
+export function inspectVideo(bytes){
+ if(!Buffer.isBuffer(bytes)||bytes.length<8*1024||bytes.length>50*1024*1024)throw fail('영상 크기가 올바르지 않습니다. (8KB~50MB)',bytes?.length>50*1024*1024?413:400);
+ if(bytes.readUInt32BE(0)!==0x1a45dfa3||!bytes.subarray(0,64).includes(Buffer.from('webm')))throw fail('올바른 WebM 영상이 아닙니다.',415);
+ return {};
+}
 export function inspectPng(bytes){
  if(!Buffer.isBuffer(bytes)||bytes.length<1000||bytes.length>8*1024*1024)throw fail('PNG 크기가 올바르지 않습니다. (1KB~8MB)',bytes?.length>8*1024*1024?413:400);
  if(!bytes.subarray(0,8).equals(PNG_SIGNATURE)||bytes.readUInt32BE(8)!==13||bytes.toString('latin1',12,16)!=='IHDR'||!bytes.subarray(-12).equals(PNG_END))throw fail('올바른 PNG 이미지가 아닙니다.',415);
@@ -19,7 +25,7 @@ export function inspectPng(bytes){
 }
 export class ScreenCapture {
  constructor(store,{now=Date.now}={}){
-  Object.assign(this,{store,now,dir:null,maxFiles:1000,retentionDays:30,maxBytes:3*1024**3,hits:new Map(),lastPoll:new Map(),lastDonation:new Map()});
+  Object.assign(this,{store,now,dir:null,maxFiles:1000,retentionDays:30,maxBytes:3*1024**3,hits:new Map(),videoHits:new Map(),lastPoll:new Map(),lastDonation:new Map()});
   // 서버에 보관한 캡처 목록(파일 내용은 data/captures 폴더, 여기에는 정보만)
   store.db.exec('CREATE TABLE IF NOT EXISTS capture_files(id TEXT PRIMARY KEY,room TEXT NOT NULL,created INTEGER NOT NULL,event_id TEXT NOT NULL,frame INTEGER NOT NULL,nickname TEXT NOT NULL,amount INTEGER NOT NULL,size INTEGER NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,path TEXT NOT NULL,UNIQUE(room,event_id,frame))');
   store.db.exec('CREATE INDEX IF NOT EXISTS capture_files_room ON capture_files(room,created)');
@@ -91,17 +97,35 @@ export class ScreenCapture {
   const existing=this.store.db.prepare('SELECT id FROM capture_files WHERE room=? AND event_id=? AND frame=?').get(room,eventId,frame);
   if(existing)return {id:existing.id,duplicate:true};
   recent.push(now);this.hits.set(room,recent);if(this.hits.size>500)this.hits.delete(this.hits.keys().next().value);
+  return this.persist(room,{eventId,frame,amount,time,nickname,bytes,width,height,ext:'png',label:'f'+frame},now);
+ }
+ // 파일 한 개를 디스크에 쓰고 목록(DB)에 기록한 뒤 보관 한도를 정리합니다. (사진과 영상이 함께 씁니다)
+ persist(room,{eventId,frame,amount,time,nickname,bytes,width,height,ext,label},now){
   const id=randomBytes(12).toString('hex'),stamp=new Date(time+9*3600000).toISOString(),day=stamp.slice(0,10),roomKey=hash(room).slice(0,16);
-  const file=`${stamp.slice(11,19).replaceAll(':','')}_${amount}spoon_${eventId.slice(0,8)}_f${frame}_${id.slice(0,6)}.png`,relative=`${roomKey}/${day}/${file}`,full=join(this.dir,...relative.split('/'));
+  const file=`${stamp.slice(11,19).replaceAll(':','')}_${amount}spoon_${eventId.slice(0,8)}_${label}_${id.slice(0,6)}.${ext}`,relative=`${roomKey}/${day}/${file}`,full=join(this.dir,...relative.split('/'));
   mkdirSync(join(this.dir,roomKey,day),{recursive:true});
   const temporary=full+'.tmp';writeFileSync(temporary,bytes,{mode:0o600});renameSync(temporary,full);
   this.store.db.prepare('INSERT INTO capture_files(id,room,created,event_id,frame,nickname,amount,size,width,height,path) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,room,Math.min(Math.floor(time),now),eventId,frame,nickname,amount,bytes.length,width,height,relative);
   this.pruneFiles(room);
   return {id,duplicate:false,size:bytes.length};
  }
+ // 후원 순간 영상 한 개(WebM)를 검사해 보관합니다. 사진과 같은 후원 번호에 frame 0으로 묶이고, 방마다 분당 6개·한 후원에 1개만 받습니다.
+ saveVideo(room,meta,bytes){
+  if(!this.dir)throw fail('이 서버에는 캡처를 보관할 폴더가 설정되어 있지 않습니다.',503);
+  const eventId=String(meta?.eventId||''),amount=Number(meta?.amount),time=Number(meta?.time),nickname=String(meta?.nickname||'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,40)||'청취자';
+  if(!/^[A-Za-z0-9_-]{1,80}$/.test(eventId)||!Number.isSafeInteger(amount)||amount<0||!Number.isFinite(time))throw fail('영상 정보가 올바르지 않습니다.');
+  const now=this.now(),recent=(this.videoHits.get(room)||[]).filter(at=>now-at<60000);
+  if(recent.length>=6)throw fail('영상 업로드가 너무 많습니다. 잠시 후 다시 시도해주세요.',429);
+  inspectVideo(bytes);
+  const existing=this.store.db.prepare('SELECT id FROM capture_files WHERE room=? AND event_id=? AND frame=0').get(room,eventId);
+  if(existing)return {id:existing.id,duplicate:true};
+  recent.push(now);this.videoHits.set(room,recent);if(this.videoHits.size>500)this.videoHits.delete(this.videoHits.keys().next().value);
+  return this.persist(room,{eventId,frame:0,amount,time,nickname,bytes,width:0,height:0,ext:'webm',label:'video'},now);
+ }
+
  // 보관 목록(최근 것부터). 파일 내용은 포함하지 않습니다.
  files(room,limit=300){
-  return this.store.db.prepare('SELECT id,event_id AS eventId,frame,nickname,amount,created AS time,size,width,height FROM capture_files WHERE room=? ORDER BY created DESC,frame ASC LIMIT ?').all(room,Math.max(1,Math.min(1000,limit)));
+  return this.store.db.prepare('SELECT id,event_id AS eventId,frame,nickname,amount,created AS time,size,width,height,path FROM capture_files WHERE room=? ORDER BY created DESC,frame ASC LIMIT ?').all(room,Math.max(1,Math.min(1000,limit))).map(({path,...row})=>({...row,kind:path.endsWith('.webm')?'video':'image'}));
  }
  usage(room){const row=this.store.db.prepare('SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS bytes FROM capture_files WHERE room=?').get(room);return {count:row.count,bytes:row.bytes};}
  // 파일 한 장을 읽습니다. 다른 방의 파일이거나 없으면 404입니다.
@@ -110,13 +134,13 @@ export class ScreenCapture {
   if(!row||!this.dir)throw fail('보관된 캡처를 찾을 수 없습니다.',404);
   const full=resolve(this.dir,...row.path.split('/'));
   if(!full.startsWith(this.dir+sep)||!existsSync(full))throw fail('캡처 파일이 서버에서 삭제되었습니다.',404);
-  return {data:readFileSync(full),row};
+  return {data:readFileSync(full),row,kind:row.path.endsWith('.webm')?'video':'image',mime:row.path.endsWith('.webm')?'video/webm':'image/png'};
  }
  // 후원 한 건의 모든 장을 ZIP 하나로 묶습니다. (태블릿에서 한 번에 내려받기 위함)
  zip(room,eventId){
   const rows=this.store.db.prepare('SELECT * FROM capture_files WHERE room=? AND event_id=? ORDER BY frame').all(room,String(eventId||''));
   if(!rows.length)throw fail('보관된 캡처를 찾을 수 없습니다.',404);
-  const entries=rows.map(row=>({name:`${new Date(row.created+9*3600000).toISOString().slice(0,10)}_${row.amount}spoon_frame${String(row.frame).padStart(2,'0')}.png`,data:this.file(room,row.id).data,date:new Date(row.created)}));
+  const entries=rows.map(row=>({name:`${new Date(row.created+9*3600000).toISOString().slice(0,10)}_${row.amount}spoon_${row.frame===0?'video.webm':'frame'+String(row.frame).padStart(2,'0')+'.png'}`,data:this.file(room,row.id).data,date:new Date(row.created)}));
   return {data:buildZip(entries),name:`RadioMate-${new Date(rows[0].created+9*3600000).toISOString().slice(0,10)}-${rows[0].amount}spoon.zip`};
  }
  // 선택한 캡처(ids) 또는 전부(ids 생략)를 지웁니다. 지운 개수를 돌려줍니다.

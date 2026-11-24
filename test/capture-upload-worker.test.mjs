@@ -43,7 +43,7 @@ test('확장 기능이 후원 화면을 이 PC에 저장하고 서버에도 올�
     const settle = async () => { for (let i = 0; i < 80 && (inFlight || state.uploadReport === undefined); i++) await new Promise(resolve => setTimeout(resolve, 50)); await new Promise(resolve => setTimeout(resolve, 150)); };
 
     // 0) 저장 방식 설정: 기본은 둘 다 켬, 둘 다 끄거나 잘못된 값은 거절, 팝업만 바꿀 수 있음
-    assert.deepEqual((await send({ type: 'state' })).options, { local: true, upload: true });
+    assert.deepEqual((await send({ type: 'state' })).options, { local: true, upload: true, video: false, videoSeconds: 15, videoAudio: true });
     for (const bad of [{ local: false, upload: false }, { local: 'yes', upload: true }, { local: true }]) assert.equal((await send({ type: 'options', ...bad })).ok, false, JSON.stringify(bad));
     assert.equal((await send({ type: 'options', local: false, upload: true }, { tab: { id: 1 }, url })).ok, false, '웹 페이지는 저장 방식을 바꿀 수 없음');
     assert.equal(state.options, undefined);

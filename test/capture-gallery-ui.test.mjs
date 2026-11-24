@@ -59,7 +59,7 @@ test('캡처 카드: 서버 보관 안내, 갤러리 자리, 태블릿·폰 안�
   const start = source.indexOf('function screenCapturePanel(){'), end = source.indexOf('\n', start);
   const panel = source.slice(start, end);
   assert.ok(panel.includes('서버에 보관된 후원 캡처') && panel.includes('id="capture-files"') && panel.includes('data-action="capture-files-refresh"') && panel.includes('data-action="capture-files-clear"'));
-  assert.ok(panel.includes('태블릿·폰') && panel.includes('버전 1.2.0') && !panel.includes('서버로 이미지를 업로드하지 않습니다'));
+  assert.ok(panel.includes('태블릿·폰') && panel.includes('버전 1.3.0') && !panel.includes('서버로 이미지를 업로드하지 않습니다'));
   assert.ok(source.includes("if(page==='records')void loadCaptureFiles();"), '기록 화면을 그린 뒤 목록을 불러옴');
   for (const action of ['capture-files-refresh', 'capture-file-delete', 'capture-files-clear']) assert.ok(source.includes(`if(a==='${action}')`), action);
   assert.match(readFileSync(new URL('../public/style.css', import.meta.url), 'utf8'), /\.capture-grid\{display:grid/);

@@ -39,3 +39,16 @@ export async function readJSON(req,{limit=256000}={}){
   if(!value||typeof value!=='object'||Array.isArray(value))throw invalid('JSON 객체를 보내주세요.');
   return value;
 }
+
+// HTTP Range 헤더(예: "bytes=0-1023", "bytes=500-", "bytes=-500")를 해석해 {start,end}(끝 포함)를 돌려줍니다.
+// 헤더가 없으면 null(전체), 올바르지 않거나 범위를 벗어나면 {invalid:true}를 돌려줍니다. 영상은 이 방식이 있어야 사파리(아이패드)에서 재생됩니다.
+export function parseRange(header,size){
+  if(header===undefined||header===null||header==='')return null;
+  const match=/^bytes=(\d*)-(\d*)$/.exec(String(header).trim());
+  if(!match||(match[1]===''&&match[2]===''))return {invalid:true};
+  let start,end;
+  if(match[1]===''){const length=Number(match[2]);if(!(length>0))return {invalid:true};start=Math.max(0,size-length);end=size-1;}
+  else{start=Number(match[1]);end=match[2]===''?size-1:Math.min(Number(match[2]),size-1);}
+  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>end||start>=size)return {invalid:true};
+  return {start,end};
+}
