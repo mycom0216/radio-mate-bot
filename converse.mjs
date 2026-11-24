@@ -2,10 +2,20 @@
 // 외부 요청·DB 접근이 없는 순수 로직이며, 실제 답변은 core.mjs(Engine)가 lifestyle(AI·날씨·맛집)과 이어서 만듭니다.
 import {foodTypes,cafeTypes} from './public/dining-guide.mjs';
 import {koreaDate,shiftDate,weatherRange} from './weather-periods.mjs';
+import {firstSentence} from './ai-chat.mjs';
 
 export const CHAT_MODES=['off','call','auto','all'];
 export const DEFAULT_CHAT_NAME='메이트';
 export const SESSION_MS=180000; // 봇이 답한 뒤 3분 동안은 "이어서 말하는 중"으로 봅니다.
+// 수다 정도(설정 chatTalk)별 대답 빈도: 같은 사람에게 다시 대답하기까지의 최소 간격(gap·fastGap=호출·서비스 질문), 5분 동안의 한 사람·한 방 횟수,
+// 호출 없이 이어 말하는 시간(sessionMs), 평범한 말·혼잣말 끼어들기 여부(plainAll·guess), 대답을 첫 문장만으로 줄일지(trim).
+// quiet(기본): 부르거나 인사·고마움·질문 서비스(날씨·맛집)에만 짧게 / normal: 평범한 말에도 가끔 / lively: 예전 동작
+export const TALK={
+ quiet:{gap:30000,fastGap:15000,perUser:3,perRoom:8,sessionMs:60000,plainAll:false,guess:false,trim:true},
+ normal:{gap:15000,fastGap:8000,perUser:6,perRoom:15,sessionMs:120000,plainAll:true,guess:true,trim:false},
+ lively:{gap:8000,fastGap:4000,perUser:12,perRoom:30,sessionMs:SESSION_MS,plainAll:true,guess:true,trim:false},
+};
+export const talkOf=settings=>TALK[settings?.chatTalk]||TALK.quiet;
 export const SKIP='SKIP';
 
 // NFKC는 ㅎㅇ·ㅂㅂ 같은 호환 자모를 다른 문자로 바꿔 버리므로, 전각 문자(！？)만 따로 반각으로 바꿉니다.
@@ -134,22 +144,24 @@ export function naturalRequest(message,{isRegion=()=>false,now=Date.now()}={}){
 export class Conversation{
  constructor({int=randomIndex}={}){this.int=int;this.sessions=new Map();this.logs=new Map();this.rooms=new Map();this.texts=new Map();}
  inSession(room,user,now){return (this.sessions.get(room+'|'+user)??0)>now;}
- allow(room,user,now,{fast=false}={}){
+ allow(room,user,now,{fast=false,talk=TALK.lively}={}){
   const key=room+'|'+user,mine=(this.logs.get(key)||[]).filter(time=>time>now-300000),theirs=(this.rooms.get(room)||[]).filter(time=>time>now-300000);
-  if(mine.length&&now-mine.at(-1)<(fast?4000:8000))return false;
-  return mine.length<12&&theirs.length<30; // 5분 안에 한 사람 12번 · 한 방 30번까지
+  if(mine.length&&now-mine.at(-1)<(fast?talk.fastGap:talk.gap))return false;
+  return mine.length<talk.perUser&&theirs.length<talk.perRoom; // 5분 안에 한 사람·한 방이 받을 수 있는 대답 수는 수다 정도에 따라 다름
  }
  // open=false는 AI가 끼어들지 않기로 한 경우입니다. 횟수·같은 말 도배는 세지만 "이어 말하기" 시간은 열지 않습니다.
- record(room,user,now,text='',{open=true}={}){
+ record(room,user,now,text='',{open=true,sessionMs=SESSION_MS}={}){
   const key=room+'|'+user;
   this.logs.set(key,[...(this.logs.get(key)||[]).filter(time=>time>now-300000),now]);this.rooms.set(room,[...(this.rooms.get(room)||[]).filter(time=>time>now-300000),now]);
-  if(open)this.sessions.set(key,now+SESSION_MS);if(text)this.texts.set(key,{text,time:now});
+  if(open)this.sessions.set(key,now+sessionMs);if(text)this.texts.set(key,{text,time:now});
   for(const map of [this.logs,this.sessions,this.texts])if(map.size>2000)map.delete(map.keys().next().value);
   if(this.rooms.size>500)this.rooms.delete(this.rooms.keys().next().value);
  }
  // 반환: null(가만히 있기) 또는 {kind:'service'|'chat', request, text, trigger, mayskip, fallback}
  plan({roomId,event,settings,now,names=botNames(settings),isRegion=()=>false,lastResponse=0}){
-  const mode=settings?.chatMode??'auto';
+  const talk=talkOf(settings);
+  // 조용히 모드에서는 "모든 채팅에 대답"을 "자유 대화"처럼 줄여, 평범한 말에는 끼어들지 않습니다.
+  let mode=settings?.chatMode??'auto';if(mode==='all'&&!talk.plainAll)mode='auto';
   if(mode==='off'||settings?.quiet)return null;
   const user=event.user?.id;if(!user)return null;
   const text=squash(event.message);
@@ -162,16 +174,16 @@ export class Conversation{
   if(/^@\S+/u.test(text)&&!called)return null; // 다른 사람을 지목한 말
   const service=naturalRequest(text,{isRegion,now}),c=cues(text);
   const social=c.bye||c.thanks||c.identity||c.help||c.howAreYou||(c.greeting&&[...text].length<=30);
-  const guess=c.question||c.emotion||c.address;
+  const guess=talk.guess&&(c.question||c.emotion||c.address); // 부르지 않은 질문·감정 표현에 끼어드는 것도 조용히 모드에서는 하지 않음
   // all(모든 채팅에 대답)은 위에 해당하지 않는 평범한 말에도 대답합니다. (그래도 아래 횟수 제한과 도배 방지는 적용)
   const trigger=called?'call':session?'session':service?'service':social?'social':guess?'guess':mode==='all'?'all':null;
   if(!trigger)return null;
   if(mode==='call'&&trigger!=='call'&&trigger!=='session')return null;
-  if(!this.allow(roomId,user,now,{fast:trigger!=='guess'&&trigger!=='social'&&trigger!=='all'}))return null;
+  if(!this.allow(roomId,user,now,{fast:trigger!=='guess'&&trigger!=='social'&&trigger!=='all',talk}))return null;
   const wantsService=!!service&&(mode==='auto'||called||session);
   return {kind:wantsService?'service':'chat',request:wantsService?service:null,text,trigger,
    // 직접 부르지 않았는데 질문·감정 표현만 보고 끼어드는 경우에는 AI가 "내게 한 말이 아니다"라고 판단하면 SKIP으로 입을 다물 수 있습니다.
    mayskip:trigger==='guess',
-   fallback:smallTalk(text,{name:event.user.nickname,botName:settings?.chatName||DEFAULT_CHAT_NAME,hour:new Date(now+32400000).getUTCHours(),int:this.int,emotion:true})};
+   fallback:((reply)=>talk.trim?firstSentence(reply):reply)(smallTalk(text,{name:event.user.nickname,botName:settings?.chatName||DEFAULT_CHAT_NAME,hour:new Date(now+32400000).getUTCHours(),int:this.int,emotion:true}))};
  }
 }

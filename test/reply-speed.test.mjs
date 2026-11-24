@@ -85,7 +85,7 @@ test('실제 흐름: 명령 3개가 동시에 와도 모두 답하고, 후원 �
     const info = await (await fetch(address + '/api/session', { headers: { Cookie: session } })).json();
     const headers = { Cookie: session, 'X-CSRF-Token': info.csrf, 'Content-Type': 'application/json' };
     const room = await (await fetch(address + '/api/room', { headers })).json();
-    res = await fetch(address + '/api/settings', { method: 'POST', headers, body: JSON.stringify({ settings: { ...room.settings, responseGap: 1, cooldown: 1 }, expectedRevision: room.settingsRevision || 0, name: room.name }) });
+    res = await fetch(address + '/api/settings', { method: 'POST', headers, body: JSON.stringify({ settings: { ...room.settings, responseGap: 1, cooldown: 1, chatTalk: 'lively' }, expectedRevision: room.settingsRevision || 0, name: room.name }) });
     assert.equal(res.status, 200);
     await sleep(1300);
     // 1) 서로 다른 청취자 3명이 거의 동시에 명령 → 예전에는 1개만 답하고 나머지는 버려졌습니다.

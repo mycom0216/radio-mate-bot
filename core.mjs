@@ -1,6 +1,6 @@
 import {setAutomation} from './automation.mjs';
 import {assistantRequest} from './lifestyle.mjs';
-import {Conversation,squash,callsBot,botNames} from './converse.mjs';
+import {Conversation,squash,callsBot,botNames,talkOf} from './converse.mjs';
 import {diningQuery,diningPrompt,normalizeCommand} from './dining.mjs';
 import {travelKinds,travelQuery,travelPrompt} from './travel.mjs';
 import {DEFAULT_CHARGE_NOTICE,LEGACY_CHARGE_NOTICE,spoonChargeReply} from './public/spoon-charge.mjs';
@@ -396,7 +396,8 @@ export class Engine {
   }
   plainQuizEvent(r,event,now){const answer=plainQuizAnswer(r,r.users[event.user?.id],event.message,now);return answer===null?null:{...event,message:'!정답 '+answer};}
   // ───── 명령어 없는 대화 ─────
-  chatContext(roomId,event,settings,extra={}){return {store:this.store,room:roomId,user:event.user?.id,channel:'spoon',nickname:event.user?.nickname,botName:settings.chatName,persona:settings.chatPersona,int:this.int,...extra};}
+  // talk: 수다 정도(조용히·보통·활발)에 따라 AI 답변의 길이와 말투가 달라집니다. (settings.chatTalk, 기본 조용히)
+  chatContext(roomId,event,settings,extra={}){return {store:this.store,room:roomId,user:event.user?.id,channel:'spoon',nickname:event.user?.nickname,botName:settings.chatName,persona:settings.chatPersona,talk:['quiet','normal','lively'].includes(settings.chatTalk)?settings.chatTalk:'quiet',int:this.int,...extra};}
   async assistantParts(request,context){
     if(!this.lifestyle)return ['대화 도우미가 준비 중입니다.'];
     const parts=this.lifestyle.answerParts?await this.lifestyle.answerParts(request,context):[await this.lifestyle.answer(request,context)];
@@ -433,7 +434,8 @@ export class Engine {
     const fromDj=event.isDj===true||String(user)===String(roomId);
     if(fromDj){
       const short=[...text].length<=100,called=s.chatDjCall&&callsBot(squash(text).toLowerCase(),botNames(s));
-      if(!short||!(s.chatDjAll||called))return null;
+      // 수다 정도가 「조용히」이면 chatDjAll 설정과 관계없이 DJ가 이름을 부를 때만 대답합니다.
+      if(!short||!((s.chatDjAll&&talkOf(s).plainAll)||called))return null;
       // DJ 계정은 봇 답변이 되돌아오는 길이므로 더 엄격하게 거릅니다: 방금(4초 안에) 봇이 보낸 메시지가 있으면 되돌아온 것일 수 있어 건너뜁니다.
       if(this.botSpokeRecently(roomId,now,4000))return null;
     }
@@ -458,7 +460,7 @@ export class Engine {
       if(result.reason==='error')this.noteAiProblem(roomId,result.message,now);
       const reply=result.text||plan.fallback;if(!reply)return null;parts=[reply];
     }
-    this.conversation.record(roomId,user,now,text);
+    this.conversation.record(roomId,user,now,text,{sessionMs:talkOf(s).sessionMs}); // 호출 없이 이어 말하는 시간도 수다 정도에 따라 다름
     return {natural:true,trigger:plan.trigger,assistantRequest:request,assistantText:parts[0],assistantMore:parts.slice(1),promptKey,needsRegion,aiMs:Date.now()-started};
   }
   naturalCommand(r,e,now,prepared){

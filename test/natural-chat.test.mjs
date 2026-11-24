@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Store,Engine,defaults,validateSettings} from '../core.mjs';
 import {Outbox} from '../outbox.mjs';
-import {naturalRequest,callsBot,botNames,cues,smallTalk,Conversation,fallbackChat} from '../converse.mjs';
-import {AIChat,fitChat} from '../ai-chat.mjs';
+import {naturalRequest,callsBot,botNames,cues,smallTalk,Conversation,fallbackChat,talkOf} from '../converse.mjs';
+import {AIChat,fitChat,firstSentence} from '../ai-chat.mjs';
 import {Lifestyle,assistantRequest} from '../lifestyle.mjs';
 import {parseWeatherQuery} from '../weather-periods.mjs';
 import {createExtraUI} from '../public/extra-ui.mjs';
@@ -51,7 +51,7 @@ test('calling the bot, cues and small talk follow the Korean wording',()=>{
  assert.ok(fallbackChat.length<=200);
 });
 
-const settings=(extra={})=>({chatMode:'auto',chatName:'메이트',quiet:false,responseGap:3,...extra});
+const settings=(extra={})=>({chatMode:'auto',chatTalk:'lively',chatName:'메이트',quiet:false,responseGap:3,...extra});
 const talkEvent=(message,user='u1')=>({user:{id:user,nickname:'민수'},message});
 test('the conversation planner answers calls, follow-ups, greetings and questions but stays out of listener banter',()=>{
  const conversation=new Conversation({int:a=>a});let now=FRIDAY;
@@ -95,7 +95,7 @@ test('one listener or one room cannot flood the chat and repeated text is ignore
 // ───── 엔진 통합: 가짜 lifestyle로 AI·날씨 호출 없이 흐름만 검증 ─────
 function chatRoom(extra={}){
  const store=new Store();store.create('room','방송');
- store.transaction('room',r=>Object.assign(r.settings,{chatMode:'auto'},extra)); // 기본값은 이제 all이지만, 이 파일의 기존 시험은 auto 동작을 검사합니다.
+ store.transaction('room',r=>Object.assign(r.settings,{chatMode:'auto',chatTalk:'lively'},extra)); // 기본값은 이제 조용히지만, 이 파일의 기존 시험은 예전(활발) 동작을 검사합니다. 조용히·보통은 아래 새 시험에서 검사합니다.
  let now=FRIDAY;const engine=new Engine(store,{now:()=>now,int:a=>a}),calls={parts:[],converse:[]};
  engine.lifestyle={
   resolveRegion:token=>KNOWN.has(token)?token:null,
@@ -403,4 +403,95 @@ test('DJ-all setting defaults on, validates, fills old rooms and shows in the se
  assert.equal(store.load('old').settings.chatDjAll,true);
  const html=createExtraUI({card:(title,body)=>body,toggle:(key,label)=>`[toggle:${key}:${label}]`,field:()=>'',saveButton:()=>'',table:()=>'',empty:()=>'',esc:v=>String(v??'')}).autoChat({...defaults()});
  assert.match(html,/\[toggle:chatDjAll:DJ 본인의 채팅에도 대답/);
+});
+
+// ───── 수다 정도(chatTalk): 조용히(기본) · 보통 · 활발 ─────
+test('수다 정도 기본값은 조용히이고, 잘못된 값은 거절하며, 옛 방도 조용히로 채워집니다', () => {
+ assert.equal(defaults().chatTalk, 'quiet');
+ assert.throws(() => validateSettings({ ...defaults(), chatTalk: 'loud' }), /수다 정도/);
+ for (const value of ['quiet', 'normal', 'lively']) assert.equal(validateSettings({ ...defaults(), chatTalk: value }).chatTalk, value);
+ const store = new Store(); store.create('old', '옛 방송');
+ store.db.prepare('UPDATE rooms SET data=? WHERE id=?').run(JSON.stringify((() => { const r = store.load('old'); delete r.settings.chatTalk; return r; })()), 'old');
+ assert.equal(store.load('old').settings.chatTalk, 'quiet', '이미 쓰던 방도 서버를 다시 시작하면 조용히');
+});
+
+test('조용히: 모든 채팅 모드여도 평범한 말·혼잣말·감정 표현에는 끼어들지 않고, 부르거나 인사·질문에만 대답합니다', () => {
+ const conversation = new Conversation({ int: a => a }); const now = FRIDAY;
+ const plan = (message, extra = {}, user = 'u1') => conversation.plan({ roomId: 'r', event: { user: { id: user, nickname: '민수' }, message }, settings: settings({ chatMode: 'all', chatTalk: 'quiet', ...extra }), now, isRegion: token => KNOWN.has(token) });
+ assert.equal(plan('오늘 저는 공원에서 산책을 했어요'), null, '평범한 말');
+ assert.equal(plan('심심해', {}, 'u2'), null, '혼자 하는 감정 표현');
+ assert.equal(plan('이 노래 제목이 뭐예요?', {}, 'u3'), null, '부르지 않은 질문에도 끼어들지 않음');
+ assert.equal(plan('안녕하세요', {}, 'u4').trigger, 'social', '인사에는 대답');
+ assert.equal(plan('메이트야 뭐해', {}, 'u5').trigger, 'call', '이름을 부르면 대답');
+ assert.equal(plan('서울 날씨', {}, 'u6').kind, 'service', '날씨·맛집 질문은 대답');
+ // 같은 말을 활발·보통으로 바꾸면 대답합니다.
+ for (const talk of ['normal', 'lively']) assert.equal(plan('오늘 저는 공원에서 산책을 했어요', { chatTalk: talk }, 'x' + talk).trigger, 'all', talk);
+});
+
+test('조용히: 한 사람에게는 30초에 한 번(호출·서비스는 15초), 5분에 3번까지, 방 전체로는 5분에 8번까지만 대답합니다', () => {
+ const run = talk => { const conversation = new Conversation({ int: a => a }); let now = FRIDAY;
+  const ask = (message, user = 'u1') => conversation.plan({ roomId: 'r', event: { user: { id: user, nickname: '민수' }, message }, settings: settings({ chatMode: 'auto', chatTalk: talk }), now, isRegion: () => false });
+  return { conversation, ask, tick: ms => { now += ms; }, now: () => now }; };
+ const quiet = run('quiet');
+ quiet.conversation.record('r', 'u1', quiet.now(), '안녕하세요');
+ quiet.tick(10000); assert.equal(quiet.ask('고마워요'), null, '10초 뒤: 인사류는 30초가 지나야 함');
+ quiet.tick(21000); assert.ok(quiet.ask('고마워요'), '31초 뒤에는 대답');
+ const call = run('quiet'); call.conversation.record('r', 'u1', call.now(), '메이트야 안녕');
+ call.tick(10000); assert.equal(call.ask('메이트야 뭐해'), null, '10초 뒤: 호출도 15초가 지나야 함'); call.tick(6000); assert.ok(call.ask('메이트야 뭐해'), '16초 뒤에는 호출에 대답');
+ // 5분에 3번
+ const burst = run('quiet'); for (let i = 0; i < 3; i++) { burst.conversation.record('r', 'u1', burst.now(), '안녕' + i); burst.tick(31000); }
+ assert.equal(burst.ask('안녕하세요'), null, '5분 안에 같은 사람에게 3번 대답한 뒤에는 대답 안 함');
+ // 방 전체 8번
+ const room = run('quiet'); for (let i = 0; i < 8; i++) room.conversation.record('r', 'user' + i, room.now(), '안녕');
+ room.tick(40000); assert.equal(room.ask('안녕하세요', 'someone-new'), null, '방 전체로 5분에 8번이 넘으면 새 사람에게도 대답 안 함');
+ // 활발은 예전 한도(8초·12번·30번)를 그대로 씁니다.
+ const lively = run('lively'); lively.conversation.record('r', 'u1', lively.now(), '안녕'); lively.tick(9000); assert.ok(lively.ask('고마워요'));
+});
+
+test('조용히: 호출 없이 이어 말하는 시간이 1분으로 짧고, 활발은 3분입니다', () => {
+ for (const [talk, expected] of [['quiet', 60000], ['normal', 120000], ['lively', 180000]]) assert.equal(talkOf({ chatTalk: talk }).sessionMs, expected, talk);
+ assert.equal(talkOf({}).sessionMs, 60000, '값이 없으면 조용히'); assert.equal(talkOf({ chatTalk: 'x' }).sessionMs, 60000);
+ const conversation = new Conversation({ int: a => a }); const now = FRIDAY;
+ conversation.record('r', 'u1', now, '메이트야 안녕', { sessionMs: 60000 });
+ assert.equal(conversation.inSession('r', 'u1', now + 59000), true); assert.equal(conversation.inSession('r', 'u1', now + 61000), false);
+});
+
+test('조용히: DJ 본인의 평범한 말에는 대답하지 않고, 이름을 부르면 대답합니다 (보통·활발에서는 스위치를 따름)', async () => {
+ const dj = (t, message, extra = {}) => t.say(message, { user: 'dj', nickname: 'DJ', isDj: true, ...extra });
+ const quiet = chatRoom({ chatMode: 'all', chatTalk: 'quiet', chatDjAll: true });
+ assert.equal((await dj(quiet, '너뭐해')).text, null, '조용히: chatDjAll이 켜져 있어도 평범한 DJ 말에는 대답 안 함');
+ quiet.advance(40000); assert.equal((await dj(quiet, '메이트야 너뭐해')).text, '네, 들었어요!', '이름을 부르면 대답');
+ for (const talk of ['normal', 'lively']) { const t = chatRoom({ chatMode: 'all', chatTalk: talk, chatDjAll: true }); assert.equal((await dj(t, '너뭐해')).text, '네, 들었어요!', talk); }
+});
+
+test('조용히: AI 없이도(기본 대답) 첫 문장만 말하고 되묻지 않으며, 보통·활발은 전체를 말합니다', async () => {
+ const ask = async talk => { const t = chatRoom({ chatMode: 'auto', chatTalk: talk }); t.engine.lifestyle.converse = async () => ({ text: null, reason: 'unconfigured' }); return (await t.say('안녕하세요')).text; };
+ const quiet = await ask('quiet'), lively = await ask('lively');
+ assert.ok(quiet && [...quiet].length <= [...lively].length, `${quiet} / ${lively}`);
+ assert.ok(!/[.!?…~♡]\s+\S/.test(quiet), '조용히: 문장이 하나뿐');
+});
+
+test('AI 말투 지침과 답변 길이가 수다 정도에 따라 달라집니다 (조용히: 한 문장·40자·되묻기 금지)', async () => {
+ const ai = new AIChat({ key: 'k', fetcher: async () => ({}) });
+ const text = talk => ai.instructions({ channel: 'spoon', nickname: '민수', botName: '메이트', talk });
+ assert.match(text('quiet'), /한 문장으로, 40자 안쪽/); assert.match(text('quiet'), /되묻거나 대화를 이어가려 하지 마세요/); assert.match(text('quiet'), /이모티콘은 쓰지 말고/);
+ assert.match(text('normal'), /한두 문장으로 80자 안쪽/); assert.match(text('normal'), /되묻기는 꼭 필요할 때만/);
+ assert.match(text('lively'), /160자 안쪽/); assert.match(text('lively'), /가벼운 되묻기/);
+ assert.match(text(undefined), /160자 안쪽/, '지정이 없으면 예전 말투');
+ // 요청 본문: 출력 토큰과 첫 문장 자르기
+ const sent = [];
+ const run = async (talk, reply) => { const fetcher = async (url, init) => { sent.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ output: [{ type: 'message', content: [{ type: 'output_text', text: reply }] }] }) }; };
+  const store = new Store(); store.create('r', '방'); let now = FRIDAY; const bot = new AIChat({ key: 'k', fetcher, now: () => now });
+  return bot.answer('안녕', { store, room: 'r', user: 'u', channel: 'spoon', natural: true, nickname: '민수', talk, int: a => a }); };
+ assert.equal(await run('quiet', '반가워요~ 오늘 하루는 어떠셨어요? 저는 방송 들으면서 쉬고 있어요'), '반가워요~');
+ assert.equal(await run('normal', '반가워요~ 오늘 하루는 어떠셨어요?'), '반가워요~ 오늘 하루는 어떠셨어요?');
+ assert.equal(await run('lively', '반가워요~ 오늘 하루는 어떠셨어요?'), '반가워요~ 오늘 하루는 어떠셨어요?');
+ assert.deepEqual(sent.map(body => body.max_output_tokens), [100, 160, 220]);
+ assert.equal(firstSentence('안녕하세요~ 반가워요!'), '안녕하세요~'); assert.equal(firstSentence('네! 좋아요. 또 봐요'), '네! 좋아요.', '너무 짧은 첫 조각은 다음 조각과 합침'); assert.equal(firstSentence(''), ''); assert.equal(firstSentence('한 문장뿐'), '한 문장뿐');
+});
+
+test('설정 화면에 수다 정도 선택칸이 있고 현재 값이 선택되어 보입니다', () => {
+ const ui = createExtraUI({ card: (title, body) => body, toggle: (key, label) => `[toggle:${key}]`, field: () => '', saveButton: () => '', table: () => '', empty: () => '', esc: v => String(v ?? '') });
+ for (const talk of ['quiet', 'normal', 'lively']) { const html = ui.autoChat({ ...defaults(), chatTalk: talk }); assert.match(html, new RegExp(`<option value="${talk}" selected>`)); assert.equal((html.match(/<option value="(quiet|normal|lively)" selected>/g) || []).length, 1); assert.match(html, /data-field="chatTalk"/); }
+ assert.match(ui.autoChat({ ...defaults() }), /수다 정도/);
 });

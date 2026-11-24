@@ -42,7 +42,7 @@ test('자유 대화의 AI 답(2.5초)을 기다리는 동안 후원 감사 인�
     const info = await (await fetch(address + '/api/session', { headers: { Cookie: session } })).json();
     const headers = { Cookie: session, 'X-CSRF-Token': info.csrf, 'Content-Type': 'application/json' };
     const room = await (await fetch(address + '/api/room', { headers })).json();
-    res = await fetch(address + '/api/settings', { method: 'POST', headers, body: JSON.stringify({ settings: { ...room.settings, responseGap: 1, cooldown: 1 }, expectedRevision: room.settingsRevision || 0, name: room.name }) });
+    res = await fetch(address + '/api/settings', { method: 'POST', headers, body: JSON.stringify({ settings: { ...room.settings, responseGap: 1, cooldown: 1, chatTalk: 'lively' }, expectedRevision: room.settingsRevision || 0, name: room.name }) });
     assert.equal(res.status, 200);
     await sleep(1500); chats.length = 0;
 

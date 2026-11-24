@@ -1,5 +1,5 @@
 import {defaultQuizQuestions} from './quiz.mjs';
-export function extraDefaults(){return {affinityNotices:true,listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.'],chatMode:'all',chatAllApplied:true,chatDjCall:true,chatDjAll:true,chatName:'메이트',chatPersona:''};}
+export function extraDefaults(){return {affinityNotices:true,listenRewards:true,listenMinutes:5,listenTickets:1,listenDailyCap:100,rps:false,dice:false,numberGuess:false,quiz:false,autoQuizEnabled:false,autoQuizMinutes:10,quizExp:50,quizTickets:1,quizExpChance:50,quizMinutes:30,quizQuestions:defaultQuizQuestions(),autoReplies:[],autoChatEnabled:false,autoChatMode:'sequential',autoChatMinutes:10,autoChatMessages:['방송에 오신 여러분, 반갑습니다! 명령어는 !도움말로 확인하세요.'],chatMode:'all',chatTalk:'quiet',chatAllApplied:true,chatDjCall:true,chatDjAll:true,chatName:'메이트',chatPersona:''};}
 export function normalizeExtras(settings){
   // 이 기능이 생기기 전에 저장된 방은 한 번만 '모든 채팅에 대답'으로 바꿉니다. (이후에 DJ가 고른 방식은 그대로 유지)
   if(settings.chatAllApplied===undefined){if(settings.chatMode===undefined||settings.chatMode==='auto')settings.chatMode='all';settings.chatAllApplied=true;}
@@ -23,6 +23,7 @@ export function validateExtras(s){
   // 명령어 없는 대화: off=끄기 · call=이름을 부르거나 이어 말할 때만 · auto=인사·질문·날씨·맛집에도 먼저 대답
   if(typeof s.chatName==='string')s.chatName=s.chatName.trim();
   if(!['off','call','auto','all'].includes(s.chatMode))throw Error('대화 방식은 끄기·부르면 대답·자유 대화·모든 채팅에 대답 중에서 선택하세요.');
+  if(!['quiet','normal','lively'].includes(s.chatTalk))throw Error('수다 정도는 조용히·보통·활발 중에서 선택하세요.');
   if(typeof s.chatAllApplied!=='boolean')throw Error('대화 방식 이전 설정 값이 올바르지 않습니다.');
   if(typeof s.chatDjCall!=='boolean')throw Error('DJ가 봇 이름을 부르면 대답하는 설정은 켬/끔이어야 합니다.');
   if(typeof s.chatDjAll!=='boolean')throw Error('DJ 본인의 모든 채팅에 대답하는 설정은 켬/끔이어야 합니다.');
