@@ -5,7 +5,7 @@
  "minimum_chrome_version":"116",
  "description":"연결한 스푼 방송 탭의 실제 보이는 화면을 후원 이벤트 수신 시 PNG(와 선택하면 영상)로 찍어 이 PC에 저장하고 라디오메이트 서버에도 보관합니다.",
  "permissions":["activeTab","scripting","downloads","storage","tabCapture","offscreen"],
- "host_permissions":["https://radiomate-mycom0216.gallanttamarind4.chatgpt.site/*"],
+ "host_permissions":["https://radiomate-mycom0216.gallanttamarind4.chatgpt.site/*","https://www.spooncast.net/*","https://spooncast.net/*"],
  "background":{"service_worker":"worker.mjs","type":"module"},
  "action":{"default_popup":"popup.html","default_title":"후원 순간 캡처"}
 }
