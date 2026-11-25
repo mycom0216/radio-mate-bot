@@ -76,7 +76,9 @@ function installTicks(){
 }
 async function attach(config){
  manualTestEpoch++;
- if(config?.origin!==ORIGIN||!/^[A-Za-z0-9_-]{43}$/.test(config.token||''))throw Error('DJ 화면에서 복사한 연결 정보 전체를 붙여넣으세요.');
+ // 연결 실패 원인을 구분해 알려 줍니다: 붙여넣은 내용이 잘못됐는지, 확장이 전용으로 쓰는 서버 주소와 연결 정보를 발급한 스튜디오 주소가 다른지.
+ if(!config||typeof config!=='object'||typeof config.token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(config.token))throw Error('연결 정보가 올바르지 않습니다. 스튜디오의 「연결 정보 복사」로 복사한 글자 전체({ 로 시작해 } 로 끝남)를 그대로 붙여넣으세요.');
+ if(config.origin!==ORIGIN)throw Error(`이 확장은 ${ORIGIN} 서버 전용입니다. 연결 정보를 발급한 스튜디오 주소(${String(config.origin||'알 수 없음').slice(0,80)})가 달라 연결할 수 없습니다. 위 주소의 스튜디오에서 연결 정보를 다시 발급해주세요.`);
  const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(!tab?.id||!liveUrl(tab.url))throw Error('먼저 PC 스푼 웹의 해당 DJ 방송 탭을 열어주세요.');
  const initial=await relay({token:config.token,cursor:0}),binding={instanceId:crypto.randomUUID(),origin:ORIGIN,token:config.token,tabId:tab.id,windowId:tab.windowId,spoonUrl:tab.url,dj:initial.dj,cursor:initial.cursor,expiresAt:initial.expiresAt};
  await chrome.storage.local.remove('uploadReport');
