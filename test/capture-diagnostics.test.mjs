@@ -80,7 +80,14 @@ test('관리 화면의 연결 상태 표시: 연결 중·끊김·만료와 마�
   assert.ok(html.includes('연결 중 (방금 확인)') && html.includes('1분 전 · 후원자 · 350스푼 → 캡처 대상으로 기록됨') && html.includes('서버에 보관된 캡처 5장'));
   html = render({ ...base, lastPollAt: now - 5 * 60000 });
   assert.ok(html.includes('5분 전부터 확인하지 않았습니다') && html.includes('방송 탭에서 다시 연결'));
-  assert.ok(render({ ...base, lastPollAt: null }).includes('아직 서버에 접속하지 않았습니다'));
+  // 접속 기록이 한 번도 없으면 원인을 차례로 확인하는 체크리스트를 보여 줍니다.
+  const never = render({ ...base, lastPollAt: null });
+  assert.ok(never.includes('아직 서버에 접속하지 않았습니다'));
+  for (const hint of ['PC의 Chrome·Edge', '휴대폰 스푼 앱 화면은 캡처할 수 없습니다', '1.3.0', 'edge://extensions', '「현재 방송 탭 연결」', '다른 탭·창에 가려지지 않고 화면에 보이는지', '다른 창</b>에 띄워 두세요', '서버를 다시 시작하면 접속 기록이 지워져', '상태·목록 새로고침']) assert.ok(never.includes(hint), hint);
+  assert.equal((never.match(/<li>/g) || []).length, 4, '확인 항목 4개');
+  assert.ok(!render({ ...base, lastPollAt: now - 3000 }).includes('<ol'), '연결 중일 때는 체크리스트를 보여 주지 않음');
+  assert.ok(!render({ ...base, enabled: false, lastPollAt: null }).includes('<ol'), '연결 정보가 없을 때는 발급 안내만');
+  assert.ok(render({ ...base, lastPollAt: now - 5 * 60000 }).includes('다른 탭·창에 가려졌거나'), '접속이 끊긴 경우에도 가려짐을 원인으로 안내');
   assert.ok(render({ ...base, enabled: false }).includes('캡처 연결이 없거나 만료되었습니다'));
   assert.ok(render({ ...base, lastDonation: { ...base.lastDonation, result: 'below-min', amount: 20, min: 200 } }).includes('20스푼 → 기준(200스푼)에 못 미쳐 캡처하지 않음'));
   for (const [result, text] of [['not-connected', '연결 정보를 다시 발급'], ['bad-user', '후원자 정보가 없어'], ['bad-amount', '스푼 수를 읽지 못해'], ['stale', '2분 넘게 어긋나'], ['duplicate', '이미 기록된 후원']]) assert.ok(render({ ...base, lastDonation: { ...base.lastDonation, result } }).includes(text), result);

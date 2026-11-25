@@ -33,10 +33,12 @@ function screenCapturePanel(){const config=room.screenCapture,enabled=config&&co
 function captureStatusHtml(status,now){
   if(!status)return '';
   const ago=ms=>{const sec=Math.max(0,Math.round((now-ms)/1000));return sec<10?'방금':sec<60?sec+'초 전':sec<3600?Math.floor(sec/60)+'분 전':Math.floor(sec/3600)+'시간 전';};
-  const connection=!status.enabled?'캡처 연결이 없거나 만료되었습니다. 아래에서 연결 정보를 발급해 확장 프로그램에 붙여넣으세요.':status.lastPollAt?(now-status.lastPollAt<=15000?`연결 중 (${ago(status.lastPollAt)} 확인)`:`${ago(status.lastPollAt)}부터 확인하지 않았습니다 — 방송 탭이 닫혔거나 확장이 멈췄을 수 있어요. 방송 탭에서 다시 연결하세요.`):'확장 프로그램이 아직 서버에 접속하지 않았습니다. (서버를 다시 시작했거나 방송 탭에 연결하지 않았습니다)';
+  const connection=!status.enabled?'캡처 연결이 없거나 만료되었습니다. 아래에서 연결 정보를 발급해 확장 프로그램에 붙여넣으세요.':status.lastPollAt?(now-status.lastPollAt<=15000?`연결 중 (${ago(status.lastPollAt)} 확인)`:`${ago(status.lastPollAt)}부터 확인하지 않았습니다 — 방송 탭이 닫혔거나, 다른 탭·창에 가려졌거나, 확장이 멈췄을 수 있어요. 방송 탭을 화면에 보이게 하고, 그래도 안 되면 방송 탭에서 다시 연결하세요.`):'확장 프로그램이 아직 서버에 접속하지 않았습니다.';
+  // 접속 기록이 한 번도 없는 경우: 원인을 차례로 확인하도록 안내합니다. (서버를 다시 시작하면 접속 기록이 지워지므로, 방송 탭이 가려져 있으면 연결돼 있어도 이 상태로 보일 수 있음)
+  const help=status.enabled&&!status.lastPollAt?'<p class="small">아래를 차례로 확인하세요.</p><ol class="small"><li>휴대폰이 아니라 <b>PC의 Chrome·Edge</b>인지 (휴대폰 스푼 앱 화면은 캡처할 수 없습니다)</li><li>확장 프로그램(<b>1.3.0</b>)을 설치했는지 (<code>edge://extensions</code>에서 버전 확인)</li><li><b>스푼 방송 탭</b>에서 확장 아이콘을 누르고, 위 연결 정보를 붙여넣어 <b>「현재 방송 탭 연결」</b>까지 눌렀는지</li><li>방송 탭이 <b>다른 탭·창에 가려지지 않고 화면에 보이는지</b> — 보이지 않으면 확인을 멈춥니다. 이 관리 화면은 <b>다른 창</b>에 띄워 두세요.</li></ol><p class="small">서버를 다시 시작하면 접속 기록이 지워져 이 문구가 다시 나옵니다. 방송 탭을 화면에 보이게 한 채 몇 초 뒤 「상태·목록 새로고침」을 누르면 바뀝니다.</p>':'';
   const last=status.lastDonation,reasons={recorded:'캡처 대상으로 기록됨 — 연결된 확장이 곧바로 가져가 5장을 찍습니다','below-min':`기준(${num(last?.min)}스푼)에 못 미쳐 캡처하지 않음`,'not-connected':'캡처 연결이 없거나 만료되어 기록하지 않음 — 연결 정보를 다시 발급하세요','bad-user':'후원 알림에 후원자 정보가 없어 기록하지 못함','bad-amount':'후원 알림의 스푼 수를 읽지 못해 기록하지 못함',stale:'후원 시각이 2분 넘게 어긋나 기록하지 않음',duplicate:'이미 기록된 후원이라 다시 기록하지 않음'};
   const donation=last?`${ago(last.at)} · ${esc(last.nickname)} · ${last.amount===null?'?':num(last.amount)}스푼 → ${reasons[last.result]||esc(last.result)}`:'서버를 다시 시작한 뒤 받은 후원이 없습니다.';
-  return `<div class="capture-status" role="status"><p><strong>확장 연결</strong>: ${connection}</p><p><strong>마지막 후원</strong>: ${donation}</p>${status.stored?`<p class="small">서버에 보관된 캡처 ${num(status.stored.count)}장</p>`:''}</div>`;
+  return `<div class="capture-status" role="status"><p><strong>확장 연결</strong>: ${connection}</p>${help}<p><strong>마지막 후원</strong>: ${donation}</p>${status.stored?`<p class="small">서버에 보관된 캡처 ${num(status.stored.count)}장</p>`:''}</div>`;
 }
 // 서버에 보관된 캡처 목록을 후원 한 건씩 묶어 보여 줍니다. 이미지는 로그인 쿠키로만 열리는 주소를 쓰고, 저장 버튼은 download 속성으로 기기에 내려받습니다.
 function captureFilesHtml(data){
