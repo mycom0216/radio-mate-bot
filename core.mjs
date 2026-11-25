@@ -13,7 +13,7 @@ import {temperatureEvent,officialTemperature,temperatureSummary} from './public/
 import {savedSongVideo,rememberSongVideo} from './song-library.mjs';
 import {chatPage} from './pagination.mjs';
 import {Outbox} from './outbox.mjs';
-import {LOTTERY_CHUNK,LOTTERY_RANKS,lotterySummary,lotterySummaryAsync,lotteryPrize,lotteryRewardTable} from './lottery.mjs';
+import {LOTTERY_RANKS,drawLottery,lotteryPrize,lotteryRewardTable} from './lottery.mjs';
 import {playQuiz,plainQuizAnswer,activeQuizRound} from './quiz.mjs';
 import {extraDefaults,normalizeExtras,validateExtras,keywordReply,keywordMatches,playMiniGame} from './extras.mjs';
 import {parseSongRequest,songVideoId,groupKeeps,keepName,keepExpiryLabel} from './public/song-utils.mjs';
@@ -385,13 +385,7 @@ export class Engine {
       try{natural=await this.naturalReply(roomId,event,r,text,now);}catch(error){this.noteAiProblem(roomId,'natural-chat: '+error.message,now);}
       if(natural)return this.handle(roomId,event,natural);
     }
-    const automatic=/^!\s*복권\s+자동\s*$/.test(String(event.message||'').trim());
-    if(automatic&&user?.tickets>LOTTERY_CHUNK&&user.month===dates(now).month&&(event.isDj||now-r.lastResponse>=r.settings.responseGap*1000&&now-user.lastCommand>=r.settings.cooldown*1000)){
-      if(this.store.db.prepare('SELECT 1 FROM events WHERE room=? AND id=?').get(roomId,event.id))return {text:null,duplicate:true};
-      const count=user.tickets,ticketRevision=user.ticketRevision||0;if(!Number.isSafeInteger(count)||count<1)return this.handle(roomId,event);
-      const counts=await lotterySummaryAsync(count,(min,max)=>this.int(min,max));
-      return this.handle(roomId,event,{count,counts,ticketRevision});
-    }
+    // 대량 복권(!복권 자동)도 여기서 미리 계산할 필요가 없습니다. 합산 방식으로 handle 안에서 바로 추첨합니다.
     return this.handle(roomId,event);
   }
   plainQuizEvent(r,event,now){const answer=plainQuizAnswer(r,r.users[event.user?.id],event.message,now);return answer===null?null:{...event,message:'!정답 '+answer};}
@@ -743,16 +737,14 @@ export class Engine {
       if(u.tickets<1)fail('복권이 부족합니다.');
       if(auto&&u.tickets>1){
         const used=u.tickets;if(!Number.isSafeInteger(used))fail('복권 보유 수량을 확인해주세요.');
-        if(preparedLottery&&(preparedLottery.count!==used||preparedLottery.ticketRevision!==(u.ticketRevision||0)))fail('추첨 준비 중 복권 수량이 변경되었습니다. 수량은 차감하지 않았으니 다시 입력해주세요.');
-        if(used>LOTTERY_CHUNK&&!preparedLottery)fail('대량 복권은 비동기 처리로 실행해주세요.');
+        // 몇 장이든 바로 추첨합니다: 1,000장까지는 한 장씩, 그 이상은 합산 방식(0.1ms 안팎, 같은 확률 분포).
         // 등수별 당첨 횟수에 설정한 보상(EXP·PT)을 곱해 총 보상을 계산합니다.
-        const counts=preparedLottery?.counts||lotterySummary(used,(min,max)=>this.int(min,max)),{exp,pt}=lotteryPrize(counts,lotteryRewardTable(s));
+        const counts=drawLottery(used,(min,max)=>this.int(min,max)),{exp,pt}=lotteryPrize(counts,lotteryRewardTable(s));
         if(!Number.isSafeInteger(u.exp+exp))fail('경험치가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
         if(!Number.isSafeInteger(u.pt+pt))fail('포인트가 정확히 처리 가능한 정수 범위를 초과합니다. 복권은 차감하지 않았습니다.');
         u.tickets=0;u.ticketRevision=(u.ticketRevision||0)+1;u.exp+=exp;u.pt+=pt;this.store.log(r.id,u.id,'lottery',{auto:true,used,counts,exp,pt,remaining:0},now);
         return answer(`자동 복권 ${n(used)}장 사용 · 1등(3개 일치) ${n(counts[3])}회 / 2등(2개) ${n(counts[2])}회 / 3등(1개) ${n(counts[1])}회 / 꽝 ${n(counts[0])}회 · ${prizeText(exp,pt)} · 남은 복권 0장`);
       }
-      if(auto&&preparedLottery&&(preparedLottery.count!==u.tickets||preparedLottery.ticketRevision!==(u.ticketRevision||0)))fail('추첨 준비 중 복권 수량이 변경되었습니다. 다시 입력해주세요.');
       const pick=()=>{const pool=[1,2,3,4,5,6,7,8,9],numbers=[];for(let i=0;i<3;i++)numbers.push(pool.splice(this.int(0,pool.length-1),1)[0]);return numbers;};
       const selected=auto?pick():bits.map(Number),draw=pick();
       // 맞힌 개수(matches)로 등수를 정하고, 설정한 등수별 보상(EXP·PT)을 찾습니다.

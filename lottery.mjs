@@ -1,5 +1,8 @@
-import {setImmediate as yieldTurn} from 'node:timers/promises';
+// 예전에는 1만 장이 넘으면 비동기로 나눠 추첨했지만, 합산(이항 분포 표본추출) 방식은 복권이 몇 장이든 0.1ms 안에 같은 확률 분포로 계산되므로
+// 이제 어디서든 바로(동기) 추첨합니다. LOTTERY_CHUNK는 "큰 수량"을 가리키는 값으로 시험에서만 씁니다.
 export const LOTTERY_CHUNK=10000;
+// 이 수량까지는 한 장씩 실제로 추첨(0.7ms 안팎)하고, 넘으면 합산 방식으로 한 번에 계산합니다.
+export const LOTTERY_EXACT_MAX=1000;
 // Two independent 3-number selections from 1..9 have 84 equiprobable
 // comparisons: 20 miss, 45 one-match, 18 two-match and 1 three-match.
 export function addLotteryOutcome(counts,roll){counts[roll===0?3:roll<=18?2:roll<=63?1:0]++;}
@@ -40,10 +43,8 @@ export function aggregateLottery(count,int){
   for(let i=0;i<3;i++){counts[i]=binomial(remaining,weights[i]/total,random);remaining-=counts[i];total-=weights[i];}
   counts[3]=remaining;return counts;
 }
-export async function lotterySummaryAsync(count,int){
-  if(count>100000){await yieldTurn();return aggregateLottery(count,int);}
-  const counts=[0,0,0,0];for(let i=0;i<count;i++){addLotteryOutcome(counts,int(0,83));if((i+1)%LOTTERY_CHUNK===0)await yieldTurn();}return counts;
-}
+// 복권 count장의 등수별 당첨 횟수 [꽝,3등,2등,1등]를 바로 돌려줍니다. 비동기가 필요 없습니다.
+export function drawLottery(count,int){return count>LOTTERY_EXACT_MAX?aggregateLottery(count,int):lotterySummary(count,int);}
 // 복권 등수: 숫자 3개 중 맞힌 개수가 3개면 1등, 2개면 2등, 1개면 3등, 0개면 꽝입니다. (배열 번호 = 맞힌 개수)
 export const LOTTERY_RANKS=['꽝','3등','2등','1등'];
 // 설정(s)에 저장된 등수별 EXP·PT 보상을 '맞힌 개수'로 찾을 수 있는 표로 바꿉니다.
