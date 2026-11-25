@@ -60,7 +60,8 @@ test('자유 대화의 AI 답(2.5초)을 기다리는 동안 후원 감사 인�
     assert.ok(thanks !== undefined && command !== undefined && ai !== undefined, JSON.stringify(chats.map(c => [c.t - start, c.text])));
     assert.ok(ai >= 2400, `AI 답은 2.5초 뒤에 도착해야 합니다: ${ai}ms`);
     assert.ok(thanks < 1800, `후원 감사 인사가 AI 답을 기다리지 않고 바로 나가야 합니다: ${thanks}ms`);
-    assert.ok(command < 2500, `명령 답이 AI 답을 기다리지 않아야 합니다: ${command}ms`);
+    // 명령 답은 AI 답(2.5초 + 전송 대기열)보다 먼저 나가야 합니다. (예전 방식이면 AI를 기다려 AI 답보다 늦게 나감) 절대 시간(2500ms)이 아니라 순서로 비교해 PC 속도 차이로 흔들리지 않게 합니다.
+    assert.ok(command < ai, `명령 답이 AI 답보다 먼저 나가야 합니다: 명령 ${command}ms / AI ${ai}ms`);
     // 2) 자유 대화에 걸린 시간이 운영 기록에 남습니다.
     const after = await (await fetch(address + '/api/room', { headers })).json();
     const log = after.logs.find(entry => entry.type === 'natural-chat');

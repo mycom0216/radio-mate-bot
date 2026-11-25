@@ -24,14 +24,14 @@ function setup() {
 test('연결 전에는 not-connected로, 연결 후에는 후원마다 결과(기록·기준 미만·중복)를 남깁니다', () => {
   const f = setup();
   assert.equal(f.captures.record('a', f.gift({}, 'g0')), false);
-  assert.deepEqual(f.last(), { at: NOW, amount: 350, nickname: '후원자', result: 'not-connected', min: 300 });
+  assert.deepEqual(f.last(), { at: NOW, amount: 350, nickname: '후원자', result: 'not-connected', min: 200 });
   assert.equal(f.captures.diagnostics('a').enabled, false); assert.equal(f.captures.diagnostics('a').lastPollAt, null);
   f.connect();
   assert.equal(f.captures.record('a', f.gift({}, 'g1')), true); assert.equal(f.last().result, 'recorded');
   assert.equal(f.captures.record('a', f.gift({}, 'g1')), false); assert.equal(f.last().result, 'duplicate');
-  assert.equal(f.captures.record('a', f.gift({ amount: 299 }, 'g2')), false);
-  assert.deepEqual(f.last(), { at: NOW, amount: 299, nickname: '후원자', result: 'below-min', min: 300 });
-  assert.equal(f.captures.record('a', f.gift({ amount: 300 }, 'g3')), true, '정확히 기준 스푼도 대상');
+  assert.equal(f.captures.record('a', f.gift({ amount: 199 }, 'g2')), false);
+  assert.deepEqual(f.last(), { at: NOW, amount: 199, nickname: '후원자', result: 'below-min', min: 200 });
+  assert.equal(f.captures.record('a', f.gift({ amount: 200 }, 'g3')), true, '정확히 기준 스푼도 대상');
 });
 
 test('후원자·스푼 수를 읽을 수 없거나 시각이 크게 어긋나면 이유와 함께 건너뜁니다', () => {
@@ -82,7 +82,7 @@ test('관리 화면의 연결 상태 표시: 연결 중·끊김·만료와 마�
   assert.ok(html.includes('5분 전부터 확인하지 않았습니다') && html.includes('방송 탭에서 다시 연결'));
   assert.ok(render({ ...base, lastPollAt: null }).includes('아직 서버에 접속하지 않았습니다'));
   assert.ok(render({ ...base, enabled: false }).includes('캡처 연결이 없거나 만료되었습니다'));
-  assert.ok(render({ ...base, lastDonation: { ...base.lastDonation, result: 'below-min', amount: 20 } }).includes('20스푼 → 기준(300스푼)에 못 미쳐 캡처하지 않음'));
+  assert.ok(render({ ...base, lastDonation: { ...base.lastDonation, result: 'below-min', amount: 20, min: 200 } }).includes('20스푼 → 기준(200스푼)에 못 미쳐 캡처하지 않음'));
   for (const [result, text] of [['not-connected', '연결 정보를 다시 발급'], ['bad-user', '후원자 정보가 없어'], ['bad-amount', '스푼 수를 읽지 못해'], ['stale', '2분 넘게 어긋나'], ['duplicate', '이미 기록된 후원']]) assert.ok(render({ ...base, lastDonation: { ...base.lastDonation, result } }).includes(text), result);
   assert.ok(render({ ...base, lastDonation: null }).includes('서버를 다시 시작한 뒤 받은 후원이 없습니다'));
   assert.ok(render({ ...base, lastDonation: { ...base.lastDonation, nickname: '<b>x</b>' } }).includes('&lt;b&gt;x&lt;/b&gt;'), '닉네임 이스케이프');
@@ -110,7 +110,7 @@ test('실제 서버: 후원 알림에 time이 없어도 sentTime만 있어도 �
     // 1) 기준 미만 후원: 이유가 남음
     stream.write('id: small\nevent: donation\ndata: ' + JSON.stringify({ user: { id: 'u', nickname: '작은후원' }, amount: 20, sentTime: Date.now() }) + '\n\n');
     for (let i = 0; i < 40 && !(await roomInfo()).lastDonation; i++) await new Promise(resolve => setTimeout(resolve, 50));
-    info = await roomInfo(); assert.deepEqual([info.lastDonation.result, info.lastDonation.amount, info.lastDonation.nickname, info.lastDonation.min], ['below-min', 20, '작은후원', 300]);
+    info = await roomInfo(); assert.deepEqual([info.lastDonation.result, info.lastDonation.amount, info.lastDonation.nickname, info.lastDonation.min], ['below-min', 20, '작은후원', 200]);
     // 2) 350스푼, time 필드 없이 sentTime(밀리초)만 있는 알림 → 캡처 대상
     stream.write('id: big\nevent: donation\ndata: ' + JSON.stringify({ user: { id: 'u2', nickname: '큰후원' }, amount: 350, sentTime: Date.now() }) + '\n\n');
     let events = []; for (let i = 0; i < 60 && !events.length; i++) { events = (await (await fetch(origin + '/api/screen-capture/events', { headers: relay })).json()).events; await new Promise(resolve => setTimeout(resolve, 50)); }

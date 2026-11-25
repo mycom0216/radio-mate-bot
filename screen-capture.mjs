@@ -65,14 +65,14 @@ export class ScreenCapture {
   return {ms:now,fromEvent:false};
  }
  record(room,frame){
-  const data=frame?.data,now=this.now(),min=this.store.load(room)?.settings?.screenCaptureMin??300;
+  const data=frame?.data,now=this.now(),min=this.store.load(room)?.settings?.screenCaptureMin??200;
   const rawId=data?.user?.id,userId=typeof rawId==='string'?rawId:Number.isSafeInteger(rawId)?String(rawId):'',amount=Number(data?.amount),nickname=String(data?.user?.nickname||'청취자').slice(0,40);
   // 어떤 이유로 대상이 되었는지(되지 않았는지)를 방마다 기억해 관리 화면에서 보여 줍니다.
   const note=result=>{this.lastDonation.set(room,{at:now,amount:Number.isFinite(amount)?amount:null,nickname,result,min});if(this.lastDonation.size>500)this.lastDonation.delete(this.lastDonation.keys().next().value);return result==='recorded';};
   if(!this.status(room).enabled)return note('not-connected');
   if(!userId)return note('bad-user');
   if(!Number.isSafeInteger(amount)||amount<1)return note('bad-amount');
-  // 기준 스푼(설정 screenCaptureMin, 기본 300) 미만의 후원은 캡처 대상으로 기록하지 않습니다.
+  // 기준 스푼(설정 screenCaptureMin, 기본 200) 미만의 후원은 캡처 대상으로 기록하지 않습니다.
   if(amount<min)return note('below-min');
   const {ms:time,fromEvent}=ScreenCapture.eventTime(data,now);
   if(fromEvent&&Math.abs(now-time)>120000)return note('stale');

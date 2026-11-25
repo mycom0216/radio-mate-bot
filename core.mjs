@@ -49,8 +49,9 @@ export function defaults() {
     // 복권 등수별 보상: 1등(3개 일치)은 EXP+PT, 2등(2개)은 EXP만, 3등(1개)은 PT만 줍니다. 값은 관리 화면에서 바꿀 수 있습니다.
     // 낚시 결과에 '누가 잡았는지' 표시하는 방식: both(닉네임+고유 ID) / nickname / id / off(표시 안 함)
     fishingWho:'both',
-    // 화면 캡처 기준: 후원 한 건이 이 스푼 이상일 때만 확장 기능이 방송 화면을 캡처합니다. (기본 300스푼)
-    screenCaptureMin:300,
+    // 화면 캡처 기준: 후원 한 건이 이 스푼 이상일 때만 확장 기능이 방송 화면을 캡처합니다. (기본 200스푼, 예전 기본값은 300)
+    // screenCaptureMinApplied: 기본값을 300에서 200으로 낮춘 변경을 이미 적용했다는 표시입니다. 이 표시가 없는 예전 방은 불러올 때 한 번만 처리합니다.
+    screenCaptureMin:200,screenCaptureMinApplied:true,
     // DJ 랭킹(일라디·월라디): 스푼이 순위를 API로 알려 주지 않아 DJ가 직접 입력합니다. 빈 값(null)은 미등록입니다. 넥스트초이스 등급은 월라디 순위로 자동 계산합니다.
     // 날짜·월 표시(…Date/…Month)는 값을 입력한 때를 기록해, 오래된 값에 '(기준일)'을 붙이는 데 씁니다.
     djRankDaily:null, djRankDailyDate:'', djRankMonthly:null, djRankMonthlyMonth:'',
@@ -149,7 +150,8 @@ export function validateSettings(s) {
   if(!Number.isSafeInteger(s.battleTargetSpoons)||s.battleTargetSpoons<1||s.battleTargetSpoons>1000000)throw Error('후원 팀 대결 목표 스푼은 1~1,000,000 사이의 정수로 입력하세요.');
   if(!Number.isSafeInteger(s.battleTeamGiftSpoons)||s.battleTeamGiftSpoons<0||s.battleTeamGiftSpoons>100000)throw Error('후원 팀 대결 선물 약속 스푼은 0~100,000 사이의 정수로 입력하세요. (0이면 안내하지 않습니다)');
   // 화면 캡처 기준 스푼(1 이상 정수). 이 기능이 생기기 전에 저장한 설정에는 없으므로 값이 없을 때만 기본값을 채웁니다.
-  if(s.screenCaptureMin===undefined)s.screenCaptureMin=300;
+  if(s.screenCaptureMin===undefined)s.screenCaptureMin=200;
+  s.screenCaptureMinApplied??=true; // 설정을 저장하는 시점부터는 DJ가 정한 값(300 포함)을 그대로 유지합니다.
   if(!Number.isSafeInteger(s.screenCaptureMin)||s.screenCaptureMin<1||s.screenCaptureMin>100000000)throw Error('화면 캡처 기준 스푼은 1 이상의 정수로 입력하세요.');
   // 낚시 행운 보너스(0~1000%)와 후원 레벨 보상 설정입니다. 이전 설정에는 없으므로 값이 없을 때만 기본값을 채웁니다.
   if(s.fishingLuck===undefined)s.fishingLuck=100;
@@ -237,7 +239,10 @@ export class Store {
       CREATE TABLE IF NOT EXISTS backups(id TEXT PRIMARY KEY,room TEXT,time INTEGER,data TEXT);`);
   }
   ids(){return this.db.prepare('SELECT id FROM rooms').all().map(r=>r.id);}
-  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);room.users=Object.assign(Object.create(null),room.users);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;if(room.settings.spoonNotice===LEGACY_CHARGE_NOTICE)room.settings.spoonNotice=DEFAULT_CHARGE_NOTICE;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;const base=defaults();for(const key of NEW_SETTING_KEYS)if(room.settings[key]===undefined&&base[key]!==undefined)room.settings[key]=base[key];return room;}
+  load(id){const row=this.db.prepare('SELECT data FROM rooms WHERE id=?').get(id);if(!row)return null;const room=JSON.parse(row.data);room.users=Object.assign(Object.create(null),room.users);normalizeExtras(room.settings);room.settings.pending=defaults().pending;room.settings.spoonNotice??=defaults().spoonNotice;if(room.settings.spoonNotice===LEGACY_CHARGE_NOTICE)room.settings.spoonNotice=DEFAULT_CHARGE_NOTICE;room.settings.introEnabled??=true;room.settings.introText??=defaults().introText;room.settings.roulette??=false;room.settings.rouletteRewards??=defaults().rouletteRewards;room.settings.likeGreetingEnabled??=true;room.settings.likeGreeting??=defaults().likeGreeting;const base=defaults();for(const key of NEW_SETTING_KEYS)if(room.settings[key]===undefined&&base[key]!==undefined)room.settings[key]=base[key];
+    // 캡처 기준 기본값을 300에서 200스푼으로 낮췄습니다. 예전 기본값(300)이 그대로 저장돼 있는 방은 한 번만 200으로 바꾸고, DJ가 직접 정한 다른 값(예: 500)은 그대로 둡니다.
+    if(room.settings.screenCaptureMinApplied===undefined){if(room.settings.screenCaptureMin===300)room.settings.screenCaptureMin=200;room.settings.screenCaptureMinApplied=true;}
+    return room;}
   create(id,name) {
     if(!this.load(id))this.save({id,name,settings:defaults(),month:dates().month,users:{},songs:[],current:null,previous:null,lastRequester:null,streak:0,lastResponse:0,live:false,noticeTimes:{},achievers:[],special:[]});
     return this.load(id);
